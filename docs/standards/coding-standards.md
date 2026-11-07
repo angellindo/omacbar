@@ -16,7 +16,7 @@ the rest is judgement, and a review cites the rule number.
 - `tb-core`: pure domain logic. No IO, no GPU, no Rune, no clocks, no env. Takes text, returns values.
 - `tb-render`: Rune views and offscreen rendering. No device or input access.
 - `tb-app`: the configurator binary. Reads/writes the config file; nothing else touches it.
-- `touchbard` (future `tb-daemon`): the only crate that touches devices (DRM, evdev, uinput),
+- `tb-daemon` (binary `touchbard`, ADR-0006): the only crate that touches devices (DRM, evdev, uinput),
   each behind a trait with a fake for tests.
 A new dependency arrow between crates needs an ADR.
 

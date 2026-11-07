@@ -60,8 +60,13 @@ One rendered image of the bar in RGBA, before conversion for a display backend.
 _Avoid_: buffer, image, screenshot
 
 **Present**:
-Hand a frame to a display backend.
+Hand a frame and its damage to a display backend.
 _Avoid_: blit, flush, push (except in driver docs)
+
+**Damage**:
+The rects of the bar, in bar pixels, whose pixels changed since the last present. Only damaged
+rects reach the panel; the whole bar is one rect.
+_Avoid_: dirty rect (except citing macOS), invalidation, update region
 
 **Display backend**:
 Where frames go: the Touch Bar via DRM, `/dev/dfr0`, or the simulator (PNG/window).
@@ -69,6 +74,18 @@ _Avoid_: output, sink, driver
 
 **Simulator**:
 The display backend that shows frames on screen or writes PNGs, for work without the bar.
+
+**Daemon**:
+`touchbard`, the background process that owns the bar: it renders the shown layer, presents
+it, and turns touches into pressed buttons and actions.
+_Avoid_: server, service (except the systemd unit), compositor
+
+## Input
+
+**Touch**:
+One finger on the bar, known by its x position in bar pixels from the moment it lands until it
+lifts. A touch presses the button it hits.
+_Avoid_: tap (a touch that lands and lifts on one button), click, pointer
 
 ## Hardware
 
