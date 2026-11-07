@@ -10,8 +10,9 @@ Usage:
   scripts/pipeline-gate.py TB-<n> --slice N           run the contract, record evidence (red allowed)
   scripts/pipeline-gate.py TB-<n> --slice N --final   seal intact, all green, never_red empty,
                                                       scripts/check.sh green, clean tree
---stamp and every --final start by deleting slice-N.final.json; only a passing --final writes it,
-after re-checking tree, HEAD and seal once every subprocess has run.
+--stamp and every --final start by deleting slice-N.final.json, before any other check; only a
+passing --final writes it. --final re-checks tree, HEAD and seal after every subprocess (each cargo
+case group, each check, scripts/check.sh) and stops at the first violation.
 Exit: 0 pass · 1 contract not green / invalid · 2 seal broken or NEVER_RED · 3 missing intake .ack
 """
 
@@ -25,6 +26,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parent.parent
 MISSING_SYMBOL_CODES = ("E0412", "E0422", "E0425", "E0432", "E0433", "E0560", "E0599", "E0609")
@@ -163,7 +165,7 @@ def classify(cases: list[dict], out: str, compiled: bool) -> dict[str, str]:
     return results
 
 
-def run_cases(manifest: dict, logdir: Path) -> dict[str, str]:
+def run_cases(manifest: dict, logdir: Path, after: Callable[[], None]) -> dict[str, str]:
     groups: dict[tuple[str, str], list[dict]] = {}
     for c in manifest["cases"]:
         groups.setdefault((c["package"], c["target"]), []).append(c)
@@ -174,16 +176,18 @@ def run_cases(manifest: dict, logdir: Path) -> dict[str, str]:
         p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         out = p.stdout + "\n" + p.stderr
         (logdir / f"cargo-{pkg}-{target.replace(':', '-')}.log").write_text(" ".join(cmd) + "\n\n" + out)
+        after()
         compiled = "running " in p.stdout
         results.update(classify(cases, out, compiled))
     return results
 
 
-def run_checks(manifest: dict, logdir: Path) -> dict[str, str]:
+def run_checks(manifest: dict, logdir: Path, after: Callable[[], None]) -> dict[str, str]:
     results = {}
     for c in manifest["checks"]:
         p = subprocess.run(c["command"], cwd=ROOT, capture_output=True, text=True)
         (logdir / f"check-{c['id']}.log").write_text(" ".join(c["command"]) + "\n\n" + p.stdout + p.stderr)
+        after()
         results[c["id"]] = "GREEN" if p.returncode == 0 else "FAILED"
     return results
 
@@ -208,10 +212,6 @@ def main() -> None:
     if not re.fullmatch(r"TB-\d+", a.ticket):
         die(1, "ticket must look like TB-12")
     tdir = ROOT / ".scratch" / a.ticket
-    ack = tdir / ".ack"
-    if not ack.is_file() or json.loads(ack.read_text()).get("confirmed") is not True:
-        die(3, f"missing intake .ack ({ack.relative_to(ROOT)}): the ticket has not passed intake")
-
     cdir = tdir / "contract"
     mpath = cdir / f"slice-{a.slice}.json"
     seal_path = cdir / f"slice-{a.slice}.seal"
@@ -219,8 +219,12 @@ def main() -> None:
     final_path = cdir / f"slice-{a.slice}.final.json"
     if a.stamp or a.final:
         # A final record is valid only for the seal and HEAD it was written for: a re-seal or a
-        # --final that does not pass leaves none behind.
+        # --final that does not pass (whatever the exit code) leaves none behind.
         final_path.unlink(missing_ok=True)
+
+    ack = tdir / ".ack"
+    if not ack.is_file() or json.loads(ack.read_text()).get("confirmed") is not True:
+        die(3, f"missing intake .ack ({ack.relative_to(ROOT)}): the ticket has not passed intake")
     manifest = load_manifest(mpath)
     seal = seal_of(mpath, manifest)
 
@@ -247,11 +251,20 @@ def main() -> None:
     logdir = tdir / "gate" / f"{stamp}-slice-{a.slice}{'-final' if a.final else ''}"
     logdir.mkdir(parents=True, exist_ok=True)
 
-    results = run_cases(manifest, logdir) if manifest["mode"] == "behavior" else {}
-    results.update(run_checks(manifest, logdir))
+    def intact() -> None:
+        """Seal, and on --final also tree and HEAD, as they were before the gate ran anything.
 
-    if seal_of(mpath, manifest) != seal:
-        die(2, "SEAL_BROKEN: frozen files changed while the gate was running")
+        Called after every subprocess, so a change undone by a later one is still caught."""
+        if seal_of(mpath, manifest) != seal:
+            die(2, "SEAL_BROKEN: frozen files changed while the gate was running")
+        if a.final:
+            require_committed_tree()
+            if git("rev-parse", "HEAD").strip() != head:
+                die(1, f"final: HEAD moved from {head[:8]} while the gate was running")
+
+    results = run_cases(manifest, logdir, intact) if manifest["mode"] == "behavior" else {}
+    results.update(run_checks(manifest, logdir, intact))
+    intact()
 
     evidence = json.loads(ev_path.read_text()) if ev_path.is_file() else {"runs": []}
     evidence["runs"].append({"at": now(), "seal": seal, "head": head, "final": a.final, "results": results,
@@ -283,14 +296,9 @@ def main() -> None:
         die(2, f"NEVER_RED: required cases never seen red under this seal: {', '.join(never_red)}")
     check = subprocess.run(["scripts/check.sh"], cwd=ROOT, capture_output=True, text=True)
     (logdir / "check.log").write_text(check.stdout + check.stderr)
+    intact()
     if check.returncode != 0:
         die(1, f"final: scripts/check.sh failed (log {logdir.relative_to(ROOT)}/check.log)")
-    # The checks and scripts/check.sh are subprocesses: judge the tree they leave behind.
-    require_committed_tree()
-    if git("rev-parse", "HEAD").strip() != head:
-        die(1, f"final: HEAD moved from {head[:8]} while the gate was running")
-    if seal_of(mpath, manifest) != seal:
-        die(2, "SEAL_BROKEN: frozen files changed while the gate was running")
     final = {"ticket": a.ticket, "slice": a.slice, "seal": seal, "head": head, "at": now(), "result": "PASS",
              "log": str(logdir.relative_to(ROOT))}
     final_path.write_text(json.dumps(final, indent=2) + "\n")
