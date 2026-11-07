@@ -8,3 +8,4 @@
 .scratch/*/gate/
 .scratch/*/.session-id
 .scratch/*/gates-*.log
+__pycache__/

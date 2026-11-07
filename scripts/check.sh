@@ -9,6 +9,9 @@ step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 step "agent mirrors (CLAUDE.md = AGENTS.md, .claude = .agents)"
 scripts/sync-agents.sh --check
 
+step "script tests (python unittest, no cargo)"
+python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
+
 step "fmt"
 cargo fmt --all -- --check
 
