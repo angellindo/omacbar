@@ -1,0 +1,10 @@
+[tools]
+rust = "1.99.1"
+
+[tasks.check]
+description = "All gates: fmt, clippy, tests"
+run = "scripts/check.sh"
+
+[tasks.snap]
+description = "Render the default bar to out/bar.png (headless)"
+run = "cargo run -p tb-app -- --snap out/bar.png"

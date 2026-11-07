@@ -1,0 +1,17 @@
+[package]
+name = "tb-render"
+description = "Draws a Touch Bar layer with Rune and reads it back as pixels (headless, offscreen)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tb-core.workspace = true
+rune.workspace = true
+png.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

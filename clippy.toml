@@ -1,0 +1,8 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+disallowed-methods = [
+  { path = "std::env::var", reason = "read environment only in a binary's config module at startup" },
+  { path = "std::time::SystemTime::now", reason = "inject a clock so behaviour is testable" },
+]

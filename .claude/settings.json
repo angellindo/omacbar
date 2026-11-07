@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo fmt:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo run -p tb-app:*)",
+      "Bash(cargo tree:*)",
+      "Bash(scripts/check.sh:*)",
+      "Bash(scripts/file-size.sh)",
+      "Bash(scripts/codex-review.sh:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git switch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(mise install)",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "mcp__claude_ai_Notion__notion-query-data-sources",
+      "mcp__claude_ai_Notion__notion-get-comments"
+    ],
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(modprobe:*)",
+      "Bash(rmmod:*)",
+      "Bash(insmod:*)",
+      "Bash(dkms:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

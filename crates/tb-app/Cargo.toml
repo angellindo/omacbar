@@ -1,0 +1,20 @@
+[package]
+name = "tb-app"
+description = "touchbar-customizer: the configurator window (layer tabs, bar preview, button list)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "touchbar-customizer"
+path = "src/main.rs"
+
+[dependencies]
+tb-core.workspace = true
+tb-render.workspace = true
+rune.workspace = true
+
+[lints]
+workspace = true
