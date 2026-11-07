@@ -4,44 +4,25 @@ use crate::layout::Placed;
 use crate::model::ButtonId;
 use crate::spacing::SpacingRules;
 
-/// The button under a touch at `x`. A touch in a gap goes to the nearest button when it is within
-/// the touch slop (half a gap); further away (edges, group gaps) it hits nothing.
+/// The button under a touch at `x`, per the touch slop row of `docs/design/button-standard.md`.
+///
+/// A touch inside a button hits it. A touch in the gap between two buttons of the same group hits
+/// the nearer one when within `touch_slop()` (ties go left). Bar edges and group gaps are dead, so
+/// a touch there hits nothing. `placed` must be `place` output: ordered by x, groups contiguous.
 pub fn hit<'a>(placed: &'a [Placed], x: u16, rules: &SpacingRules) -> Option<&'a ButtonId> {
-    placed
-        .iter()
-        .map(|p| (p.rect.distance_x(x), p))
-        .filter(|(d, _)| *d <= rules.touch_slop())
-        .min_by_key(|(d, _)| *d)
-        .map(|(_, p)| &p.id)
+    let next = placed.iter().position(|p| x < p.rect.x || p.rect.contains_x(x))?;
+    let right = &placed[next];
+    if right.rect.contains_x(x) {
+        return Some(&right.id);
+    }
+    let left = &placed[next.checked_sub(1)?];
+    if left.group != right.group {
+        return None;
+    }
+    let (left_d, right_d) = (left.rect.distance_x(x), right.rect.distance_x(x));
+    let (d, nearer) = if left_d <= right_d { (left_d, left) } else { (right_d, right) };
+    (d <= rules.touch_slop()).then_some(&nearer.id)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::geometry::Rect;
-
-    fn at(id: &str, x: u16, width: u16) -> Placed {
-        Placed { id: ButtonId::new(id), rect: Rect { x, y: 8, width, height: 44 }, group: 0 }
-    }
-
-    #[test]
-    fn a_touch_inside_a_button_hits_it() {
-        let placed = [at("a", 8, 100), at("b", 116, 100)];
-        assert_eq!(hit(&placed, 50, &SpacingRules::STANDARD).map(ButtonId::as_str), Some("a"));
-        assert_eq!(hit(&placed, 116, &SpacingRules::STANDARD).map(ButtonId::as_str), Some("b"));
-    }
-
-    #[test]
-    fn a_touch_in_a_gap_goes_to_the_nearest_button() {
-        let placed = [at("a", 8, 100), at("b", 116, 100)];
-        assert_eq!(hit(&placed, 109, &SpacingRules::STANDARD).map(ButtonId::as_str), Some("a"));
-        assert_eq!(hit(&placed, 114, &SpacingRules::STANDARD).map(ButtonId::as_str), Some("b"));
-    }
-
-    #[test]
-    fn a_touch_far_from_any_button_hits_nothing() {
-        let placed = [at("a", 8, 100), at("b", 140, 100)];
-        assert_eq!(hit(&placed, 124, &SpacingRules::STANDARD), None);
-        assert_eq!(hit(&placed, 0, &SpacingRules::STANDARD), None);
-    }
-}
+mod tests;

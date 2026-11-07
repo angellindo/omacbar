@@ -27,9 +27,10 @@ impl SpacingRules {
         label_padding: 12,
     };
 
-    /// Height of every button on a bar of `bar_height` px.
+    /// Height of every button on a bar of `bar_height` px; 0 when the insets take it all.
     pub const fn button_height(&self, bar_height: u16) -> u16 {
-        bar_height.saturating_sub(2 * self.vertical_inset)
+        // Subtracting twice instead of `2 * vertical_inset` cannot overflow.
+        bar_height.saturating_sub(self.vertical_inset).saturating_sub(self.vertical_inset)
     }
 
     /// Distance from a button within which a touch in a gap still counts as that button.
