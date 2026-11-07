@@ -25,7 +25,7 @@ buttons per Fn + modifier layer. This is a POC/MVP to prove viability; scope is 
 | `docs/standards/` | Coding (R1-R12) and testing standards |
 | `docs/adr/` | Decisions |
 | `docs/agents/` | Tracker contract, workflow states, review rubric |
-| `.claude/skills/` | Project skills (`tb-*`) + vendored Matt Pocock skills; `.agents/skills` links here for Codex |
+| `.claude/agents/`, `.claude/skills/` | Agents (`planner`, `implementer`) and skills (`tb-*` + vendored Matt Pocock); mirrored to `.agents/` |
 
 ## Commands
 
@@ -42,6 +42,26 @@ Every change belongs to a Notion ticket `TB-<n>` and runs `/tb-ticket TB-<n>`:
 plan (agent `planner`, Opus high) → human approves plan → implement (agent `implementer`,
 Opus medium) → review (Codex `gpt-6.1-sol`, high, `scripts/codex-review.sh`) → functional QA → Done.
 States, arrows and comment templates: `docs/agents/workflow.md`. Why fixed models: ADR-0004.
+
+## Per tool
+
+The instructions above are the same for every agent. Only how each role is launched differs.
+
+- **Claude Code** plans and implements. Agents `planner` (Opus, effort high) and `implementer`
+  (Opus, effort medium) are dispatched with a fresh context through `/tb-ticket`, never inline.
+  Notion is reached through the `claude.ai Notion` MCP server; if it is not connected, stop and
+  tell the user instead of tracking work elsewhere.
+- **Codex** reviews, and only reviews (ADR-0004). `scripts/codex-review.sh` runs it with
+  `gpt-6.1-sol`, effort high, in a read-only sandbox; it reads `.scratch/TB-<n>/`, not Notion.
+  A Codex session never plans or implements a ticket, even though it can see the agent files.
+- **Permissions are per tool and not mirrored.** `.claude/settings.json` binds Claude Code only;
+  Codex is bounded by the read-only sandbox set in `codex-review.sh`.
+
+## Mirrors
+
+`CLAUDE.md` = `AGENTS.md`, `.claude/agents/` = `.agents/agents/`, `.claude/skills/` =
+`.agents/skills/`, byte for byte. Edit the `CLAUDE.md` / `.claude/` side, then run
+`scripts/sync-agents.sh`. `scripts/check.sh` fails when they drift.
 
 ## Agent skills
 

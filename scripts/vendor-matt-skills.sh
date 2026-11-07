@@ -9,5 +9,8 @@ for d in "$tmp"/skills/skills/engineering/*/ "$tmp"/skills/skills/productivity/*
   n=$(basename "$d"); rm -rf ".claude/skills/$n"; cp -r "$d" ".claude/skills/$n"
 done
 cp "$tmp/skills/LICENSE" .claude/skills/_vendor/mattpocock-skills.LICENSE
+names=$(ls -d "$tmp"/skills/skills/{engineering,productivity}/*/ | xargs -n1 basename | sort | tr '\n' ' ')
+sed -i "s/^Vendored: .*/Vendored: $names/" .claude/skills/_vendor/README.md
 sed -i "s/at commit \`[0-9a-f]*\`/at commit \`$rev\`/" .claude/skills/_vendor/README.md
+scripts/sync-agents.sh
 echo "vendored mattpocock/skills @ $rev"
