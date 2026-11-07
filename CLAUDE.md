@@ -38,6 +38,9 @@ buttons per Fn + modifier layer. This is a POC/MVP to prove viability; scope is 
 - Shared laptop (another heavy job running): prefix heavy runs with
   `nice -n 19 env CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2`, one at a time; pause above 85 °C (`sensors`).
 - Review stage: `scripts/codex-review.sh TB-<n> [base]`.
+- Remote: `origin` = `git@github.com:angellindo/omacbar.git`, **public**. Only the orchestrator
+  pushes (`main` after a merge, ticket branches as backup); never force-push. Nothing private goes
+  in a commit: no serials, ECID, firmware tickets, tokens, or files copied from `~/Documents/mac`.
 
 ## Ticket pipeline
 

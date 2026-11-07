@@ -92,7 +92,7 @@ Full report: .scratch/TB-n/review-<k>.md
 <each acceptance item with command/evidence> · HIL pending: <none | items>
 ```
 ```
-[MERGE] TB-n · orchestrator · main @ <sha> (fast-forward from tb-n-slug, not pushed)
+[MERGE] TB-n · orchestrator · main @ <sha> (fast-forward from tb-n-slug, pushed to origin)
 ```
 ```
 [RESEARCH] TB-n · <finding in one line>

@@ -15,6 +15,8 @@
       "Bash(scripts/sync-agents.sh:*)",
       "Bash(git merge --ff-only:*)",
       "Bash(git rev-parse:*)",
+      "Bash(git push origin:*)",
+      "Bash(git push -u origin:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -33,7 +35,10 @@
       "Bash(rmmod:*)",
       "Bash(insmod:*)",
       "Bash(dkms:*)",
-      "Bash(git push:*)"
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push --delete:*)"
     ]
   }
 }
