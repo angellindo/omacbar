@@ -30,6 +30,7 @@ before writing, and use the exact property names below.
 | `Branch` | text | `tb-<n>-<slug>` |
 | `PR` | url | When a remote exists |
 | `Repo refs` | text | Paths the ticket touches or produced (docs, crates) |
+| `Order` | number | Execution order (gaps of 10). Agents take the lowest open, unblocked, agent-runnable one; humans the lowest human-owned one. View: **Execution order** |
 
 ## Page body template
 

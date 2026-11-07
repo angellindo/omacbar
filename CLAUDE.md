@@ -35,11 +35,14 @@ buttons per Fn + modifier layer. This is a POC/MVP to prove viability; scope is 
 - Look at it: `TB_WRITE_SNAPSHOTS=1 cargo test -p tb-render --test functional` → `out/default-layer.png`;
   `cargo run -p tb-app -- --snap out/app.png [--scene fn|fn-ctrl]`; `cargo run -p tb-app` for the window.
 - Contract gate: `scripts/pipeline-gate.py TB-<n> --slice N [--stamp|--final]`.
+- Shared laptop (another heavy job running): prefix heavy runs with
+  `nice -n 19 env CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2`, one at a time; pause above 85 °C (`sensors`).
 - Review stage: `scripts/codex-review.sh TB-<n> [base]`.
 
 ## Ticket pipeline
 
-Every change belongs to a Notion ticket `TB-<n>` and runs `/tb-ticket TB-<n>`, which makes the
+Every change belongs to a Notion ticket `TB-<n>` and runs `/tb-ticket TB-<n>` (or `/tb-ticket next`,
+which picks the lowest open `Order` an agent can run), which makes the
 main thread the **orchestrator** (`.claude/agents/orchestrator.md`):
 intake (`bouncer`, Sonnet low) → plan (`planner`, Opus high) → sealed acceptance contract (`qa`,
 Opus medium) → implement (`implementer`, Opus medium) until `scripts/pipeline-gate.py --final`

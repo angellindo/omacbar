@@ -47,6 +47,7 @@ Acceptance items, or an exhausted cycle budget. Do not add confirmations beyond 
 |---|---|
 | `/tb-ticket TB-n` with no stage, "work TB-n" | Full pipeline from the ticket's current Status (§4) |
 | `/tb-ticket TB-n <plan\|spec\|implement\|review\|qa\|merge>` | That step only, if its preconditions hold |
+| "next", "continue the project", `/tb-ticket next` | Query open tickets sorted by `Order`; take the lowest one whose `Blocked by` are all Done and that an agent can run (not `Stage owner = Human`, not hardware lane, not Epic). List the lowest human-owned one for the session too |
 | "continue TB-n" | Recovery (§6) |
 | "status of TB-n" | Read `index.md` + Notion; report (§9); change nothing |
 | "review this branch/diff" (no ticket) | `scripts/codex-review.sh` is ticket-bound: ask for the ticket or use `/code-review` |
@@ -151,6 +152,12 @@ fresh?» — resume with `SendMessage` to that agentId; fresh re-dispatches from
 not exist, resume from `index.md` and the Notion Status. Never scan for plans on your own.
 
 ## 7. Briefing a stage agent
+
+**Shared laptop.** When the human says another heavy job is running (a kernel build, a game),
+every brief that compiles or tests says: run `cargo`, `scripts/check.sh` and
+`scripts/pipeline-gate.py` as `nice -n 19 env CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 <command>`,
+one at a time, and check `sensors` before each heavy run (pause, report and retry later above
+85 °C package). Read-only steps (intake, plan, Codex review) can run alongside.
 
 Each brief is self-contained and short; the agent's skill holds the procedure. Include only:
 ticket key, lane, step, paths (`ticket.md`, `plan.md`, `contract/`, latest `review-k.md` or
