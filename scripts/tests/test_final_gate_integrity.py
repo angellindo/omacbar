@@ -49,7 +49,12 @@ def flag_check() -> list[str]:
 class GateRepo:
     """A committed temp repo with one sealed tooling slice."""
 
-    def __init__(self, check_cmd: list[str] | None = None, check_sh: str = "exit 0"):
+    def __init__(
+        self,
+        check_cmd: list[str] | None = None,
+        check_sh: str = "exit 0",
+        extra_checks: list[dict] | None = None,
+    ):
         self.tmp = tempfile.TemporaryDirectory(prefix="tb-gate-")
         self.root = Path(self.tmp.name)
         self.env = git_env()
@@ -70,7 +75,7 @@ class GateRepo:
             "reason": "fixture slice",
             "files": ["contract-tests/frozen.txt"],
             "cases": [],
-            "checks": [{"id": "tests", "command": check_cmd or flag_check()}],
+            "checks": [{"id": "tests", "command": check_cmd or flag_check()}, *(extra_checks or [])],
         }
         self.write(f".scratch/{TICKET}/contract/slice-1.json", json.dumps(manifest, indent=2))
         self.commit_all("fixture")
@@ -222,6 +227,54 @@ class FinalOnACommittedTree(unittest.TestCase):
         # The tree is dirty and the seal is broken: either refusal (1 or 2) is correct.
         self.assertIn(run.returncode, (1, 2), run.stdout + run.stderr)
         self.assert_no_final_record(repo, run)
+
+
+def py(code: str) -> list[str]:
+    return [sys.executable, "-c", code]
+
+
+EDIT_APP = py("open('src/app.txt', 'a').write('changed by the check\\n')")
+RESTORE_APP = ["git", "checkout", "-q", "--", "src/app.txt"]
+
+
+class FinalAfterAMutationThatIsUndone(unittest.TestCase):
+    """A subprocess changes the tree, HEAD or a frozen file and a later one puts it back."""
+
+    def setUp(self):
+        self.repos: list[GateRepo] = []
+
+    def tearDown(self):
+        for repo in self.repos:
+            repo.close()
+
+    def repo(self, **kw) -> GateRepo:
+        repo = GateRepo(**kw)
+        self.repos.append(repo)
+        return repo
+
+    def assert_refused(self, repo: GateRepo, run: subprocess.CompletedProcess, codes=(1,)) -> None:
+        self.assertIn(run.returncode, codes, run.stdout + run.stderr)
+        self.assertFalse(repo.final_record.exists(), f"a final record was written\n{run.stdout}\n{run.stderr}")
+
+    def test_a_check_edit_restored_by_the_check_script_fails_final(self):
+        repo = self.repo(check_cmd=EDIT_APP, check_sh="git checkout -q -- src/app.txt\nexit 0")
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_check_edit_restored_by_a_later_check_fails_final(self):
+        repo = self.repo(check_cmd=EDIT_APP, extra_checks=[{"id": "restore", "command": RESTORE_APP}])
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_check_that_moves_head_and_a_check_script_that_moves_it_back_fails_final(self):
+        commit = ["git", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "moved"]
+        repo = self.repo(check_cmd=commit, check_sh="git reset -q --soft HEAD~1\nexit 0")
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_check_frozen_file_edit_restored_by_a_later_check_fails_final(self):
+        tamper = py("open('contract-tests/frozen.txt', 'a').write('tampered\\n')")
+        restore = ["git", "checkout", "-q", "--", "contract-tests/frozen.txt"]
+        repo = self.repo(check_cmd=tamper, extra_checks=[{"id": "restore", "command": restore}])
+        # Dirty tree or broken seal: either refusal (1 or 2) is correct.
+        self.assert_refused(repo, repo.gate("--final"), codes=(1, 2))
 
 
 if __name__ == "__main__":

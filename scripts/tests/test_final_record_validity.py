@@ -163,6 +163,13 @@ class ReviewRepo:
                 record[key] = value
         self.final_path.write_text(json.dumps(record, indent=2) + "\n")
 
+    @property
+    def ack_path(self) -> Path:
+        return self.tdir / ".ack"
+
+    def write_ack(self, confirmed: bool) -> None:
+        self.ack_path.write_text(json.dumps({"ticket": TICKET, "confirmed": confirmed, "lane": "express"}))
+
     def codex_called(self) -> bool:
         return self.calls.exists()
 
@@ -230,6 +237,20 @@ class FinalRecordLifecycle(Fixture):
         self.assertIn("SEAL_BROKEN", run.stderr)
         self.assertFalse(repo.final_path.exists(), "a non-PASS --final left a final record")
 
+    def test_a_final_run_without_an_intake_ack_leaves_no_record(self):
+        repo = self.passed_repo()
+        repo.ack_path.unlink()
+        run = repo.gate("--final")
+        self.assertEqual(run.returncode, 3, run.stdout + run.stderr)
+        self.assertFalse(repo.final_path.exists(), "a --final that exited 3 left a final record")
+
+    def test_a_final_run_with_an_unconfirmed_intake_ack_leaves_no_record(self):
+        repo = self.passed_repo()
+        repo.write_ack(confirmed=False)
+        run = repo.gate("--final")
+        self.assertEqual(run.returncode, 3, run.stdout + run.stderr)
+        self.assertFalse(repo.final_path.exists(), "a --final that exited 3 left a final record")
+
 
 class ReviewAcceptsOnlyAValidRecord(Fixture):
     def assert_refused(self, repo: ReviewRepo) -> subprocess.CompletedProcess:
@@ -273,6 +294,20 @@ class ReviewAcceptsOnlyAValidRecord(Fixture):
         repo = self.passed_repo()
         repo.write_manifest("contract changed by QA")
         repo.must(repo.gate("--stamp"))
+        self.assert_refused(repo)
+
+    def test_a_pass_from_before_a_final_run_without_an_intake_ack_is_refused(self):
+        repo = self.passed_repo()
+        ack = repo.ack_path.read_text()
+        repo.ack_path.unlink()
+        self.assertEqual(repo.gate("--final").returncode, 3)
+        repo.ack_path.write_text(ack)  # intake restored, HEAD and seal unchanged
+        self.assert_refused(repo)
+
+    def test_a_pass_from_before_a_final_run_with_an_unconfirmed_intake_ack_is_refused(self):
+        repo = self.passed_repo()
+        repo.write_ack(confirmed=False)
+        self.assertEqual(repo.gate("--final").returncode, 3)
         self.assert_refused(repo)
 
 
