@@ -2,7 +2,8 @@
 # Review stage of the ticket pipeline (ADR-0004, ADR-0005): Codex gpt-6.1-sol, high effort, read-only sandbox.
 # Usage: scripts/codex-review.sh TB-<n> [base-ref]     (base defaults to main)
 # Needs: .scratch/TB-<n>/ticket.md, .ack, plan.md (not in the research lane), and for every contract slice a
-#        contract/slice-N.final.json whose head is the current HEAD (research lane has no contract).
+#        contract/slice-N.final.json with result PASS, head = HEAD and seal = contract/slice-N.seal
+#        (research lane has no contract).
 # Writes: .scratch/TB-<n>/review-<cycle>.md (+ review-<cycle>.raw.md when the adversarial check ran).
 # Exit 0 = APPROVED, 2 = CHANGES REQUESTED, 1 = the review did not run.
 set -euo pipefail
@@ -27,11 +28,30 @@ done
 if (( ${#contract[@]} == 0 )); then
   [[ "$lane" == "research" ]] || { echo "no contract under $dir/contract (only the research lane may skip it)" >&2; exit 1; }
 fi
+# A final record counts only if it is a PASS for this HEAD under the slice's current seal.
+valid_final='
+import json, sys
+final, seal_file, head = sys.argv[1:]
+try:
+    seal = open(seal_file).read().strip()
+except OSError:
+    sys.exit(f"missing {seal_file}: the slice is not sealed")
+try:
+    rec = json.load(open(final))
+except OSError:
+    sys.exit(f"missing {final}: run scripts/pipeline-gate.py --final first")
+except ValueError:
+    sys.exit(f"{final} is not valid JSON: rerun --final")
+if rec.get("result") != "PASS":
+    sys.exit(f"{final} is not a PASS: rerun --final")
+fhead = str(rec.get("head"))
+if fhead != head:
+    sys.exit(f"{final} is for {fhead[:8]}, HEAD is {head[:8]}: rerun --final")
+if rec.get("seal") != seal:
+    sys.exit(f"{final} is for another seal than {seal_file}: rerun --final")
+'
 for m in "${contract[@]}"; do
-  final="${m%.json}.final.json"
-  [[ -f "$final" ]] || { echo "missing $final: run scripts/pipeline-gate.py --final first" >&2; exit 1; }
-  fhead=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["head"])' "$final")
-  [[ "$fhead" == "$head" ]] || { echo "$final is for ${fhead:0:8}, HEAD is ${head:0:8}: rerun --final" >&2; exit 1; }
+  python3 -I -c "$valid_final" "${m%.json}.final.json" "${m%.json}.seal" "$head" || exit 1
 done
 
 cycle=1

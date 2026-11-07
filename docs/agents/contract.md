@@ -44,7 +44,9 @@ Nobody writes evidence, seals or final records by hand.
   QA picks the mode from the diff's effect, never from file extensions.
 - **Cases.** `target` is `lib`, `bin:NAME` or `test:NAME` (an integration test file). `test` is
   the exact name cargo prints (`module::tests::name` for `--lib`). `symbol` (optional) names the
-  new item the test needs, so a compile error about exactly that item counts as red.
+  new item the test needs, so a compile error about exactly that item counts as red. It is a bare
+  name: the error header must name it in backticks either alone (`Width`) or as the last segment
+  of a path (`tb_core::Width`); `Widths` or `MyWidth` do not match.
 - **Frozen files.** Contract tests live in their own files (prefer `crates/<c>/tests/<behaviour>.rs`,
   public API only). The implementer's own unit tests go elsewhere and are not frozen.
 - **No ticket keys** in test names or file names: name the behaviour (`GLOSSARY.md` words).
