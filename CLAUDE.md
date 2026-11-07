@@ -24,8 +24,8 @@ buttons per Fn + modifier layer. This is a POC/MVP to prove viability; scope is 
 | `docs/design/` | Button standard and theming |
 | `docs/standards/` | Coding (R1-R12) and testing standards |
 | `docs/adr/` | Decisions |
-| `docs/agents/` | Tracker contract, workflow states, review rubric |
-| `.claude/agents/`, `.claude/skills/` | Agents (`planner`, `implementer`) and skills (`tb-*` + vendored Matt Pocock); mirrored to `.agents/` |
+| `docs/agents/` | Tracker contract, workflow states, payloads, acceptance contract, review rubric |
+| `.claude/agents/`, `.claude/skills/` | Agents (`orchestrator`, `bouncer`, `planner`, `qa`, `implementer`) and skills (`tb-*` + vendored Matt Pocock); mirrored to `.agents/` |
 
 ## Commands
 
@@ -34,21 +34,29 @@ buttons per Fn + modifier layer. This is a POC/MVP to prove viability; scope is 
 - Fast loop: `cargo test -p tb-core`.
 - Look at it: `TB_WRITE_SNAPSHOTS=1 cargo test -p tb-render --test functional` → `out/default-layer.png`;
   `cargo run -p tb-app -- --snap out/app.png [--scene fn|fn-ctrl]`; `cargo run -p tb-app` for the window.
+- Contract gate: `scripts/pipeline-gate.py TB-<n> --slice N [--stamp|--final]`.
 - Review stage: `scripts/codex-review.sh TB-<n> [base]`.
 
 ## Ticket pipeline
 
-Every change belongs to a Notion ticket `TB-<n>` and runs `/tb-ticket TB-<n>`:
-plan (agent `planner`, Opus high) → human approves plan → implement (agent `implementer`,
-Opus medium) → review (Codex `gpt-6.1-sol`, high, `scripts/codex-review.sh`) → functional QA → Done.
-States, arrows and comment templates: `docs/agents/workflow.md`. Why fixed models: ADR-0004.
+Every change belongs to a Notion ticket `TB-<n>` and runs `/tb-ticket TB-<n>`, which makes the
+main thread the **orchestrator** (`.claude/agents/orchestrator.md`):
+intake (`bouncer`, Sonnet low) → plan (`planner`, Opus high) → sealed acceptance contract (`qa`,
+Opus medium) → implement (`implementer`, Opus medium) until `scripts/pipeline-gate.py --final`
+passes → review (Codex `gpt-6.1-sol`, high, `scripts/codex-review.sh`) → functional QA (`qa`) →
+local fast-forward merge → Done. No human approvals in the normal flow; a person is involved only
+by exception (HIL, unanswerable questions, conflicting Acceptance, exhausted budgets).
+Agents never call each other; they return `### RESULT:` payloads (`docs/agents/results.md`).
+States and comments: `docs/agents/workflow.md`. Contract: `docs/agents/contract.md`.
+Why: ADR-0004 (fixed models), ADR-0005 (orchestrator, low HITL).
 
 ## Per tool
 
 The instructions above are the same for every agent. Only how each role is launched differs.
 
-- **Claude Code** plans and implements. Agents `planner` (Opus, effort high) and `implementer`
-  (Opus, effort medium) are dispatched with a fresh context through `/tb-ticket`, never inline.
+- **Claude Code** orchestrates, plans, writes the contract and implements. The orchestrator runs
+  in the main thread (`/tb-ticket` or `claude --agent orchestrator`); `bouncer`, `planner`, `qa`
+  and `implementer` are dispatched by it with a fresh context, never inline.
   Notion is reached through the `claude.ai Notion` MCP server; if it is not connected, stop and
   tell the user instead of tracking work elsewhere.
 - **Codex** reviews, and only reviews (ADR-0004). `scripts/codex-review.sh` runs it with

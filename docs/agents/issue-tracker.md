@@ -22,7 +22,7 @@ before writing, and use the exact property names below.
 | `Priority` | select | P0 (blocks the POC) .. P3 |
 | `Area` | multi-select | hardware, daemon, render, layout-engine, configurator, theme, input, testing, tooling, agents, docs |
 | `Milestone` | select | M0 Setup, M1 Research, M2 Render POC, M3 Hardware POC, M4 MVP |
-| `Stage owner` | select | Who holds the ticket now: Planner · Opus high, Implementer · Opus medium, Reviewer · Codex gpt-6.1-sol high, Human |
+| `Stage owner` | select | Who holds the ticket now: Orchestrator, Intake · Sonnet low, Planner · Opus high, QA · Opus medium, Implementer · Opus medium, Reviewer · Codex gpt-6.1-sol high, Human |
 | `Blocked by` / `Blocks` | relation (self, two-way) | Blocking edges. A ticket is ready only when every `Blocked by` ticket is Done |
 | `Review verdict` | select | Not reviewed, Approved, Changes requested |
 | `Review cycles` | number | Incremented on each Changes requested; at 3 the ticket goes to Human |
@@ -58,8 +58,9 @@ then `notion-fetch` the page with `include_discussions: true` to read comments.
 
 ## Local mirror
 
-`.scratch/TB-<n>/` holds `plan.md` (planner output), `review-<cycle>.md` (Codex output) and any
-evidence (snapshots). Notion is the source of truth for status; the mirror exists because Codex
+`.scratch/TB-<n>/` holds `ticket.md`, `index.md` and `.ack` (orchestrator), `plan.md` (planner),
+`contract/` (QA's sealed manifest and the gate's evidence, `docs/agents/contract.md`),
+`review-<cycle>.md` (Codex) and any evidence (snapshots). Notion is the source of truth for status; the mirror exists because Codex
 reads the repo, not Notion.
 
 ## Wayfinding operations

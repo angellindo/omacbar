@@ -16,7 +16,8 @@ write in a session.
 - **Move**: `notion-update-page` `update_properties` with `Status` and `Stage owner` together,
   then the comment. A move without a comment is incomplete.
 - **Comment**: `notion-create-comment` on the page, first line = the template tag
-  (`[PLAN]`, `[IMPL]`, `[REVIEW]`, `[QA]`, `[RESEARCH]`, `[BLOCKED]`). Comments are append-only;
+  (`[INTAKE]`, `[PLAN]`, `[CONTRACT]`, `[IMPL]`, `[REVIEW]`, `[QA]`, `[MERGE]`, `[RESEARCH]`, `[BLOCKED]`).
+  Only the orchestrator writes to Notion; stage agents return payloads. Comments are append-only;
   edit page sections only for `## Plan` (planner) and Acceptance checkboxes (QA).
 - **Create**: `notion-create-pages` with `parent: {data_source_id: "411934e8-4f7f-8043-a1ed-000b3b1404ce"}`,
   properties `Name`, `Type`, `Priority`, `Area` (JSON array), `Milestone`, `Status`, and

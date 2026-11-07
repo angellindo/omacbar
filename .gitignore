@@ -4,3 +4,7 @@
 # local issue scratch (plans and review outputs are mirrored to Notion)
 .scratch/*/review-*.json
 *.png.new
+# pipeline-gate logs and live orchestrator state (evidence/seal/final records stay tracked)
+.scratch/*/gate/
+.scratch/*/.session-id
+.scratch/*/gates-*.log

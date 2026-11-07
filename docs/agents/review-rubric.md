@@ -6,8 +6,9 @@ the end.
 ## Inputs you are given
 
 - The ticket (`.scratch/TB-<n>/ticket.md`) with Goal and Acceptance, and the plan (`.scratch/TB-<n>/plan.md`).
-- The diff: `git diff <base>...HEAD`.
-- Gate output from `scripts/check.sh`.
+- The diff: `git diff <base>...HEAD`. Review only this diff; never report on files outside it.
+- Gate output from `scripts/check.sh`, and the sealed acceptance contract (`contract/slice-N.json`,
+  see `docs/agents/contract.md`) that passed `scripts/pipeline-gate.py --final` at HEAD.
 
 ## Read before judging
 
@@ -18,6 +19,9 @@ the end.
 
 1. **Spec**: does the diff deliver every Acceptance item and the plan's seams? Is anything in the
    diff outside the ticket's scope? Is each Acceptance item backed by a test or evidence?
+   Check the contract too: every Acceptance item maps to a case or check; each case tests the real
+   unit (a mock of the thing under test proves nothing); assertions check values, not just `is_ok()`.
+   A gap in the contract is a Spec finding.
 2. **Standards**: rules R1-R12, the testing standard, the button standard, glossary language,
    plus a Fowler smell baseline (long function, duplicated logic, feature envy, primitive
    obsession, speculative generality).
@@ -33,6 +37,13 @@ error paths, panics reachable at runtime, behaviour on empty layers and on the 2
 
 Verdict is **CHANGES REQUESTED** if there is any BLOCKER or MAJOR, otherwise **APPROVED**.
 Do not invent findings to look thorough; an empty list is a valid review.
+
+## Adversarial check (second pass, only when the first review has a BLOCKER)
+
+`scripts/codex-review.sh` runs a second Codex pass over the first review. It re-checks each
+BLOCKER against the diff and may only downgrade or drop one that is false, already handled or
+outside the diff (one line why). It never adds findings or raises a severity. The verdict is then
+recomputed. Both versions are kept (`review-k.raw.md`, `review-k.md`).
 
 ## Output shape
 

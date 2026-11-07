@@ -20,8 +20,9 @@ Rules live in `docs/standards/testing.md`; research behind them in `docs/researc
 - **Flows**: a Rune script JSON (`{"t": 0.1, "type": "tap", "key": "tab-fnctrl"}` ...) run with
   `--script <file> --snap out.png --at mark:end`, plus the same events in a Runtime test.
 
-QA output: for each Acceptance item, the command run and its result or the evidence path, in a
-`[QA]` comment.
+QA output: for each Acceptance item, the command run and its result or the evidence path, in the
+`qa-functional-results` payload (`docs/agents/results.md`); the orchestrator posts the `[QA]` comment.
+The acceptance contract itself (sealed, red-before-green) is `docs/agents/contract.md`.
 
 ## Hardware (human)
 
