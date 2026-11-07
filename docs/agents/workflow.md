@@ -99,5 +99,8 @@ Full report: .scratch/TB-n/review-<k>.md
 Source: <url or live command>. Confidence: high | medium | low. Doc: docs/research/<file>.md
 ```
 ```
+[NOTE] TB-n · <who> · <context for a later step; not a stage output>
+```
+```
 [BLOCKED] TB-n · <exception or blocker ticket>. Needs from the human: <decision>. Unblocks when: <condition>.
 ```

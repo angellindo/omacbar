@@ -78,10 +78,13 @@ Resume mid-pipeline from Status: `Ready for Planning`/`Backlog` → intake · `P
 
 | Lane | When | Steps |
 |---|---|---|
-| research | `Type` Research or Spike | intake → planner with `tb-research` → Codex review of sources → Done |
+| research | The deliverable is knowledge only (a `docs/research/` file or an ADR), no product code: Type Research, or a Spike that only answers a question | intake → planner with `tb-research` → Codex review of sources → Done. A step that needs device access or root is handed to the human (§8) |
 | hardware | Every Acceptance item needs the physical bar, root, or firmware | intake → `Ready for Human` with the HIL list; stop |
 | express | The diff can only be text or tooling (docs, labels, scripts, CI, agent files); no change to what `tb-core`/`tb-render`/`tb-app` do | All steps; contract mode `text`/`tooling` |
 | standard | Everything else | All steps |
+
+The deliverable decides the lane, not `Type`: a Spike that ships code is standard, a ticket whose
+items all need the bar is hardware. An `Epic` is never run: report its children's Status instead.
 
 A risk discovered later (a behaviour change in an express ticket, a hardware dependency) promotes
 the lane: note "promoting to <lane> because <x>" in `index.md` and the next comment, update
@@ -173,7 +176,7 @@ Counters live in `index.md` and Notion `Review cycles`, so they survive a lost s
 | Second `contract-stuck` on a slice | `Blocked` · Human | Red cases, what was tried, the implementer's and QA's views |
 | 3 review or 3 QA cycles | `Blocked` · Human | The open findings and the diff summary |
 | Review did not run twice, or merge is not fast-forward | `Blocked` · Human | The error |
-| HIL items | `Ready for Human` · Human | The checklist from `docs/hil-checklist.md` |
+| HIL items, or a research step needing device access / root | `Ready for Human` · Human | The ticket's HIL Acceptance items as a checklist (plus `docs/hil-checklist.md` once TB-21 creates it) |
 
 Comment `[BLOCKED]` (or `[INTAKE]` / `[QA]`) with that hand-over, report it to the session, and stop
 that ticket. Everything else you decide and log; you do not ask.

@@ -27,4 +27,5 @@ The acceptance contract itself (sealed, red-before-green) is `docs/agents/contra
 ## Hardware (human)
 
 Items marked HIL in a ticket's Acceptance are run by the human on the MacBookPro14,3 using
-`docs/hil-checklist.md` (TB-21). Set Status `Functional QA`, `Stage owner = Human`, and list the items.
+`docs/hil-checklist.md` (once TB-21 creates it). QA lists them in its payload; after the merge the
+orchestrator sets Status `Ready for Human`, `Stage owner = Human`.
