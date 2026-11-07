@@ -40,6 +40,10 @@ the T1 firmware draws a fixed layout (ESC / F-keys / special keys) and the host 
 | **Seborider/mbp-t1-touchbar** | patched mainline `appletbdrm` (adds `05ac:8600` + T1 dialect: 16-byte reply preamble, acks one frame behind) → a real **DRM device** | patched `hid-multitouch` (`MT_CLS_APPLE_TOUCHBAR`) → evdev | Tested on MacBookPro13,2 + Omarchy + Hyprland; needs Linux ≥ 6.15 |
 | **aeonsolus/barkeep** | own module → **`/dev/dfr0` char device** (write one raw frame) | hidraw → uinput | Tested on MacBookPro13,2; suspend hangs (unresolved) |
 
+**macOS itself prefers config 2** for this device (`AppleUSBiBridge.kext`:
+`kUSBPreferredConfiguration = 2`, display at config 2 interface 3; see research 0006), so pixel mode
+is the T1's normal operating mode, not an unsupported one.
+
 Both select config 2 at enumeration (a USB `choose_configuration` driver); userspace
 `SET_CONFIGURATION` does not stick, and `apple_ibridge` forces config 1 back, so the key-mode
 driver must be unloaded or replaced.
@@ -54,6 +58,10 @@ driver must be unloaded or replaced.
   keep it off the main seat). [Seborider]
 - Kernel updates rebuild DKMS modules; a patched out-of-tree driver is a maintenance cost.
 - Suspend/resume with the display driver loaded is not proven on this model.
+- **This machine has lost its T1 firmware before** (ESP without `EMBEDDEDOS`, device at `05ac:1281`)
+  and needed a flash-writing recovery. The restored set is backed up only on the internal SSD
+  (research 0006). An external copy is a hard gate for TB-9.
+- A local `macbook-touchbar-local.service` controls the bar in key mode and must be retired first.
 
 ## Decision input
 

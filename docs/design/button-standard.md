@@ -43,6 +43,12 @@ button 64 px is rejected with the width it needed.
 Capacity check: at 64 px and 8 px gaps a single-group layer holds at most **30** buttons. The
 default F-key layer (ESC at 120 px + 12 F-keys) gets 160 px per F-key. Aim for **at most 16 buttons per layer**.
 
+## Escape
+
+Every layer starts with an `esc` button, `px = 120`, alone in the first group. macOS treats Escape
+as its own element outside app content (research 0006); keeping it fixed means the user's thumb
+finds it in the same place whatever chord is held.
+
 ## Label
 
 - One line, never wrapped. Lowercase words or short symbols (`vol+`, `play`, `F5`).

@@ -9,11 +9,12 @@ with user-arranged, themed buttons per Fn + modifier layer?**
 |---|---|
 | 2170 x 60 px, one row, no hover | One line of buttons per layer. No tooltips, menus, popovers or scrolling. |
 | Pixels only in USB config 2 with a patched kernel driver | Hardware enablement is a human, reversible-but-risky step (TB-9). Everything else must work without the bar (simulator). |
+| T1 firmware lives on the ESP and has been lost once on this machine | Pixel-mode work starts only after an external backup of the EFI/T1 set (research 0006). |
 | T1 firmware draws key mode in config 1 | While the stack is off, the stock F-key bar keeps working. Never leave the user with a dead bar. |
 | Fn is reported only by the SPI keyboard | Layers are chosen from that keyboard's state. |
 | Held modifiers leak into emitted keys | Modifier layers default to `command` actions until TB-11 resolves it. |
 | Touch ID / Secure Enclave | Out of scope, permanently. |
-| OLED-like panel, always on | Static content; dim/idle timeout and optional pixel shift later. |
+| OLED-like panel, always on | Static content; idle dim then off with wake on input, like macOS (TB-24); optional pixel shift later. |
 | Suspend/resume with config 2 unproven | MVP may stop the daemon on suspend; fix is post-MVP. |
 
 ## In scope (MVP, milestone M4)
