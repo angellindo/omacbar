@@ -10,8 +10,10 @@ latest `review-k.md` or QA defects. Output: commits on `tb-n-slug`, a passing
 `scripts/pipeline-gate.py TB-n --slice N --final`, and a payload from `docs/agents/results.md`.
 
 1. **Preconditions**: on branch `tb-n-slug` (the orchestrator made it); `contract/slice-N.seal`
-   exists; `scripts/pipeline-gate.py TB-n --slice N` exits 1 with every `required` case already in
-   `seen_red`. Otherwise return `spec-missing` with the reason.
+   exists; `scripts/pipeline-gate.py TB-n --slice N` exits 0 or 1 (not 2 = SEAL_BROKEN, not 3 = no
+   `.ack`) and prints `never_red: (none)`, i.e. every `required` case is already in `seen_red`.
+   A contract that starts green is fine (text/tooling, preserve-only, fix cycles). Otherwise
+   return `spec-missing` with the reason.
 2. **Read** the plan, `docs/standards/coding-standards.md`, `docs/standards/testing.md`,
    `GLOSSARY.md`, and the contract tests (read-only). For a fix, list every BLOCKER and MAJOR
    finding or QA defect; each becomes a slice.

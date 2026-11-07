@@ -5,10 +5,11 @@ description: "Review stage for a Touch Bar Customizer ticket: run Codex gpt-6.1-
 
 # Codex review
 
-1. Make sure `.scratch/TB-<n>/ticket.md` and `plan.md` exist, the work is committed, and every
-   `contract/slice-N.final.json` names the current HEAD (research tickets have no contract).
-2. Run `scripts/codex-review.sh TB-<n> main` (timeout 30 min). It refuses to run without a final
-   gate record for HEAD, runs `scripts/check.sh`, then
+1. Make sure `.scratch/TB-<n>/ticket.md` and `plan.md` exist (no `plan.md` in the research lane),
+   the work is committed, and every `contract/slice-N.final.json` is a PASS for the current HEAD
+   and the slice's current `.seal` (the research lane has no contract).
+2. Run `scripts/codex-review.sh TB-<n> main` (timeout 30 min). It refuses to run without a valid final
+   gate record (PASS, HEAD, seal), runs `scripts/check.sh`, then
    `codex exec -m gpt-6.1-sol -c model_reasoning_effort="high" -s read-only` with
    `docs/agents/review-rubric.md` and the contract. If the review has a BLOCKER, a second Codex
    pass may only downgrade or drop BLOCKERs that are false or outside the diff (adversarial check).

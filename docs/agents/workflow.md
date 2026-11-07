@@ -42,8 +42,9 @@ Functional QA ──► Ready for Human (merged; HIL items left for the physical
 | Done | Merged, every Acceptance item has evidence | — | — |
 | Won't Do | Rejected or superseded, with reason | — | — |
 
-Research lane: Ready for Planning → Planning (research written) → In Review (Codex checks sources
-and claims) → Done. Hardware lane: Ready for Planning → Ready for Human.
+Research lane: Ready for Planning → Planning (branch `tb-n-slug`, research written and committed)
+→ In Review (Codex checks sources and claims via `scripts/codex-review.sh`; Changes Requested goes
+back to the planner) → local `git merge --ff-only` → Done. Hardware lane: Ready for Planning → Ready for Human.
 
 ## Model routing (fixed, ADR-0004 and ADR-0005)
 

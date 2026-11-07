@@ -39,8 +39,8 @@ shorter brief, then escalate). Agents never call each other.
 - Blocking questions: <each, with why the plan cannot choose>
 ```
 
-`research-done` (Research tickets): `- Doc: docs/research/NNNN-…md` · `- [RESEARCH] comments: <n>` ·
-`- Claims without a primary source: none`.
+`research-done` (research lane): `- Doc: docs/research/NNNN-…md` · `- Commit: <sha> on tb-n-slug` ·
+`- [RESEARCH] comments: <n>` · `- Claims without a primary source: none`.
 
 ## qa (spec mode)
 
@@ -101,7 +101,7 @@ shorter brief, then escalate). Agents never call each other.
 
 ```markdown
 ### RESULT: spec-missing
-- Slice: N · reason: no sealed manifest | SEAL_BROKEN | missing .ack
+- Slice: N · reason: no sealed manifest | SEAL_BROKEN | missing .ack | NEVER_RED at start
 - Next: orchestrator runs QA spec (or intake)
 ```
 

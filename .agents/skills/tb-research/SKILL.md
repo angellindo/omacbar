@@ -1,6 +1,6 @@
 ---
 name: tb-research
-description: "Resolve a Research-type Touch Bar Customizer ticket: investigate primary sources and the live machine, write docs/research/NNNN-<slug>.md with cited claims, return research-done with the [RESEARCH] lines. Use when a ticket's Type is Research or a plan hits a factual unknown."
+description: "Resolve a research-lane Touch Bar Customizer ticket: investigate primary sources and the live machine, write docs/research/NNNN-<slug>.md with cited claims, commit it on the ticket branch, return research-done with the [RESEARCH] lines. Use when the ticket's .ack lane is research or a plan hits a factual unknown."
 ---
 
 # Research ticket
@@ -17,6 +17,9 @@ project conventions.
 4. Draft one `[RESEARCH]` line per key finding (one line, source, confidence; template in
    `docs/agents/workflow.md`). Done when every finding in the doc has a source and a confidence.
 5. List follow-ups (spikes, risks) as proposed tickets with their blocking edges.
-6. Return `research-done` (`docs/agents/results.md`) with the doc path, the `[RESEARCH]` lines and
-   the proposed tickets. The orchestrator posts them, creates the tickets and sends the ticket to
-   the Codex review of claims and sources.
+6. **Commit** the doc on the ticket branch `tb-n-slug` (the orchestrator made it):
+   `docs(research): <slug> (TB-n)` plus the attribution trailer. Never push. On a fix cycle, fix
+   the review's findings in the doc and commit again.
+7. Return `research-done` (`docs/agents/results.md`) with the doc path, the commit, the
+   `[RESEARCH]` lines and the proposed tickets. The orchestrator posts them, creates the tickets and
+   sends the ticket to the Codex review of claims and sources.
