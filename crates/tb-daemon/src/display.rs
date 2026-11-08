@@ -66,12 +66,14 @@ impl Display for SimDisplay {
         if damage.is_empty() {
             return Ok(());
         }
+        // Staged: a failed write leaves the screen and the numbering as they were.
+        let mut screen = self.screen.clone();
         for rect in damage {
-            copy_rect(frame, &mut self.screen, self.size, *rect);
+            copy_rect(frame, &mut screen, self.size, *rect);
         }
-        self.written = self.written.saturating_add(1);
-        let path = self.dir.join(format!("frame-{:04}.png", self.written));
-        self.screen.write_png(&path)?;
+        let number = self.written.saturating_add(1);
+        screen.write_png(&self.dir.join(format!("frame-{number:04}.png")))?;
+        (self.screen, self.written) = (screen, number);
         Ok(())
     }
 }
