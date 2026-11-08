@@ -10,7 +10,7 @@ use tb_core::{
     presets,
 };
 use tb_daemon::fake::{FlatRenderer, Presented, RecordingDisplay};
-use tb_daemon::{Daemon, DaemonError, Event, SceneRenderer};
+use tb_daemon::{Daemon, DaemonError, Display, DisplayError, Event, SceneRenderer, SimDisplay};
 use tb_render::{Frame, build_scene};
 
 const BAR: BarSize = BarSize::MACBOOK_PRO;
@@ -276,4 +276,64 @@ fn run_over_a_channel_returns_after_the_sender_is_dropped() {
     let p = presents(&d);
     assert_eq!(p.len(), 2);
     assert_eq!(p[1].frame, flat(&layout, Chord::Fn, &theme()));
+}
+
+/// A panel that refuses its `fail_at`-th present (counting from 1) and shows every other one.
+struct FailsOnce {
+    fail_at: usize,
+    calls: usize,
+    shown: Vec<(Frame, Vec<Rect>)>,
+}
+
+impl Display for FailsOnce {
+    fn present(&mut self, frame: &Frame, damage: &[Rect]) -> Result<(), DisplayError> {
+        self.calls += 1;
+        if self.calls == self.fail_at {
+            return Err(DisplayError::DamageOutsideBar { rect: WHOLE_BAR });
+        }
+        self.shown.push((frame.clone(), damage.to_vec()));
+        Ok(())
+    }
+}
+
+#[test]
+fn a_change_whose_present_failed_is_presented_when_the_same_event_comes_again() {
+    let layout = presets::default_layout();
+    let panel = FailsOnce { fail_at: 2, calls: 0, shown: Vec::new() };
+    let mut d = Daemon::new(layout.clone(), theme(), FlatRenderer, panel);
+    d.run(Vec::new()).unwrap();
+
+    let err = d.handle(Event::Modifiers(fn_held())).unwrap_err();
+    assert!(matches!(err, DaemonError::Display(_)), "got {err:?}");
+    d.handle(Event::Modifiers(fn_held())).unwrap();
+
+    let shown = &d.display().shown;
+    assert_eq!(shown.len(), 2, "start, then the Fn layer on the second try");
+    assert_eq!(shown[1].1, [WHOLE_BAR]);
+    assert_eq!(shown[1].0, flat(&layout, Chord::Fn, &theme()));
+}
+
+#[test]
+fn after_a_failed_present_the_simulator_still_shows_the_layer_the_daemon_keeps() {
+    let layout = presets::default_layout();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("render_on_change_failed_present");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(&dir); // left by a failed run
+    let sim = SimDisplay::new(BAR, &dir).unwrap();
+    let mut d = Daemon::new(layout.clone(), theme(), FlatRenderer, sim);
+    d.run(Vec::new()).unwrap();
+    let start = flat(&layout, Chord::Default, &theme());
+    assert_eq!(d.display().screen(), &start);
+
+    // A regular file where the frame directory was: the Fn layer's PNG cannot be written.
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::write(&dir, b"not a directory").unwrap();
+    let err = d.handle(Event::Modifiers(fn_held())).unwrap_err();
+    assert!(matches!(err, DaemonError::Display(_)), "got {err:?}");
+    std::fs::remove_file(&dir).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Fn released: the daemon still shows the default layer, and so must the panel.
+    d.handle(Event::Modifiers(Modifiers::default())).unwrap();
+    assert_eq!(d.display().screen(), &start, "the panel shows the default layer");
 }

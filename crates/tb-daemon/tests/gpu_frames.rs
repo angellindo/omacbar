@@ -5,9 +5,9 @@
 
 use std::sync::mpsc;
 
-use tb_core::{BarSize, BarTheme, Chord, Rect, Rgba, SpacingRules, place, presets};
+use tb_core::{BarSize, BarTheme, Chord, Layout, Rect, Rgba, SpacingRules, place, presets};
 use tb_daemon::fake::{RecordingDisplay, ScriptedTouches};
-use tb_daemon::{Daemon, GpuRenderer, Touch, forward_touches};
+use tb_daemon::{Daemon, Event, GpuRenderer, Touch, forward_touches};
 use tb_render::Frame;
 
 const BAR: BarSize = BarSize::MACBOOK_PRO;
@@ -87,4 +87,65 @@ fn every_pixel_the_press_changes_lies_inside_its_damage() {
         }
     }
     assert!(changed > 0, "the press changed some pixels");
+}
+
+/// A label far wider than F5 (160 px holds about 11 mono glyphs at 20 px).
+const LONG_LABEL: &str = "F5 with a label far too long to fit inside its button on the bar";
+
+fn with_f5_label(label: &str) -> Layout {
+    let mut layout = presets::default_layout();
+    let f5 = layout
+        .layer_mut(Chord::Default)
+        .unwrap()
+        .groups
+        .iter_mut()
+        .flat_map(|g| g.buttons.iter_mut())
+        .find(|b| b.id.as_str() == "f5")
+        .unwrap();
+    label.clone_into(&mut f5.label);
+    layout
+}
+
+/// Runs `layout` through `events` with the real renderer; returns every present.
+fn presents(layout: Layout, events: Vec<Event>) -> Vec<(Frame, Vec<Rect>)> {
+    let mut d =
+        Daemon::new(layout, BarTheme::omarchy_fallback(), GpuRenderer::new(), RecordingDisplay::new());
+    d.run(events).unwrap();
+    d.display().presents().iter().map(|p| (p.frame.clone(), p.damage.clone())).collect()
+}
+
+/// Between each pair of consecutive presents, every pixel that changed (beyond ±2) lies inside
+/// the later present's damage, so a panel that shows only the damage matches the frame.
+fn assert_every_change_inside_damage(p: &[(Frame, Vec<Rect>)]) {
+    for i in 1..p.len() {
+        let (before, after, damage) = (&p[i - 1].0, &p[i].0, &p[i].1);
+        for y in 0..after.height {
+            for x in 0..after.width {
+                if !close(before.pixel(x, y), after.pixel(x, y)) {
+                    assert!(
+                        damage.iter().any(|&r| inside(r, x, y)),
+                        "present {i}: ({x}, {y}) changed outside damage {damage:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn pressing_and_releasing_a_button_with_an_overflowing_label_changes_nothing_outside_the_damage() {
+    let f5 = f5();
+    let p = presents(
+        with_f5_label(LONG_LABEL),
+        vec![Event::Touch(Touch::Down { x: f5.x + f5.width / 2 }), Event::Touch(Touch::Up)],
+    );
+    assert_eq!(p.len(), 3, "start, press, release");
+    assert_every_change_inside_damage(&p);
+}
+
+#[test]
+fn shortening_an_overflowing_label_changes_nothing_outside_the_damage() {
+    let p = presents(with_f5_label(LONG_LABEL), vec![Event::Layout(with_f5_label("F5"))]);
+    assert_eq!(p.len(), 2, "start, then the relabel");
+    assert_every_change_inside_damage(&p);
 }

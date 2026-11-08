@@ -16,10 +16,12 @@ const BLACK: [u8; 4] = [0, 0, 0, 255];
 const RED: [u8; 4] = [200, 30, 40, 255];
 const BLUE: [u8; 4] = [20, 60, 220, 255];
 
-/// A fresh, empty directory for one test (tests run in parallel).
+/// A path with nothing at it for one test (tests run in parallel). A failed run may have left a
+/// directory or a regular file there.
 fn fresh_dir(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("sim_display").join(name);
     let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(&dir);
     dir
 }
 
@@ -199,4 +201,25 @@ fn a_new_simulator_removes_earlier_frames_and_numbers_from_one() {
     sim.present(&bar_frame(RED), &[WHOLE_BAR]).unwrap();
     assert_eq!(frame_files(&dir), ["frame-0001.png"]);
     assert_eq!(&decode_png(&dir.join("frame-0001.png")), sim.screen());
+}
+
+#[test]
+fn a_failed_png_write_leaves_the_screen_unchanged_and_the_numbering_without_a_gap() {
+    let dir = fresh_dir("failed_write");
+    let mut sim = SimDisplay::new(BAR, &dir).unwrap();
+    sim.present(&bar_frame(RED), &[WHOLE_BAR]).unwrap();
+
+    // A regular file where the frame directory was: the next PNG cannot be written.
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::write(&dir, b"not a directory").unwrap();
+    let damage = [Rect { x: 826, y: 8, width: 160, height: 44 }];
+    let err = sim.present(&bar_frame(BLUE), &damage).unwrap_err();
+    assert!(matches!(err, DisplayError::Write(_)), "got {err:?}");
+    assert_screen(sim.screen(), &[], RED, RED);
+
+    std::fs::remove_file(&dir).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    sim.present(&bar_frame(BLUE), &damage).unwrap();
+    assert_eq!(frame_files(&dir), ["frame-0002.png"], "the failed present took no number");
+    assert_screen(sim.screen(), &damage, BLUE, RED);
 }
