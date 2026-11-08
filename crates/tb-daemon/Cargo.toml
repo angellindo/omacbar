@@ -1,0 +1,19 @@
+[package]
+name = "tb-daemon"
+description = "touchbard: renders the shown layer on change and presents frames with their damage to a display backend."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tb-core.workspace = true
+tb-render.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+png.workspace = true
+
+[lints]
+workspace = true

@@ -2366,6 +2366,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tb-daemon"
+version = "0.1.0"
+dependencies = [
+ "png 0.17.16",
+ "tb-core",
+ "tb-render",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "tb-render"
 version = "0.1.0"
 dependencies = [
