@@ -5,6 +5,8 @@ Tickets for this repo live in the Notion database **Touchbar Customizer — Tick
 - Board: https://app.notion.com/p/411934e84f7f80db976df4729663cf51
 - Data source (use with the Notion MCP tools): `collection://411934e8-4f7f-8043-a1ed-000b3b1404ce`
 - Parent page: "Touchbar customize" (`411934e84f7f80a5aff9e9ac2678c870`)
+- Code: `origin` = https://github.com/angellindo/omacbar (public). Main moves only by the
+  orchestrator's fast-forward merge plus `git push origin main`; ticket branches are pushed as backup.
 - Ticket key: the `ID` property, shown as `TB-<n>`. Refer to tickets by key everywhere (branches,
   commits, `.scratch/` folders).
 
