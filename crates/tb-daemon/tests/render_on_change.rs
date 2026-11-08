@@ -84,7 +84,7 @@ fn the_flat_renderer_paints_the_background_then_each_button_fill_as_is() {
 #[test]
 fn a_new_daemon_presents_nothing_until_it_runs() {
     let d = daemon(presets::default_layout());
-    assert!(presents(&d).is_empty());
+    assert_eq!(presents(&d).len(), 0, "nothing presented before run");
 }
 
 #[test]
