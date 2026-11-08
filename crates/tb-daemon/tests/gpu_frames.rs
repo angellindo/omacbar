@@ -149,3 +149,32 @@ fn shortening_an_overflowing_label_changes_nothing_outside_the_damage() {
     assert_eq!(p.len(), 2, "start, then the relabel");
     assert_every_change_inside_damage(&p);
 }
+
+/// A label with line breaks: four lines of 20 px text are taller than F5's 44 px.
+const MULTILINE_LABEL: &str = "F5\nF5\nF5\nF5";
+/// A label with other control characters: carriage returns and tabs between the glyphs.
+const CONTROL_LABEL: &str = "F5\rF5\r\nF5\tF5\tF5\r\rF5";
+
+fn press_release_and_shorten(label: &str) {
+    let f5 = f5();
+    let p = presents(
+        with_f5_label(label),
+        vec![
+            Event::Touch(Touch::Down { x: f5.x + f5.width / 2 }),
+            Event::Touch(Touch::Up),
+            Event::Layout(with_f5_label("F5")),
+        ],
+    );
+    assert_eq!(p.len(), 4, "start, press, release, shorten");
+    assert_every_change_inside_damage(&p);
+}
+
+#[test]
+fn pressing_releasing_and_shortening_a_multiline_label_changes_nothing_outside_the_damage() {
+    press_release_and_shorten(MULTILINE_LABEL);
+}
+
+#[test]
+fn pressing_releasing_and_shortening_a_label_with_control_characters_changes_nothing_outside_the_damage() {
+    press_release_and_shorten(CONTROL_LABEL);
+}
