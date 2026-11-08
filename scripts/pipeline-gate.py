@@ -252,11 +252,13 @@ def main() -> None:
     logdir.mkdir(parents=True, exist_ok=True)
 
     def intact() -> None:
-        """Seal, and on --final also tree and HEAD, as they were before the gate ran anything.
+        """Seal and seal file, and on --final also tree and HEAD, as they were before the gate ran anything.
 
         Called after every subprocess, so a change undone by a later one is still caught."""
         if seal_of(mpath, manifest) != seal:
             die(2, "SEAL_BROKEN: frozen files changed while the gate was running")
+        if not seal_path.is_file() or seal_path.read_text().strip() != seal:
+            die(2, f"SEAL_BROKEN: {seal_path.name} changed or was deleted while the gate was running")
         if a.final:
             require_committed_tree()
             if git("rev-parse", "HEAD").strip() != head:
