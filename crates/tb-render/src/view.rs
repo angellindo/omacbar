@@ -22,8 +22,16 @@ pub fn bar_view(s: &BarScene, _: &mut Cx<BarScene>) -> El {
             .radius(f32::from(s.radius))
             .fill(color(b.fill))
             .border(f32::from(s.border_width), color(b.border))
+            .px(f32::from(s.label_padding))
             .center()
-            .child(text(b.label.clone()).font(label_style).color(color(b.text)))
+            // Ellipsized to the padded width, so nothing is drawn outside the button's rect.
+            .child(
+                text(b.label.clone())
+                    .key(format!("{}-label", b.id.as_str()))
+                    .font(label_style)
+                    .color(color(b.text))
+                    .truncate(),
+            )
     });
     el().key("bar")
         .size(f32::from(s.size.width), f32::from(s.size.height))

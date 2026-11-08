@@ -20,6 +20,8 @@ pub struct BarScene {
     pub radius: u16,
     pub border_width: u16,
     pub font_size: u16,
+    /// Room kept on each side of a label; a longer label is ellipsized (button standard § Label).
+    pub label_padding: u16,
     pub buttons: Vec<SceneButton>,
 }
 
@@ -56,6 +58,7 @@ pub fn build_scene(
         radius: theme.radius,
         border_width: theme.border_width,
         font_size: theme.font_size,
+        label_padding: rules.label_padding,
         buttons,
     })
 }

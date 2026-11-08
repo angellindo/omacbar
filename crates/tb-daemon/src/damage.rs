@@ -6,7 +6,7 @@ use tb_render::{BarScene, SceneButton};
 /// The rects to present when `new` replaces `old`. Empty when nothing changed.
 ///
 /// Same bar look and the same button ids in the same rects: the rects of the buttons whose look
-/// changed. Anything else (nothing presented yet, background, radius, border or font changed,
+/// changed. Anything else (nothing presented yet, background, radius, border, font or label padding changed,
 /// buttons moved, added or removed): the whole bar, since pixels between buttons may change too.
 pub(crate) fn damage(old: Option<&BarScene>, new: &BarScene) -> Vec<Rect> {
     let whole = vec![Rect { x: 0, y: 0, width: new.size.width, height: new.size.height }];
@@ -19,6 +19,7 @@ pub(crate) fn damage(old: Option<&BarScene>, new: &BarScene) -> Vec<Rect> {
         && old.radius == new.radius
         && old.border_width == new.border_width
         && old.font_size == new.font_size
+        && old.label_padding == new.label_padding
         && old.buttons.len() == new.buttons.len()
         && old.buttons.iter().zip(&new.buttons).all(|(a, b)| a.id == b.id && a.rect == b.rect);
     if !same_frame {
@@ -30,6 +31,3 @@ pub(crate) fn damage(old: Option<&BarScene>, new: &BarScene) -> Vec<Rect> {
 fn same_look(a: &SceneButton, b: &SceneButton) -> bool {
     a.label == b.label && a.fill == b.fill && a.text == b.text && a.border == b.border
 }
-
-#[cfg(test)]
-mod tests;

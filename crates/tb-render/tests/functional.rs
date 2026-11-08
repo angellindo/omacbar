@@ -51,3 +51,39 @@ fn the_offscreen_frame_is_the_panel_size_and_paints_theme_colours() {
         frame.write_png(std::path::Path::new("../../out/default-layer.png")).unwrap();
     }
 }
+
+#[test]
+fn a_label_too_long_for_its_button_stays_inside_the_padded_button() {
+    let mut layout = presets::default_layout();
+    let f5 = layout
+        .layer_mut(Chord::Default)
+        .unwrap()
+        .groups
+        .iter_mut()
+        .flat_map(|g| g.buttons.iter_mut())
+        .find(|b| b.id.as_str() == "f5")
+        .unwrap();
+    f5.label = "a label far too long to fit inside one button".to_owned();
+    let rules = SpacingRules::STANDARD;
+    let s = build_scene(
+        layout.layer(Chord::Default).unwrap(),
+        &BarTheme::omarchy_fallback(),
+        BarSize::MACBOOK_PRO,
+        &rules,
+        None,
+    )
+    .unwrap();
+    let mut rt = Runtime::new(s.clone(), bar_view, (2170.0, 60.0), Env::new(true, 1.0));
+    rt.frame(0.0);
+
+    let button = s.buttons.iter().find(|b| b.id.as_str() == "f5").unwrap().rect;
+    let ([x, _, width, _], _) = rt.presented("f5-label").unwrap();
+    let pad = f32::from(rules.label_padding);
+    assert!(width > 0.0, "the label is shown");
+    assert!(x >= f32::from(button.x) + pad - 0.5, "label starts at {x}, button {button:?}");
+    assert!(
+        x + width <= f32::from(button.right()) - pad + 0.5,
+        "label ends at {}, button {button:?}",
+        x + width
+    );
+}
