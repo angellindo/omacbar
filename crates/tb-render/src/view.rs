@@ -20,11 +20,14 @@ pub fn bar_view(s: &BarScene, _: &mut Cx<BarScene>) -> El {
             .absolute(f32::from(b.rect.x), f32::from(b.rect.y))
             .size(f32::from(b.rect.width), f32::from(b.rect.height))
             .radius(f32::from(s.radius))
+            // Safety net under the one-line, ellipsized label: nothing a button draws leaves its
+            // placement, which is the damage the daemon presents for it.
+            .clip_rounded(f32::from(s.radius))
             .fill(color(b.fill))
             .border(f32::from(s.border_width), color(b.border))
             .px(f32::from(s.label_padding))
             .center()
-            // Ellipsized to the padded width, so nothing is drawn outside the button's rect.
+            // One line (see `build_scene`), ellipsized to the padded width.
             .child(
                 text(b.label.clone())
                     .key(format!("{}-label", b.id.as_str()))

@@ -44,7 +44,7 @@ pub fn build_scene(
             };
             SceneButton {
                 id: button.id.clone(),
-                label: button.label.clone(),
+                label: one_line(&button.label),
                 rect: p.rect,
                 fill: pick(&button.style.fill, theme.button_fill, theme.pressed_fill),
                 text: pick(&button.style.text, theme.button_text, theme.pressed_text),
@@ -61,6 +61,12 @@ pub fn build_scene(
         label_padding: rules.label_padding,
         buttons,
     })
+}
+
+/// The label as the bar shows it: one line (button standard § Label), so every control character
+/// (line breaks, tabs) becomes a space. A label still too wide is ellipsized by the view.
+fn one_line(label: &str) -> String {
+    label.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
 }
 
 #[cfg(test)]
@@ -98,5 +104,28 @@ mod tests {
         let s = scene(Some(&lock));
         let b = s.buttons.iter().find(|b| b.id == lock).unwrap();
         assert_eq!((b.fill, b.text), (theme.pressed_fill, theme.pressed_text));
+    }
+
+    #[test]
+    fn a_label_with_line_breaks_or_tabs_is_shown_on_one_line() {
+        let mut layout = presets::default_layout();
+        let layer = layout.layer_mut(Chord::Default).unwrap();
+        let f5 = layer
+            .groups
+            .iter_mut()
+            .flat_map(|g| g.buttons.iter_mut())
+            .find(|b| b.id.as_str() == "f5")
+            .unwrap();
+        f5.label = "F5\nF5\r\nF5\tF5\rF5".to_owned();
+        let s = build_scene(
+            layout.layer(Chord::Default).unwrap(),
+            &BarTheme::omarchy_fallback(),
+            BarSize::MACBOOK_PRO,
+            &SpacingRules::STANDARD,
+            None,
+        )
+        .unwrap();
+        let shown = s.buttons.iter().find(|b| b.id.as_str() == "f5").unwrap();
+        assert_eq!(shown.label, "F5 F5  F5 F5 F5");
     }
 }
