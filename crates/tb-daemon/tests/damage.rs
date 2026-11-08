@@ -1,5 +1,5 @@
 //! Damage through the daemon's public seam: which rects a change presents, recorded by the fake
-//! display. Complements the frozen contract (render_on_change, touch_press) with the cases where
+//! display. Complements the frozen contract (`render_on_change`, `touch_press`) with the cases where
 //! the bar's look changes but its geometry does not, and the reverse.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
