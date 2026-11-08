@@ -6,3 +6,20 @@ use tb_render::{BarScene, Frame};
 pub trait SceneRenderer {
     fn render(&mut self, scene: &BarScene) -> Frame;
 }
+
+/// The real renderer: Rune offscreen on the GPU (`tb_render::render_frame`). Needs a Vulkan
+/// adapter; lavapipe works headless.
+#[derive(Debug, Default)]
+pub struct GpuRenderer;
+
+impl GpuRenderer {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl SceneRenderer for GpuRenderer {
+    fn render(&mut self, scene: &BarScene) -> Frame {
+        tb_render::render_frame(scene.clone())
+    }
+}

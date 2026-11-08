@@ -29,6 +29,7 @@ pub enum DisplayError {
 /// non-empty present.
 #[derive(Debug)]
 pub struct SimDisplay {
+    size: BarSize,
     screen: Frame,
     dir: PathBuf,
     written: u32,
@@ -50,7 +51,7 @@ impl SimDisplay {
         let (width, height) = (u32::from(size.width), u32::from(size.height));
         let pixels = usize::from(size.width) * usize::from(size.height);
         let screen = Frame { width, height, rgba: [0, 0, 0, 255].repeat(pixels) };
-        Ok(Self { screen, dir, written: 0 })
+        Ok(Self { size, screen, dir, written: 0 })
     }
 
     /// What the simulated panel shows now (after every damage applied so far).
@@ -66,7 +67,7 @@ impl Display for SimDisplay {
             return Ok(());
         }
         for rect in damage {
-            copy_rect(frame, &mut self.screen, *rect);
+            copy_rect(frame, &mut self.screen, self.size, *rect);
         }
         self.written = self.written.saturating_add(1);
         let path = self.dir.join(format!("frame-{:04}.png", self.written));
@@ -90,10 +91,10 @@ fn check(screen: &Frame, frame: &Frame, damage: &[Rect]) -> Result<(), DisplayEr
     }
 }
 
-/// Copies `rect` of `from` onto `to`; both frames have the same size and `rect` fits (see `check`).
-fn copy_rect(from: &Frame, to: &mut Frame, rect: Rect) {
+/// Copies `rect` of `from` onto `to`; both frames are `size` and `rect` fits (see `check`).
+fn copy_rect(from: &Frame, to: &mut Frame, size: BarSize, rect: Rect) {
     let row_bytes = usize::from(rect.width) * 4;
-    let stride = from.width as usize * 4;
+    let stride = usize::from(size.width) * 4;
     for y in usize::from(rect.y)..usize::from(rect.y) + usize::from(rect.height) {
         let start = y * stride + usize::from(rect.x) * 4;
         to.rgba[start..start + row_bytes].copy_from_slice(&from.rgba[start..start + row_bytes]);

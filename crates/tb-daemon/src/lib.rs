@@ -10,5 +10,5 @@ mod touch;
 
 pub use daemon::{Daemon, DaemonError, Event};
 pub use display::{Display, DisplayError, SimDisplay};
-pub use render::SceneRenderer;
+pub use render::{GpuRenderer, SceneRenderer};
 pub use touch::{LineTouches, Touch, TouchError, TouchSource, forward_touches};
