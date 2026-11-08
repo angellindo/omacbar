@@ -3,14 +3,18 @@
 //! Algorithm (see `docs/design/button-standard.md` § Width):
 //! 1. Usable width = bar width - 2 x edge padding.
 //! 2. Subtract gaps (`gap` inside a group, `group_gap` between groups) and every fixed (`Px`) width.
-//! 3. Split what is left between `Auto`/`Span` buttons by shares; leftover pixels go one each to
-//!    the leftmost shared buttons, so a layer with any shared button fills the bar exactly.
-//! 4. Reject any button narrower than `min_button_width`.
+//! 3. Reject the layer with `Overflow` when that leaves less than `min_button_width` per shared
+//!    (`Auto`/`Span`) button: counted per button, not per share, so wide spans are not charged
+//!    for a minimum they do not need.
+//! 4. Give each shared button the whole pixels of its shares (`free x span / total shares`,
+//!    rounded down). Each floor loses under 1 px, so the leftover is always fewer pixels than
+//!    there are shared buttons: one each to the leftmost fills the bar exactly.
+//! 5. Reject, by name, the first button whose allocated width is under `min_button_width`.
 
 use thiserror::Error;
 
 use crate::geometry::{BarSize, Rect};
-use crate::model::{ButtonId, Layer};
+use crate::model::{ButtonId, Group, Layer, Width};
 use crate::spacing::SpacingRules;
 
 /// A button with its computed rect.
@@ -36,29 +40,25 @@ pub fn place(layer: &Layer, size: BarSize, rules: &SpacingRules) -> Result<Vec<P
         return Ok(Vec::new());
     }
 
-    let available = u32::from(size.width.saturating_sub(2 * rules.edge_padding));
-    let gaps: u32 = groups
-        .iter()
-        .map(|(_, g)| count(g.buttons.len() - 1).saturating_mul(u32::from(rules.gap)))
-        .fold(0, u32::saturating_add)
-        .saturating_add(count(groups.len() - 1).saturating_mul(u32::from(rules.group_gap)));
+    // Subtracting twice instead of `2 * edge_padding` cannot overflow.
+    let available =
+        u32::from(size.width.saturating_sub(rules.edge_padding).saturating_sub(rules.edge_padding));
+    let gaps = gaps_width(&groups, rules);
     let buttons = || groups.iter().flat_map(|(_, g)| g.buttons.iter());
-    let fixed: u32 = buttons()
-        .map(|b| match b.width {
-            crate::model::Width::Px(px) => u32::from(px),
-            _ => 0,
-        })
-        .sum();
+    let fixed: u32 = buttons().map(|b| fixed_px(b.width)).sum();
     let shares: u32 = buttons().map(|b| b.width.shares()).sum();
+    let shared_buttons = count(buttons().filter(|b| !matches!(b.width, Width::Px(_))).count());
 
-    let needed =
-        gaps.saturating_add(fixed).saturating_add(shares.saturating_mul(u32::from(rules.min_button_width)));
+    let needed = gaps
+        .saturating_add(fixed)
+        .saturating_add(shared_buttons.saturating_mul(u32::from(rules.min_button_width)));
     if needed > available {
         return Err(LayoutError::Overflow { needed, available });
     }
 
     let free = available - gaps - fixed;
-    let (per_share, mut leftover) = free.checked_div(shares).map_or((0, 0), |q| (q, free % shares));
+    let floored: u32 = buttons().map(|b| share_of(free, b.width, shares)).sum();
+    let mut leftover = free - floored;
 
     let height = rules.button_height(size.height);
     let mut x = u32::from(rules.edge_padding);
@@ -72,11 +72,11 @@ pub fn place(layer: &Layer, size: BarSize, rules: &SpacingRules) -> Result<Vec<P
                 x += u32::from(rules.gap);
             }
             let width = match button.width {
-                crate::model::Width::Px(px) => u32::from(px),
+                Width::Px(_) => fixed_px(button.width),
                 w => {
                     let bonus = u32::from(leftover > 0);
                     leftover -= bonus;
-                    per_share * w.shares() + bonus
+                    share_of(free, w, shares) + bonus
                 }
             };
             if width < u32::from(rules.min_button_width) {
@@ -95,6 +95,31 @@ pub fn place(layer: &Layer, size: BarSize, rules: &SpacingRules) -> Result<Vec<P
         }
     }
     Ok(placed)
+}
+
+/// Total width of the gaps between the buttons of non-empty `groups` and between the groups.
+fn gaps_width(groups: &[(usize, &Group)], rules: &SpacingRules) -> u32 {
+    groups
+        .iter()
+        .map(|(_, g)| count(g.buttons.len() - 1).saturating_mul(u32::from(rules.gap)))
+        .fold(0, u32::saturating_add)
+        .saturating_add(count(groups.len() - 1).saturating_mul(u32::from(rules.group_gap)))
+}
+
+/// Width of a `Px` button; 0 for shared (`Auto`/`Span`) buttons.
+fn fixed_px(w: Width) -> u32 {
+    match w {
+        Width::Px(px) => u32::from(px),
+        Width::Auto | Width::Span(_) => 0,
+    }
+}
+
+/// Whole pixels of `free` owed to a shared button of width `w`: `floor(free x span / total)`.
+/// Zero for `Px` buttons and when no button has a share (`total == 0`).
+fn share_of(free: u32, w: Width, total: u32) -> u32 {
+    let share = (u64::from(free) * u64::from(w.shares())).checked_div(u64::from(total)).unwrap_or(0);
+    // At most `free`, since a button's span never exceeds the total.
+    u32::try_from(share).unwrap_or(free)
 }
 
 /// Counts never get near `u32::MAX`; saturating keeps the overflow check honest if they did.

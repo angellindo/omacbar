@@ -5,7 +5,8 @@ the end.
 
 ## Inputs you are given
 
-- The ticket (`.scratch/TB-<n>/ticket.md`) with Goal and Acceptance, and the plan (`.scratch/TB-<n>/plan.md`).
+- The ticket (`.scratch/TB-<n>/ticket.md`) with Goal and Acceptance.
+- The plan (`.scratch/TB-<n>/plan.md`), except in the research lane (no plan.md, no contract).
 - The diff: `git diff <base>...HEAD`. Review only this diff; never report on files outside it.
 - Gate output from `scripts/check.sh`, and the sealed acceptance contract (`contract/slice-N.json`,
   see `docs/agents/contract.md`) that passed `scripts/pipeline-gate.py --final` at HEAD.

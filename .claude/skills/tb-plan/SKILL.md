@@ -12,7 +12,9 @@ code and no tests (QA writes the acceptance contract from your slices), and noth
 1. **Read** the ticket, `GLOSSARY.md`, `docs/scope.md`, ADRs in the area, `docs/standards/*.md`,
    and `docs/design/button-standard.md` if anything visible changes. Read the code the ticket
    touches. Done when you can name every module the change crosses.
-2. **Decide the type.** Research or Spike → follow skill `tb-research` instead and stop here.
+2. **Read the lane** from `.ack`: `research` → follow skill `tb-research` instead and stop here;
+   any other lane plans here. `Type` never routes (the orchestrator chose the lane from the
+   deliverable).
 3. **Shape the change** with skill `codebase-design` (deep modules, seams). Prefer extending the
    existing crates per R1; a new crate or dependency arrow needs an ADR (skill `domain-modeling`).
 4. **Slice vertically**: each slice delivers one observable behaviour end to end and maps to

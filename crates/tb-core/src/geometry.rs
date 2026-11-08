@@ -22,22 +22,25 @@ pub struct Rect {
 }
 
 impl Rect {
+    /// Right edge (exclusive), saturating at `u16::MAX` for a rect reaching past the last column.
     pub const fn right(&self) -> u16 {
-        self.x + self.width
+        self.x.saturating_add(self.width)
     }
 
+    /// Whether column `x` lies inside the rect, judged on its true extent (no overflow).
     pub const fn contains_x(&self, x: u16) -> bool {
-        x >= self.x && x < self.right()
+        x >= self.x && x - self.x < self.width
     }
 
-    /// Horizontal distance from `x` to this rect (0 when inside).
+    /// Horizontal distance from `x` to this rect (0 when inside), saturating at `u16::MAX`.
     pub const fn distance_x(&self, x: u16) -> u16 {
         if x < self.x {
             self.x - x
-        } else if x >= self.right() {
-            x + 1 - self.right()
-        } else {
+        } else if self.contains_x(x) {
             0
+        } else {
+            // `x - self.x >= width` here, so neither subtraction underflows.
+            (x - self.x - self.width).saturating_add(1)
         }
     }
 }

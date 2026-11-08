@@ -10,6 +10,9 @@ Usage:
   scripts/pipeline-gate.py TB-<n> --slice N           run the contract, record evidence (red allowed)
   scripts/pipeline-gate.py TB-<n> --slice N --final   seal intact, all green, never_red empty,
                                                       scripts/check.sh green, clean tree
+--stamp and every --final start by deleting slice-N.final.json, before any other check; only a
+passing --final writes it. --final re-checks tree, HEAD and seal after every subprocess (each cargo
+case group, each check, scripts/check.sh) and stops at the first violation.
 Exit: 0 pass · 1 contract not green / invalid · 2 seal broken or NEVER_RED · 3 missing intake .ack
 """
 
@@ -23,6 +26,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parent.parent
 MISSING_SYMBOL_CODES = ("E0412", "E0422", "E0425", "E0432", "E0433", "E0560", "E0599", "E0609")
@@ -35,7 +39,23 @@ def die(code: int, msg: str) -> None:
 
 
 def git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    """Raw stdout: porcelain output starts with a status column that may be a space."""
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+
+
+def dirty_outside_scratch(porcelain: str) -> list[str]:
+    """Entries of `git status --porcelain` (v1) touching a path outside `.scratch/`.
+
+    Both sides of a rename count, so moving a file into or out of `.scratch/` is dirty.
+    """
+    dirty = []
+    for line in porcelain.splitlines():
+        if len(line) < 4:
+            continue
+        paths = [p.strip('"') for p in line[3:].split(" -> ")]
+        if any(not p.startswith(".scratch/") for p in paths):
+            dirty.append(line)
+    return dirty
 
 
 def now() -> str:
@@ -114,6 +134,17 @@ def target_args(target: str) -> list[str]:
     return [f"--{kind}", name]
 
 
+def names_missing_symbol(out: str, symbol: str) -> bool:
+    """A rustc header `error[CODE]` with a documented CODE whose backticked item is `symbol`,
+    bare or path-qualified (`tb_core::layout::Width`). Substrings never match."""
+    for line in out.splitlines():
+        m = re.match(r"error\[(E\d{4})\]", line)
+        if m and m.group(1) in MISSING_SYMBOL_CODES:
+            if any(t == symbol or t.endswith("::" + symbol) for t in re.findall(r"`([^`]+)`", line)):
+                return True
+    return False
+
+
 def classify(cases: list[dict], out: str, compiled: bool) -> dict[str, str]:
     results: dict[str, str] = {}
     for c in cases:
@@ -127,19 +158,14 @@ def classify(cases: list[dict], out: str, compiled: bool) -> dict[str, str]:
                     status = "RED_STUB"
             results[c["id"]] = status
         elif not compiled:
-            sym = c.get("symbol")
-            hit = sym and any(
-                f"error[{code}]" in line and f"`{sym}`" in line
-                for line in out.splitlines()
-                for code in MISSING_SYMBOL_CODES
-            )
+            hit = c.get("symbol") and names_missing_symbol(out, c["symbol"])
             results[c["id"]] = "RED_MISSING_SYMBOL" if hit else "COMPILE_ERROR"
         else:
             results[c["id"]] = "NOT_RUN"
     return results
 
 
-def run_cases(manifest: dict, logdir: Path) -> dict[str, str]:
+def run_cases(manifest: dict, logdir: Path, after: Callable[[], None]) -> dict[str, str]:
     groups: dict[tuple[str, str], list[dict]] = {}
     for c in manifest["cases"]:
         groups.setdefault((c["package"], c["target"]), []).append(c)
@@ -150,21 +176,29 @@ def run_cases(manifest: dict, logdir: Path) -> dict[str, str]:
         p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         out = p.stdout + "\n" + p.stderr
         (logdir / f"cargo-{pkg}-{target.replace(':', '-')}.log").write_text(" ".join(cmd) + "\n\n" + out)
+        after()
         compiled = "running " in p.stdout
         results.update(classify(cases, out, compiled))
     return results
 
 
-def run_checks(manifest: dict, logdir: Path) -> dict[str, str]:
+def run_checks(manifest: dict, logdir: Path, after: Callable[[], None]) -> dict[str, str]:
     results = {}
     for c in manifest["checks"]:
         p = subprocess.run(c["command"], cwd=ROOT, capture_output=True, text=True)
         (logdir / f"check-{c['id']}.log").write_text(" ".join(c["command"]) + "\n\n" + p.stdout + p.stderr)
+        after()
         results[c["id"]] = "GREEN" if p.returncode == 0 else "FAILED"
     return results
 
 
 # ---------- main ----------
+
+def require_committed_tree() -> None:
+    dirty = dirty_outside_scratch(git("status", "--porcelain"))
+    if dirty:
+        die(1, "--final needs a committed tree (outside .scratch/):\n" + "\n".join(dirty))
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -178,14 +212,19 @@ def main() -> None:
     if not re.fullmatch(r"TB-\d+", a.ticket):
         die(1, "ticket must look like TB-12")
     tdir = ROOT / ".scratch" / a.ticket
-    ack = tdir / ".ack"
-    if not ack.is_file() or json.loads(ack.read_text()).get("confirmed") is not True:
-        die(3, f"missing intake .ack ({ack.relative_to(ROOT)}): the ticket has not passed intake")
-
     cdir = tdir / "contract"
     mpath = cdir / f"slice-{a.slice}.json"
     seal_path = cdir / f"slice-{a.slice}.seal"
     ev_path = cdir / f"slice-{a.slice}.evidence.json"
+    final_path = cdir / f"slice-{a.slice}.final.json"
+    if a.stamp or a.final:
+        # A final record is valid only for the seal and HEAD it was written for: a re-seal or a
+        # --final that does not pass (whatever the exit code) leaves none behind.
+        final_path.unlink(missing_ok=True)
+
+    ack = tdir / ".ack"
+    if not ack.is_file() or json.loads(ack.read_text()).get("confirmed") is not True:
+        die(3, f"missing intake .ack ({ack.relative_to(ROOT)}): the ticket has not passed intake")
     manifest = load_manifest(mpath)
     seal = seal_of(mpath, manifest)
 
@@ -205,20 +244,29 @@ def main() -> None:
                "A legitimate change goes back to QA to re-seal.")
 
     if a.final:
-        dirty = [l for l in git("status", "--porcelain").splitlines() if not l[3:].startswith(".scratch/")]
-        if dirty:
-            die(1, "--final needs a committed tree (outside .scratch/):\n" + "\n".join(dirty))
+        require_committed_tree()
 
-    head = git("rev-parse", "HEAD")
+    head = git("rev-parse", "HEAD").strip()
     stamp = now().replace(":", "")
     logdir = tdir / "gate" / f"{stamp}-slice-{a.slice}{'-final' if a.final else ''}"
     logdir.mkdir(parents=True, exist_ok=True)
 
-    results = run_cases(manifest, logdir) if manifest["mode"] == "behavior" else {}
-    results.update(run_checks(manifest, logdir))
+    def intact() -> None:
+        """Seal and seal file, and on --final also tree and HEAD, as they were before the gate ran anything.
 
-    if seal_of(mpath, manifest) != seal:
-        die(2, "SEAL_BROKEN: frozen files changed while the gate was running")
+        Called after every subprocess, so a change undone by a later one is still caught."""
+        if seal_of(mpath, manifest) != seal:
+            die(2, "SEAL_BROKEN: frozen files changed while the gate was running")
+        if not seal_path.is_file() or seal_path.read_text().strip() != seal:
+            die(2, f"SEAL_BROKEN: {seal_path.name} changed or was deleted while the gate was running")
+        if a.final:
+            require_committed_tree()
+            if git("rev-parse", "HEAD").strip() != head:
+                die(1, f"final: HEAD moved from {head[:8]} while the gate was running")
+
+    results = run_cases(manifest, logdir, intact) if manifest["mode"] == "behavior" else {}
+    results.update(run_checks(manifest, logdir, intact))
+    intact()
 
     evidence = json.loads(ev_path.read_text()) if ev_path.is_file() else {"runs": []}
     evidence["runs"].append({"at": now(), "seal": seal, "head": head, "final": a.final, "results": results,
@@ -250,11 +298,12 @@ def main() -> None:
         die(2, f"NEVER_RED: required cases never seen red under this seal: {', '.join(never_red)}")
     check = subprocess.run(["scripts/check.sh"], cwd=ROOT, capture_output=True, text=True)
     (logdir / "check.log").write_text(check.stdout + check.stderr)
+    intact()
     if check.returncode != 0:
         die(1, f"final: scripts/check.sh failed (log {logdir.relative_to(ROOT)}/check.log)")
     final = {"ticket": a.ticket, "slice": a.slice, "seal": seal, "head": head, "at": now(), "result": "PASS",
              "log": str(logdir.relative_to(ROOT))}
-    (cdir / f"slice-{a.slice}.final.json").write_text(json.dumps(final, indent=2) + "\n")
+    final_path.write_text(json.dumps(final, indent=2) + "\n")
     print(f"pipeline-gate --final: PASS (slice {a.slice} @ {head[:8]})")
 
 
