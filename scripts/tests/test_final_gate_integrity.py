@@ -277,5 +277,72 @@ class FinalAfterAMutationThatIsUndone(unittest.TestCase):
         self.assert_refused(repo, repo.gate("--final"), codes=(1, 2))
 
 
+SEAL = f".scratch/{TICKET}/contract/slice-1.seal"
+SEAL_BACKUP = f".scratch/{TICKET}/seal.bak"
+REWRITE_SEAL = py(f"open({SEAL!r}, 'w').write('sha256:' + '0' * 64 + '\\n')")
+DELETE_SEAL = py(f"import os; os.remove({SEAL!r})")
+BACKUP_AND_REWRITE_SEAL = py(
+    f"import shutil; shutil.copyfile({SEAL!r}, {SEAL_BACKUP!r}); "
+    f"open({SEAL!r}, 'w').write('sha256:' + '0' * 64 + '\\n')"
+)
+RESTORE_SEAL = py(f"import shutil; shutil.copyfile({SEAL_BACKUP!r}, {SEAL!r})")
+
+
+class FinalWhileTheSealFileChanges(unittest.TestCase):
+    """The slice's `.seal` lives in `.scratch/`, where edits are allowed, yet --final must not
+    pass if a subprocess rewrites or deletes it, even when a later one puts it back."""
+
+    def setUp(self):
+        self.repos: list[GateRepo] = []
+
+    def tearDown(self):
+        for repo in self.repos:
+            repo.close()
+
+    def repo(self, **kw) -> GateRepo:
+        repo = GateRepo(**kw)
+        self.repos.append(repo)
+        return repo
+
+    def assert_refused(self, repo: GateRepo, run: subprocess.CompletedProcess) -> None:
+        # Seal broken (2) or contract invalid (1): either refusal is correct.
+        self.assertIn(run.returncode, (1, 2), run.stdout + run.stderr)
+        self.assertFalse(repo.final_record.exists(), f"a final record was written\n{run.stdout}\n{run.stderr}")
+
+    def test_a_check_that_rewrites_the_seal_file_fails_final(self):
+        repo = self.repo(extra_checks=[{"id": "reseal", "command": REWRITE_SEAL}])
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_check_that_deletes_the_seal_file_fails_final(self):
+        repo = self.repo(extra_checks=[{"id": "unseal", "command": DELETE_SEAL}])
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_seal_file_rewrite_restored_by_a_later_check_fails_final(self):
+        repo = self.repo(extra_checks=[
+            {"id": "reseal", "command": BACKUP_AND_REWRITE_SEAL},
+            {"id": "restore", "command": RESTORE_SEAL},
+        ])
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_check_script_that_rewrites_the_seal_file_fails_final(self):
+        repo = self.repo(check_sh=f"echo sha256:tampered > {SEAL}\nexit 0")
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_check_script_that_deletes_the_seal_file_fails_final(self):
+        repo = self.repo(check_sh=f"rm -f {SEAL}\nexit 0")
+        self.assert_refused(repo, repo.gate("--final"))
+
+    def test_a_check_that_edits_another_tracked_scratch_file_still_passes_final(self):
+        note = py(f"open('.scratch/{TICKET}/index.md', 'w').write('Phase: REVIEW\\n')")
+        repo = self.repo(extra_checks=[{"id": "note", "command": note}])
+        repo.write(f".scratch/{TICKET}/index.md", "Phase: IMPLEMENT\n")
+        repo.commit_all("track scratch state")  # seal and index.md are tracked
+        run = repo.gate("--final")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        record = json.loads(repo.final_record.read_text())
+        self.assertEqual(record["result"], "PASS")
+        self.assertEqual(record["seal"], (repo.root / SEAL).read_text().strip())
+
+
 if __name__ == "__main__":
     unittest.main()
