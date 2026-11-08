@@ -5,6 +5,7 @@ use tb_render::{BarScene, Frame};
 
 use crate::display::{Display, DisplayError};
 use crate::render::SceneRenderer;
+use crate::touch::{Touch, TouchError, TouchSource};
 
 /// One present as the daemon sent it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,5 +62,23 @@ impl SceneRenderer for FlatRenderer {
             }
         }
         frame
+    }
+}
+
+/// A touch source that yields a fixed list of touches, then closes.
+#[derive(Debug)]
+pub struct ScriptedTouches {
+    touches: std::vec::IntoIter<Touch>,
+}
+
+impl ScriptedTouches {
+    pub fn new(touches: impl IntoIterator<Item = Touch>) -> Self {
+        Self { touches: touches.into_iter().collect::<Vec<_>>().into_iter() }
+    }
+}
+
+impl TouchSource for ScriptedTouches {
+    fn next_touch(&mut self) -> Result<Option<Touch>, TouchError> {
+        Ok(self.touches.next())
     }
 }
