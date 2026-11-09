@@ -260,6 +260,6 @@ pub(crate) fn issues(s: &State) -> El {
         return list.child(text("no issues").key("no-issues").font(body()).color(color(t.button_text)));
     }
     list.children(found.iter().enumerate().map(|(n, issue)| {
-        text(issue.to_string()).key(format!("issue-{n}")).font(body()).color(color(t.accent))
+        text(issue.to_string()).key(format!("issue-{n}")).w_full().wrap().font(body()).color(color(t.accent))
     }))
 }

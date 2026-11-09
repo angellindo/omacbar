@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use rune::tok::TextStyle;
-use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, Tx, col, el, row, text};
+use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, ScrollSpec, Tx, col, el, row, text};
 use tb_config::{ActiveTheme, ConfigFile, ConfigFileError, Loaded, default_path};
 use tb_core::config::Config;
 use tb_core::reorder::{Toward, step_button};
@@ -218,40 +218,62 @@ pub fn view(s: &State, _: &mut Cx<State>) -> El {
         let key = format!("tab-{chord:?}").to_lowercase();
         pressable(t, &key, chord.label(), chord == s.chord).on_press(move |s: &mut State| s.show_layer(chord))
     }));
+    // The whole window is one scroll viewport: a long layer or many issues make the content
+    // taller than the window, and the wheel reaches any of it from anywhere in the window.
     col()
+        .key("editor")
         .w_full()
         .h_full()
-        .padding(24.0)
-        .gap(16.0)
         .fill(color(t.background))
-        .child(tabs)
-        .child(preview(s))
-        .child(toolbar(s))
-        .child(row().gap(32.0).children(button_list(s)).child(panel(s)))
-        .child(issues(s))
-        .child(text(s.status.clone()).key("status").w_full().wrap().font(body()).color(color(t.button_text)))
+        .scroll(ScrollSpec { stick_bottom: false })
+        .child(
+            col()
+                .w_full()
+                .padding(24.0)
+                .gap(16.0)
+                .child(tabs)
+                .child(preview(s))
+                .child(toolbar(s))
+                .child(row().gap(32.0).children(button_list(s)).child(panel(s)))
+                .child(issues(s))
+                .child(
+                    text(s.status.clone())
+                        .key("status")
+                        .w_full()
+                        .wrap()
+                        .font(body())
+                        .color(color(t.button_text)),
+                ),
+        )
 }
+
+/// Width of the button list; the edit panel sits right of it.
+const LIST_WIDTH: f32 = 300.0;
 
 /// One row per button of the shown layer; pressing a row selects its button.
 fn button_list(s: &State) -> Option<El> {
     let t = &s.theme;
     let layer = s.layer()?;
-    Some(col().key("button-list").gap(2.0).children(layer.buttons().map(|b| {
+    Some(col().key("button-list").w(LIST_WIDTH).gap(2.0).children(layer.buttons().map(|b| {
         let selected = s.selected.as_ref() == Some(&b.id);
+        let ink = color(if selected { t.pressed_text } else { t.button_text });
+        // Ids and labels can be any length: each column is cut with "…" to its width.
+        let cell = |words: String, width: f32| text(words).w(width).truncate().font(body()).color(ink);
         let id = b.id.clone();
-        el().key(format!("row-{}", b.id))
+        row()
+            .key(format!("row-{}", b.id))
             .role("button")
+            .w(LIST_WIDTH)
+            .gap(8.0)
             .padding(2.0)
             .fill(color(if selected { t.accent } else { t.background }))
             .on_press_tx(move |s: &mut State, tx: &mut Tx| {
                 s.select(Some(id.clone()));
                 tx.blur();
             })
-            .child(
-                text(format!("{:<12} {:<10} {}", b.id, b.label, b.width))
-                    .font(body())
-                    .color(color(if selected { t.pressed_text } else { t.button_text })),
-            )
+            .child(cell(b.id.to_string(), 96.0))
+            .child(cell(b.label.clone(), 96.0))
+            .child(cell(b.width.to_string(), 80.0))
     })))
 }
 
