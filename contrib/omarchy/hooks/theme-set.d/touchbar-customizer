@@ -1,0 +1,13 @@
+#!/bin/bash
+# Tells a running touchbard that the Omarchy theme changed, so the Touch Bar redraws in it.
+# Omarchy runs theme-set hooks as `bash <hook> <theme name>` after `omarchy theme set`.
+# touchbard watches the file written here (ADR-0008); it also sees the switch on its own, this
+# hook is the documented Omarchy signal.
+#
+# Install (by hand, once):
+#   omarchy hook install theme-set contrib/omarchy/hooks/theme-set.d/touchbar-customizer
+set -euo pipefail
+
+dir="$HOME/.local/state/touchbar-customizer"
+mkdir -p "$dir"
+printf '%s\n' "${1:-}" >"$dir/theme-set"
