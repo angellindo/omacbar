@@ -131,3 +131,43 @@ fn a_save_that_cannot_rename_is_an_io_error_and_leaves_no_temp_file() {
     assert_eq!(names_in(&path), vec!["keep".to_owned()]);
     assert_eq!(file.config(), &Config::default());
 }
+
+#[test]
+fn saves_from_several_config_files_at_once_each_land_whole_and_leave_no_temp_file() {
+    const WRITERS: usize = 4;
+    const SAVES: usize = 40;
+    let dir = fresh_dir("concurrent_saves");
+    let path = dir.join("config.toml");
+    let label = |writer: usize, save: usize| format!("w{writer}s{save}");
+
+    let results: Vec<Vec<String>> = std::thread::scope(|scope| {
+        let writers: Vec<_> = (0..WRITERS)
+            .map(|writer| {
+                let path = path.clone();
+                scope.spawn(move || {
+                    let mut file = ConfigFile::new(path);
+                    (0..SAVES)
+                        .filter_map(|save| {
+                            file.save(relabelled("f5", &label(writer, save)), &theme())
+                                .err()
+                                .map(|e| format!("writer {writer} save {save}: {e:?}"))
+                        })
+                        .collect()
+                })
+            })
+            .collect();
+        writers.into_iter().map(|w| w.join().unwrap()).collect()
+    });
+
+    let failures: Vec<String> = results.into_iter().flatten().collect();
+    assert!(failures.is_empty(), "every save must succeed: {failures:#?}");
+    let written = fs::read_to_string(&path).unwrap();
+    let last =
+        parse(&written).unwrap_or_else(|e| panic!("the file must be one whole config: {e}\n{written}"));
+    let saved: Vec<Config> = (0..WRITERS)
+        .flat_map(|w| (0..SAVES).map(move |s| (w, s)))
+        .map(|(w, s)| relabelled("f5", &label(w, s)))
+        .collect();
+    assert!(saved.contains(&last), "the file must be one of the saved configs\n{written}");
+    assert_eq!(names_in(&dir), vec!["config.toml".to_owned()], "no temp file may be left behind");
+}
