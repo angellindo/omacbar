@@ -18,7 +18,8 @@ macOS does the same: TouchBarServer draws with `DFRDisplayDrawRectsWithIOSurface
 sparse pixel regions into tiles (research 0006). TB-10 maps damage to the DRM device.
 
 Rendering sits behind a trait in the daemon so the event loop is tested with a CPU fake; the GPU
-path (`tb_render::render_frame`) is exercised by one functional test, as in `tb-render`.
+path (`GpuRenderer`, which keeps one `tb_render::Renderer`, so one GPU device, for the daemon's
+life; TB-31) is exercised by functional tests, as in `tb-render`.
 
 ## Considered options
 

@@ -92,6 +92,7 @@ impl From<Event> for Message {
 /// Startup state: the default preset (config file: a later ticket) and the active theme of `$HOME`,
 /// followed while running.
 fn run(args: Args) -> Result<(), String> {
+    let renderer = GpuRenderer::new().map_err(|e| e.to_string())?;
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
     if let Some(keys) = args.keys {
@@ -103,7 +104,7 @@ fn run(args: Args) -> Result<(), String> {
         log::error("HOME is not set: showing the bundled Tokyo Night, theme switches are not followed");
         BarTheme::omarchy_fallback()
     };
-    let mut daemon = Daemon::new(presets::default_layout(), theme, GpuRenderer::new(), display);
+    let mut daemon = Daemon::new(presets::default_layout(), theme, renderer, display);
     let touches = thread::spawn(move || {
         let ended = forward_touches(&mut LineTouches::new(std::io::stdin().lock()), &tx);
         // A dropped receiver means the daemon already stopped: nobody is left to tell.
