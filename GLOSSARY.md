@@ -128,6 +128,23 @@ The width a button's label may take: the button's placement width minus the labe
 both sides. A wider label is ellipsized on the bar.
 _Avoid_: text area, content width
 
+## Configurator
+
+**Configurator**:
+The `touchbar-customizer` window where the user arranges the buttons of each layer and saves the
+config. It previews each layer exactly as the bar draws it.
+_Avoid_: editor, settings app, GUI
+
+**Selected button**:
+The one button of the shown layer that the edit panel shows and keyboard reorder moves. Pressing a
+button in the preview or the button list selects it.
+_Avoid_: focused button (focus belongs to text fields), active button, current button
+
+**Edit panel**:
+The configurator's fields for the selected button (label, width, colours, action) and the list of
+every issue in the config, updated as the user types.
+_Avoid_: inspector, properties, form
+
 ## Hardware
 
 **Key mode**:
