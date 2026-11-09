@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/tb-core", "crates/tb-render", "crates/tb-app", "crates/tb-daemon"]
+members = ["crates/tb-core", "crates/tb-render", "crates/tb-app", "crates/tb-daemon", "crates/tb-config"]
 
 [workspace.package]
 version = "0.1.0"

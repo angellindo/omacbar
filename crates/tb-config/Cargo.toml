@@ -1,0 +1,15 @@
+[package]
+name = "tb-config"
+description = "The config file on disk: load (default when missing), validate, save atomically, watch for changes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tb-core.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
