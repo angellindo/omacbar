@@ -41,10 +41,16 @@ pub enum ActionError {
     NoKeyboard { chord: Chord, id: ButtonId },
     #[error("layer `{chord:?}`: button `{id}` was not pressed: {source}")]
     Emit { chord: Chord, id: ButtonId, source: EmitError },
-    #[error("cannot run `{run}`: {source}")]
+    #[error("cannot run `{}`: {source}", one_line(run))]
     Spawn { run: String, source: io::Error },
-    #[error("`{run}` ended with {status}")]
+    #[error("`{}` ended with {status}", one_line(run))]
     Exited { run: String, status: ExitStatus },
+}
+
+/// `run` with every control character escaped (`\n`, `\r`, `\t`, `\u{..}`), so a command of
+/// several lines is still one log line and stays recognisable.
+fn one_line(run: &str) -> String {
+    run.chars().flat_map(|c| if c.is_control() { c.escape_default().collect() } else { vec![c] }).collect()
 }
 
 /// Runs the actions of tapped buttons.
