@@ -46,11 +46,13 @@ pub struct EvdevModifiers<R: Read> {
     /// Whether each key of `MODIFIER_KEYS` is down, as of the records read so far.
     down: [bool; MODIFIER_KEYS.len()],
     reported: Modifiers,
+    /// The stream has ended: nothing read after that is reported (Ok(None) stays Ok(None)).
+    ended: bool,
 }
 
 impl<R: Read> EvdevModifiers<R> {
     pub fn new(reader: R) -> Self {
-        Self { reader, down: [false; MODIFIER_KEYS.len()], reported: Modifiers::default() }
+        Self { reader, down: [false; MODIFIER_KEYS.len()], reported: Modifiers::default(), ended: false }
     }
 
     /// A flag is held while either key of its pair is down.
@@ -91,6 +93,9 @@ impl EvdevModifiers<File> {
 
 impl<R: Read> ModifierSource for EvdevModifiers<R> {
     fn next_modifiers(&mut self) -> Result<Option<Modifiers>, KeyError> {
+        if self.ended {
+            return Ok(None);
+        }
         while let Some(r) = self.next_record()? {
             let kind = u16::from_ne_bytes([r[16], r[17]]);
             let code = u16::from_ne_bytes([r[18], r[19]]);
@@ -114,6 +119,7 @@ impl<R: Read> ModifierSource for EvdevModifiers<R> {
                 _ => {}
             }
         }
+        self.ended = true;
         Ok(None)
     }
 }
