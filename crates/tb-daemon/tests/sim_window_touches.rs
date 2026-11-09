@@ -184,8 +184,8 @@ fn a_click_over_f5_in_the_window_presses_and_releases_f5_on_the_daemon() {
         let _ = done.send(daemon.display().presents().to_vec());
     });
 
-    // Half a bar pixel past the centre, in window points: floors back to the centre.
-    let x = (f32::from(centre) + 0.5) / 2.0;
+    // Half a bar pixel past the centre, in window points ((centre + 0.5) / 2): floors back to it.
+    let x = f32::midpoint(f32::from(centre), 0.5);
     press(&mut rt, x, 15.0);
     release(&mut rt, x, 15.0);
     drop(rt);
