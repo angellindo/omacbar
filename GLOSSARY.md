@@ -31,7 +31,8 @@ A button's share of the free width (`auto` is span 1). Fixed widths are `px`.
 _Avoid_: stretch, flex, weight
 
 **Spacing rules**:
-The pixel tokens (edge padding, gap, group gap, vertical inset, minimum width) every layer obeys.
+The pixel tokens (edge padding, gap, group gap, vertical inset, minimum width, label padding)
+every layer obeys.
 _Avoid_: margins, paddings (as a collective name)
 
 **Placement**:
@@ -97,6 +98,16 @@ _Avoid_: settings, preferences, profile
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
 _Avoid_: error (for config problems), warning
+
+**Warning**:
+A problem found when checking a config that does not reject it: the bar still uses and draws the
+config. A layer with more than 16 buttons and a label wider than its button's room are warnings.
+_Avoid_: issue (an issue rejects the config), error, lint
+
+**Label room**:
+The width a button's label may take: the button's placement width minus the label padding on
+both sides. A wider label is ellipsized on the bar.
+_Avoid_: text area, content width
 
 ## Hardware
 

@@ -41,7 +41,8 @@ shares, leftover pixels one each to the leftmost shared buttons. A layer that ca
 button 64 px is rejected with the width it needed.
 
 Capacity check: at 64 px and 8 px gaps a single-group layer holds at most **30** buttons. The
-default F-key layer (ESC at 120 px + 12 F-keys) gets 160 px per F-key. Aim for **at most 16 buttons per layer**.
+default F-key layer (ESC at 120 px + 12 F-keys) gets 160 px per F-key. Aim for **at most 16 buttons per layer**: a layer with more still validates, with a warning
+(`tb_core::config::warnings`).
 
 ## Escape
 
@@ -53,7 +54,9 @@ finds it in the same place whatever chord is held.
 
 - One line, never wrapped. Lowercase words or short symbols (`vol+`, `play`, `F5`).
 - Font: theme mono font (Omarchy: JetBrainsMono Nerd Font), **20 px**, semibold.
-- Must fit `width - 2 x label_padding`; otherwise the configurator warns and the renderer ellipsizes.
+- Must fit its room, `width - 2 x label_padding`, measured with Rune's text system at the
+  theme's font size (`tb_render::label_width`); otherwise validation warns
+  (`tb_core::config::warnings`) and the renderer ellipsizes it inside the room.
 - Nerd Font glyphs are allowed as labels until icons land.
 
 ## States
