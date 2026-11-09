@@ -97,6 +97,16 @@ One finger on the bar, known by its x position in bar pixels from the moment it 
 lifts. A touch presses the button it hits.
 _Avoid_: tap (a touch that lands and lifts on one button), click, pointer
 
+**Fn keyboard**:
+The keyboard that reports the Fn key; its held Fn and modifier keys pick the layer. It is found by
+its Fn capability, never by its event number (on the MacBookPro14,3, the Apple SPI keyboard).
+_Avoid_: internal keyboard, SPI keyboard (except citing drivers), event5
+
+**Modifier source**:
+Where the daemon learns which Fn and modifier keys are held: the Fn keyboard, or recorded key
+events in tests.
+_Avoid_: key listener, keyboard reader, key hook
+
 ## Config
 
 **Config**:

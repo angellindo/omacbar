@@ -15,7 +15,7 @@
 1. **TDD at the seams** (Matt Pocock `/tdd`): one failing test per behaviour, then the code. Test
    names state behaviour in domain words: `a_span_two_button_is_twice_a_span_one_plus_at_most_one_pixel`.
 2. **Test through the public interface.** No testing private helpers; no mocks of our own pure code.
-   Fakes only at device boundaries (`Display`, `TouchSource`, `KeyEmitter`).
+   Fakes only at device boundaries (`Display`, `TouchSource`, `ModifierSource`, `KeyEmitter`).
 3. **Element tree before pixels.** Pixel checks compare single sampled pixels with a tolerance
    (±2 per channel); no full-image goldens in `cargo test` (GPU drivers differ).
 4. **Snapshots are for humans.** `TB_WRITE_SNAPSHOTS=1 cargo test -p tb-render` writes
