@@ -54,12 +54,11 @@ enum Message {
 fn run(sim_dir: PathBuf) -> Result<(), String> {
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
-    let theme = match std::env::var_os("HOME") {
-        Some(home) => follow_theme(ActiveTheme::under_home(Path::new(&home)), tx.clone()),
-        None => {
-            log::error("HOME is not set: showing the bundled Tokyo Night, theme switches are not followed");
-            BarTheme::omarchy_fallback()
-        }
+    let theme = if let Some(home) = std::env::var_os("HOME") {
+        follow_theme(ActiveTheme::under_home(Path::new(&home)), tx.clone())
+    } else {
+        log::error("HOME is not set: showing the bundled Tokyo Night, theme switches are not followed");
+        BarTheme::omarchy_fallback()
     };
     let mut daemon = Daemon::new(presets::default_layout(), theme, GpuRenderer::new(), display);
     let touches = thread::spawn(move || {

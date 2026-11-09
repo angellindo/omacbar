@@ -12,9 +12,9 @@ pub fn color(c: Rgba) -> Color {
 }
 
 /// The style every bar label is drawn and measured in, so the two cannot drift: `size` px,
-/// weight 600, Rune's `Family::SystemMono` = fontconfig `monospace` (Omarchy: JetBrainsMono Nerd
-/// Font). Without one Rune falls back to DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Ubuntu
-/// Mono, then its mono slot (`docs/design/theming.md` § Label font).
+/// weight 600, Rune's `Family::SystemMono` = fontconfig `monospace` (Omarchy: `JetBrainsMono Nerd
+/// Font`). Without one Rune tries `DejaVu Sans Mono`, `Liberation Mono`, `Noto Sans Mono`,
+/// `Ubuntu Mono`, then its mono slot (`docs/design/theming.md` § Label font).
 pub fn label_style(size: f32) -> TextStyle {
     TextStyle::new(size, 600.0).family(Family::SystemMono)
 }
