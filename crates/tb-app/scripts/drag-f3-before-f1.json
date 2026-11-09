@@ -1,0 +1,5 @@
+[
+  {"t": 0.3, "type": "drag", "key": "preview-f3", "dx": -190, "dur": 0.4},
+  {"t": 1.2, "type": "tap", "key": "save"},
+  {"t": 2.0, "type": "mark", "name": "end"}
+]
