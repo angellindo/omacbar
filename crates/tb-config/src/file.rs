@@ -99,6 +99,15 @@ impl ConfigFile {
     }
 }
 
+/// The directory that holds `path`; a bare file name (`config.toml`) is in the current directory,
+/// named `.` because inotify and other syscalls reject an empty path.
+pub(crate) fn dir_of(path: &Path) -> &Path {
+    match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir,
+        _ => Path::new("."),
+    }
+}
+
 /// Writes `text` to a temp file next to `path`, syncs it and renames it over `path`, so a reader
 /// sees the old file or the new one, never half of it. The directory is created if missing; on
 /// any failure the temp file this call created is removed.
@@ -107,7 +116,7 @@ fn write_atomically(path: &Path, text: &str) -> Result<(), ConfigFileError> {
         let at = at.to_path_buf();
         move |source| ConfigFileError::Io { path: at, source }
     };
-    let dir = path.parent().unwrap_or(Path::new(""));
+    let dir = dir_of(path);
     fs::create_dir_all(dir).map_err(io_at(dir))?;
     let (temp, file) = create_temp(path).map_err(io_at(dir))?;
     let written = write_synced(file, text)

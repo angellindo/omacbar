@@ -8,11 +8,11 @@ use std::io;
 use std::mem::MaybeUninit;
 use std::os::fd::OwnedFd;
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use rustix::fs::inotify::{self, CreateFlags, ReadFlags, Reader, WatchFlags};
 
-use crate::file::{ConfigFile, ConfigFileError};
+use crate::file::{ConfigFile, ConfigFileError, dir_of};
 
 /// Room for many events per read; changes read together count once.
 const EVENT_BUFFER: usize = 4096;
@@ -29,7 +29,7 @@ impl ConfigFile {
     /// Starts watching the file's directory (it must exist: `load` and `save` create it). The
     /// watch is registered before this returns, so no later change is missed.
     pub fn watch(&self) -> Result<ConfigWatch, ConfigFileError> {
-        let dir = self.path().parent().unwrap_or(Path::new("")).to_path_buf();
+        let dir = dir_of(self.path()).to_path_buf();
         let name = self.path().file_name().unwrap_or_default().to_owned();
         let io_at =
             |source: rustix::io::Errno| ConfigFileError::Io { path: dir.clone(), source: source.into() };
