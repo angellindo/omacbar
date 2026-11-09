@@ -3,8 +3,8 @@
 
 use std::io;
 use std::os::unix::process::CommandExt;
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::Arc;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::{Arc, mpsc};
 use std::thread;
 
 use tb_core::{Action, Button, ButtonId, Chord, Key};
@@ -111,7 +111,8 @@ impl Runner {
 
 /// Runs command lines through `sh -c`, detached: no stdin, stdout discarded, stderr shared with
 /// the daemon's log, and its own process group, so terminal signals to the daemon miss it. A
-/// thread per command waits for it, so no zombie is left, and reports a failed exit.
+/// thread per command waits for it, so no zombie is left, and reports a failed exit. The thread
+/// starts before the command: when it cannot start, the command is not started either.
 pub struct ShSpawner {
     report: Report,
 }
@@ -124,19 +125,35 @@ impl ShSpawner {
 
 impl Spawner for ShSpawner {
     fn spawn(&mut self, run: &str) -> io::Result<()> {
-        let mut child = Command::new("sh")
+        let (handover, started) = mpsc::channel::<Child>();
+        let (report, line) = (Arc::clone(&self.report), run.to_owned());
+        // A sender dropped without a child (the shell did not start) ends the thread.
+        thread::Builder::new().name("command".to_owned()).spawn(move || {
+            if let Ok(child) = started.recv() {
+                reap(child, line, &report);
+            }
+        })?;
+        let child = Command::new("sh")
             .arg("-c")
             .arg(run)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .process_group(0)
             .spawn()?;
-        let (report, run) = (Arc::clone(&self.report), run.to_owned());
-        thread::Builder::new().name("command".to_owned()).spawn(move || match child.wait() {
-            Ok(status) if !status.success() => report(ActionError::Exited { run, status }),
-            Ok(_) => {}
-            Err(source) => report(ActionError::Spawn { run, source }),
-        })?;
+        // The thread waits on the channel until it gets the child, so the send cannot fail; if it
+        // ever did, the child comes back and is reaped here rather than left a zombie.
+        if let Err(mpsc::SendError(child)) = handover.send(child) {
+            reap(child, run.to_owned(), &self.report);
+        }
         Ok(())
+    }
+}
+
+/// Waits for `child` to end and reports a failed exit.
+fn reap(mut child: Child, run: String, report: &Report) {
+    match child.wait() {
+        Ok(status) if !status.success() => report(ActionError::Exited { run, status }),
+        Ok(_) => {}
+        Err(source) => report(ActionError::Spawn { run, source }),
     }
 }
