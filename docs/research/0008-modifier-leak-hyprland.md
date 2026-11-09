@@ -129,7 +129,7 @@ Repeat step 1 holding **Fn** instead of Ctrl. Copy A's lines.
 2. Check nothing is left: `grep -c tb11-emitter /proc/bus/input/devices` → `0`, and
    `hyprctl devices | grep -c tb11` → `0`. If not: `sudo pkill -f uinput-emit.py`.
 3. If an app still acts as if Ctrl (or no Caps Lock/NumLock) were in effect: press and release
-   Ctrl, Shift, Option and Command once each on the internal keyboard. Hyprland resends the merged
+   Ctrl, Shift, Option and Command once each on the Fn keyboard. Hyprland resends the merged
    modifiers on every modifier change (`H` `InputManager.cpp:1685-1722`).
 4. Last resort: log out of the session and back in.
 
@@ -146,7 +146,7 @@ moment the chord was pressed until it was released, and whether that matched the
 | A · Modifier layers use `command` actions; `key` actions only on `default` and `fn` | Yes, by construction (§1, §4) | None new; a `key` on a `fn-*` layer would leak, so config check should warn | yes |
 | B · Release the modifier on the virtual device before the key | No (§2: dropped by the kernel or ORed back by Hyprland) | Wasted code | yes |
 | C · Send the key with Hyprland `send_shortcut` (IPC) | Yes for the focused client, with any explicit mods (§3) | Hyprland-only; bypasses Hyprland binds and the IME; client mods read 0 until the next physical modifier change; daemon needs `HYPRLAND_INSTANCE_SIGNATURE`. Available today with no code as a `command`: `hyprctl dispatch 'hl.dsp.send_shortcut({ mods = "", key = "F5" })'` | yes (no device grab) |
-| D · Grab the Fn keyboard (`EVIOCGRAB`) and re-emit it through uinput, masking modifiers around bar keys | Yes, including Hyprland binds (only one keyboard holds Ctrl) | Reverses ADR-0009 (passive reader, no ioctl/`unsafe`, new crate); every keystroke goes through the daemon; a hung daemon keeps the grab and the internal keyboard goes dead (the grab ends only when the fd closes, `K` `evdev.c:437`, `input.c:114-128`) | no |
+| D · Grab the Fn keyboard (`EVIOCGRAB`) and re-emit it through uinput, masking modifiers around bar keys | Yes, including Hyprland binds (only one keyboard holds Ctrl) | Reverses ADR-0009 (passive reader, no ioctl/`unsafe`, new crate); every keystroke goes through the daemon; a hung daemon keeps the grab and the Fn keyboard goes dead (the grab ends only when the fd closes, `K` `evdev.c:437`, `input.c:114-128`) | no |
 | E · Hold the emitted key until the chord is released | Yes (merged mods are empty by then) | Fires late, after the bar has already switched back to the default layer; surprising | yes |
 | F · Wayland virtual-keyboard protocol (wtype style) instead of uinput | No (same merge, §1 `share_states` row) | Needs a Wayland connection in the daemon | yes |
 
