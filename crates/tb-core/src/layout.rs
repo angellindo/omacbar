@@ -3,6 +3,7 @@
 //! Algorithm (see `docs/design/button-standard.md` § Width):
 //! 1. Usable width = bar width - 2 x edge padding.
 //! 2. Subtract gaps (`gap` inside a group, `group_gap` between groups) and every fixed (`Px`) width.
+//!    Totals saturate, so a total past `u32` is an `Overflow` needing `u32::MAX` px.
 //! 3. Reject the layer with `Overflow` when that leaves less than `min_button_width` per shared
 //!    (`Auto`/`Span`) button: counted per button, not per share, so wide spans are not charged
 //!    for a minimum they do not need.
@@ -45,8 +46,8 @@ pub fn place(layer: &Layer, size: BarSize, rules: &SpacingRules) -> Result<Vec<P
         u32::from(size.width.saturating_sub(rules.edge_padding).saturating_sub(rules.edge_padding));
     let gaps = gaps_width(&groups, rules);
     let buttons = || groups.iter().flat_map(|(_, g)| g.buttons.iter());
-    let fixed: u32 = buttons().map(|b| fixed_px(b.width)).sum();
-    let shares: u32 = buttons().map(|b| b.width.shares()).sum();
+    let fixed = buttons().map(|b| fixed_px(b.width)).fold(0, u32::saturating_add);
+    let shares = buttons().map(|b| b.width.shares()).fold(0, u32::saturating_add);
     let shared_buttons = count(buttons().filter(|b| !matches!(b.width, Width::Px(_))).count());
 
     let needed = gaps
