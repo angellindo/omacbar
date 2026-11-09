@@ -86,8 +86,10 @@ fn reports_every_problem_at_once() {
 #[test]
 fn a_label_padding_wider_than_half_a_button_leaves_no_room_instead_of_underflowing() {
     let rules = SpacingRules { label_padding: 1000, ..SpacingRules::STANDARD };
-    let found = warnings(&Config::default(), BarSize::MACBOOK_PRO, &rules, |_| 1);
-    assert!(!found.is_empty());
+    let config = Config::default();
+    let found = warnings(&config, BarSize::MACBOOK_PRO, &rules, |_| 1);
+    let buttons: usize = config.layout.layers.iter().map(|l| l.buttons().count()).sum();
+    assert_eq!(found.len(), buttons, "every label warns: {found:?}");
     assert!(
         found.iter().all(|w| matches!(w, ConfigWarning::LabelTooWide { width: 1, room: 0, .. })),
         "{found:?}"
