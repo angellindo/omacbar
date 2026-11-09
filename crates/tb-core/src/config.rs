@@ -7,8 +7,9 @@ use thiserror::Error;
 
 use crate::chord::Chord;
 use crate::geometry::BarSize;
+use crate::key::Key;
 use crate::layout::{LayoutError, place};
-use crate::model::{ButtonId, Layout};
+use crate::model::{Action, Button, ButtonId, Layout};
 use crate::spacing::SpacingRules;
 use crate::theme::BarTheme;
 
@@ -65,6 +66,12 @@ pub enum ConfigIssue {
     EmptyLabel { chord: Chord, id: ButtonId },
     #[error("layer `{chord:?}`: button `{id}` uses unknown colour `{color}`")]
     UnknownColor { chord: Chord, id: ButtonId, color: String },
+    #[error(
+        "layer `{chord:?}`: button `{id}` presses unknown key `{key}` (a Linux key name such as `F5` or `LeftCtrl`)"
+    )]
+    UnknownKey { chord: Chord, id: ButtonId, key: String },
+    #[error("layer `{chord:?}`: button `{id}` is a key action with no keys")]
+    NoKeys { chord: Chord, id: ButtonId },
     #[error("layer `{chord:?}` does not fit: {error}")]
     Layout { chord: Chord, error: LayoutError },
     /// The text is not valid TOML or not a config shape; the message is the parser's.
@@ -78,6 +85,11 @@ pub enum ConfigWarning {
     /// The layer has more buttons than [`RECOMMENDED_MAX_BUTTONS`].
     #[error("layer `{chord:?}` has {buttons} buttons; aim for at most {RECOMMENDED_MAX_BUTTONS}")]
     TooManyButtons { chord: Chord, buttons: usize },
+    /// A key action on a modifier layer: its keys would combine with the held modifier (ADR-0011).
+    #[error(
+        "layer `{chord:?}`: button `{id}` presses keys while a modifier is held, so they combine with it; use a command such as `hyprctl dispatch 'hl.dsp.send_shortcut({{ mods = \"\", key = \"F5\" }})'`"
+    )]
+    KeyOnModifierLayer { chord: Chord, id: ButtonId },
     /// The label is wider than its label room, so the bar ellipsizes it.
     #[error(
         "layer `{chord:?}`: label of `{id}` is {width} px wide but its room is {room} px; it will be ellipsized"
@@ -132,12 +144,24 @@ pub fn validate(config: &Config, size: BarSize, rules: &SpacingRules, theme: &Ba
                     issues.push(ConfigIssue::UnknownColor { chord, id: b.id.clone(), color: color.clone() });
                 }
             }
+            key_issues(chord, b, &mut issues);
         }
         if let Err(error) = place(layer, size, rules) {
             issues.push(ConfigIssue::Layout { chord, error });
         }
     }
     issues
+}
+
+/// An empty key list, then each unknown key name in key order.
+fn key_issues(chord: Chord, button: &Button, issues: &mut Vec<ConfigIssue>) {
+    let Action::Key { keys } = &button.action else { return };
+    if keys.is_empty() {
+        issues.push(ConfigIssue::NoKeys { chord, id: button.id.clone() });
+    }
+    for key in keys.iter().filter(|k| Key::named(k).is_none()) {
+        issues.push(ConfigIssue::UnknownKey { chord, id: button.id.clone(), key: key.clone() });
+    }
 }
 
 /// Every warning for `config`, layers in config order. `label_width` gives a label's width in
@@ -154,6 +178,10 @@ pub fn warnings(
         let buttons = layer.buttons().count();
         if buttons > RECOMMENDED_MAX_BUTTONS {
             found.push(ConfigWarning::TooManyButtons { chord, buttons });
+        }
+        if chord.holds_modifier() {
+            let keyed = layer.buttons().filter(|b| matches!(b.action, Action::Key { .. }));
+            found.extend(keyed.map(|b| ConfigWarning::KeyOnModifierLayer { chord, id: b.id.clone() }));
         }
         // A layer that does not fit is a `ConfigIssue::Layout`; there is no room to measure against.
         let Ok(placed) = place(layer, size, rules) else { continue };

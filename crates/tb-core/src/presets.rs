@@ -11,6 +11,10 @@ fn cmd(id: &str, label: &str, run: &str) -> Button {
     Button::new(id, label, Action::Command { run: run.to_owned() })
 }
 
+/// Sends a plain Escape through Hyprland: on a modifier layer a pressed key would combine with the
+/// held modifier, so an exact key is a `send_shortcut` command (ADR-0011).
+const SEND_ESCAPE: &str = r#"hyprctl dispatch 'hl.dsp.send_shortcut({ mods = "", key = "Escape" })'"#;
+
 /// Esc | F1..F12 by default; media keys on Fn; Omarchy shortcuts on Fn + Ctrl.
 pub fn default_layout() -> Layout {
     let esc = key("esc", "esc", &["Esc"]).with_width(Width::Px(120));
@@ -23,7 +27,7 @@ pub fn default_layout() -> Layout {
     let media = Layer {
         chord: Chord::Fn,
         groups: vec![
-            Group { buttons: vec![esc.clone()] },
+            Group { buttons: vec![esc] },
             Group {
                 buttons: vec![
                     key("brightness-down", "bri-", &["BrightnessDown"]),
@@ -53,7 +57,7 @@ pub fn default_layout() -> Layout {
     let omarchy = Layer {
         chord: Chord::FnCtrl,
         groups: vec![
-            Group { buttons: vec![esc] },
+            Group { buttons: vec![cmd("esc", "esc", SEND_ESCAPE).with_width(Width::Px(120))] },
             Group {
                 buttons: vec![
                     cmd("theme-next", "theme", "omarchy theme switcher").with_width(Width::Span(2)),

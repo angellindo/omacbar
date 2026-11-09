@@ -109,7 +109,8 @@ pub struct ButtonStyle {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Action {
-    /// Press and release a key or chord, e.g. `["LeftCtrl", "F5"]` (evdev key names).
+    /// Press `keys` in order, then release them in reverse, e.g. `["LeftCtrl", "F5"]`. Each name is
+    /// a [`crate::Key`] name; validation rejects an unknown name or an empty list.
     Key { keys: Vec<String> },
     /// Run a command line through `sh -c`.
     Command { run: String },

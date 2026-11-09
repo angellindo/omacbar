@@ -30,6 +30,14 @@ impl Chord {
         }
     }
 
+    /// True for a modifier layer: Fn plus Ctrl, Alt, Shift or Super. Keys pressed while it shows
+    /// would combine with the held modifier, so its buttons should run commands (ADR-0011). The
+    /// rule follows the chord, not the held keys: with Fn + Ctrl held and no `fn-ctrl` layer, the
+    /// `fn` layer shows and its keys are pressed under the held Ctrl.
+    pub const fn holds_modifier(self) -> bool {
+        matches!(self, Chord::FnCtrl | Chord::FnAlt | Chord::FnShift | Chord::FnSuper)
+    }
+
     /// The chord the held keys ask for, before checking which layers exist.
     pub fn requested(m: Modifiers) -> Chord {
         if !m.fn_key {
