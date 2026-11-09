@@ -2379,6 +2379,7 @@ name = "tb-daemon"
 version = "0.1.0"
 dependencies = [
  "png 0.17.16",
+ "tb-config",
  "tb-core",
  "tb-render",
  "thiserror 2.0.21",

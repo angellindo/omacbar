@@ -1,6 +1,6 @@
 [package]
 name = "tb-config"
-description = "The config file on disk: load (default when missing), validate, save atomically, watch for changes."
+description = "The files the bar follows on disk: the config file (load, validate, save atomically, watch) and the active Omarchy theme (load, watch for a switch)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

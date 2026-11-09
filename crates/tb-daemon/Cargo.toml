@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 tb-core.workspace = true
+tb-config.workspace = true
 tb-render.workspace = true
 thiserror.workspace = true
 
