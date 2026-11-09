@@ -64,6 +64,9 @@ pub enum ConfigIssue {
     UnknownColor { chord: Chord, id: ButtonId, color: String },
     #[error("layer `{chord:?}` does not fit: {error}")]
     Layout { chord: Chord, error: LayoutError },
+    /// The text is not valid TOML or not a config shape; the message is the parser's.
+    #[error("the config is not valid: {0}")]
+    Syntax(String),
 }
 
 #[derive(Debug, Error)]
@@ -119,6 +122,18 @@ pub fn validate(config: &Config, size: BarSize, rules: &SpacingRules, theme: &Ba
         }
     }
     issues
+}
+
+/// Parses and validates config text: the config, or every issue (a parse error is one `Syntax` issue).
+pub fn parse_valid(
+    src: &str,
+    size: BarSize,
+    rules: &SpacingRules,
+    theme: &BarTheme,
+) -> Result<Config, Vec<ConfigIssue>> {
+    let config = parse(src).map_err(|e| vec![ConfigIssue::Syntax(e.to_string())])?;
+    let issues = validate(&config, size, rules, theme);
+    if issues.is_empty() { Ok(config) } else { Err(issues) }
 }
 
 #[cfg(test)]

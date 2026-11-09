@@ -18,6 +18,8 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 thiserror = "2"
 png = "0.17"
+# Safe inotify for the config watch (ADR-0007); already locked via Rune's deps.
+rustix = { version = "1.1", features = ["fs"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
