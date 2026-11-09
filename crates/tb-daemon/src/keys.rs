@@ -33,18 +33,9 @@ const EV_SYN: u16 = 0;
 const EV_KEY: u16 = 1;
 const SYN_REPORT: u16 = 0;
 
-/// Each modifier key (`linux/input-event-codes.h`) and the flag it holds.
-const MODIFIER_KEYS: [(u16, fn(&mut Modifiers)); 9] = [
-    (464, |m| m.fn_key = true),    // KEY_FN
-    (29, |m| m.ctrl = true),       // KEY_LEFTCTRL
-    (97, |m| m.ctrl = true),       // KEY_RIGHTCTRL
-    (56, |m| m.alt = true),        // KEY_LEFTALT
-    (100, |m| m.alt = true),       // KEY_RIGHTALT
-    (42, |m| m.shift = true),      // KEY_LEFTSHIFT
-    (54, |m| m.shift = true),      // KEY_RIGHTSHIFT
-    (125, |m| m.super_key = true), // KEY_LEFTMETA
-    (126, |m| m.super_key = true), // KEY_RIGHTMETA
-];
+/// The modifier keys (`linux/input-event-codes.h`): `KEY_FN`, then the left and right key of
+/// Ctrl, Alt, Shift and Meta (super).
+const MODIFIER_KEYS: [u16; 9] = [464, 29, 97, 56, 100, 42, 54, 125, 126];
 
 /// Held modifiers from a stream of evdev records. A change is reported only at `SYN_REPORT`, so
 /// keys pressed in one keyboard report are one change. Key value 0 is up, 1 (press) and 2
@@ -62,14 +53,16 @@ impl<R: Read> EvdevModifiers<R> {
         Self { reader, down: [false; MODIFIER_KEYS.len()], reported: Modifiers::default() }
     }
 
+    /// A flag is held while either key of its pair is down.
     fn held(&self) -> Modifiers {
-        let mut m = Modifiers::default();
-        for ((_, hold), down) in MODIFIER_KEYS.iter().zip(self.down) {
-            if down {
-                hold(&mut m);
-            }
+        let d = self.down;
+        Modifiers {
+            fn_key: d[0],
+            ctrl: d[1] || d[2],
+            alt: d[3] || d[4],
+            shift: d[5] || d[6],
+            super_key: d[7] || d[8],
         }
-        m
     }
 
     /// The next whole record; Ok(None) at the end of the stream on a record boundary.
@@ -104,7 +97,7 @@ impl<R: Read> ModifierSource for EvdevModifiers<R> {
             let value = i32::from_ne_bytes([r[20], r[21], r[22], r[23]]);
             match (kind, code) {
                 (EV_KEY, _) => {
-                    let Some(i) = MODIFIER_KEYS.iter().position(|(c, _)| *c == code) else { continue };
+                    let Some(i) = MODIFIER_KEYS.iter().position(|c| *c == code) else { continue };
                     match value {
                         0 => self.down[i] = false,
                         1 | 2 => self.down[i] = true,
