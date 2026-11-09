@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 tb-core.workspace = true
 tb-render.workspace = true
+tb-config.workspace = true
 rune.workspace = true
 
 [lints]

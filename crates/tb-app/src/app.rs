@@ -1,10 +1,13 @@
 //! Configurator state and view. Editing (add, edit, drag to reorder) lands in TB tickets; this is
 //! the tracer: pick a layer, see it drawn by the real bar renderer at preview scale.
 
+use std::path::Path;
+
 use rune::tok::TextStyle;
-use rune::{AppSpec, Cx, El, col, el, row, text};
+use rune::{AppSpec, Cx, El, Family, col, el, row, text};
+use tb_config::ActiveTheme;
 use tb_core::{BarSize, BarTheme, Chord, Layout, SpacingRules, presets};
-use tb_render::{BarScene, build_scene, view::color};
+use tb_render::{BarScene, build_scene, label_style, view::color};
 
 /// Preview scale: the 2170 px bar shown at half size fits a 1200 pt window.
 const PREVIEW_SCALE: f32 = 0.5;
@@ -15,8 +18,18 @@ pub struct State {
     pub chord: Chord,
 }
 
+/// Startup: the active Omarchy theme of `$HOME` (read once, here), or the bundled Tokyo Night when
+/// `HOME` is unset or the theme cannot be used (`ActiveTheme::load`).
 fn init() -> State {
-    State { layout: presets::default_layout(), theme: BarTheme::omarchy_fallback(), chord: Chord::Default }
+    let theme = std::env::var_os("HOME").map_or_else(BarTheme::omarchy_fallback, |home| {
+        ActiveTheme::under_home(Path::new(&home)).load().theme
+    });
+    with_theme(theme)
+}
+
+/// The default layout on its default layer, drawn in `theme`.
+fn with_theme(theme: BarTheme) -> State {
+    State { layout: presets::default_layout(), theme, chord: Chord::Default }
 }
 
 pub fn spec() -> AppSpec<State> {
@@ -33,7 +46,7 @@ fn scene(s: &State) -> Option<BarScene> {
 
 fn view(s: &State, _: &mut Cx<State>) -> El {
     let t = &s.theme;
-    let body = TextStyle::new(14.0, 500.0).mono();
+    let body = TextStyle::new(14.0, 500.0).family(Family::SystemMono);
     let tabs = row().gap(8.0).children(s.layout.chords().into_iter().map(|chord| {
         let active = chord == s.chord;
         el().key(format!("tab-{chord:?}").to_lowercase())
@@ -71,7 +84,7 @@ fn preview(s: &State) -> El {
         return text("this layer does not fit the bar").color(color(s.theme.accent));
     };
     let k = PREVIEW_SCALE;
-    let label = TextStyle::new(f32::from(scene.font_size) * k, 600.0).mono();
+    let label = label_style(f32::from(scene.font_size) * k);
     el().key("preview")
         .size(f32::from(scene.size.width) * k, f32::from(scene.size.height) * k)
         .fill(color(scene.background))
@@ -93,7 +106,12 @@ mod tests {
 
     #[test]
     fn tapping_a_layer_tab_switches_the_previewed_layer() {
-        let mut rt = Runtime::new(init(), view, (1200.0, 360.0), Env::new(true, 1.0));
+        let mut rt = Runtime::new(
+            with_theme(BarTheme::omarchy_fallback()),
+            view,
+            (1200.0, 360.0),
+            Env::new(true, 1.0),
+        );
         rt.frame(0.0);
         assert!(rt.presented("preview-f1").is_some(), "starts on the F-key layer");
         let (x, y) = rt.find("tab-fnctrl").unwrap();

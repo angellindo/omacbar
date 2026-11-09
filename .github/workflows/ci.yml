@@ -7,7 +7,7 @@ jobs:
       VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json   # software Vulkan for headless Rune
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev mesa-vulkan-drivers
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev mesa-vulkan-drivers fontconfig fonts-dejavu-core
       - uses: dtolnay/rust-toolchain@1.99.1
         with: { components: "clippy, rustfmt" }
       - uses: Swatinem/rust-cache@v2
