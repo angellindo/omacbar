@@ -16,8 +16,9 @@ the rest is judgement, and a review cites the rule number.
 - `tb-core`: pure domain logic. No IO, no GPU, no Rune, no clocks, no env. Takes text, returns values.
 - `tb-render`: Rune views and offscreen rendering. No device or input access.
 - `tb-app`: the configurator binary.
-- `tb-config` (ADR-0007): the config file on disk (load, atomic save, change watch). The only
-  crate that reads or writes the file; binaries use it.
+- `tb-config` (ADR-0007, ADR-0008): the files the bar follows on disk: the config file (load,
+  atomic save, change watch) and the active Omarchy theme (load with fallback, switch watch). The
+  only crate that reads or writes them; binaries use it.
 - `tb-daemon` (binary `touchbard`, ADR-0006): the only crate that touches devices (DRM, evdev, uinput),
   each behind a trait with a fake for tests.
 A new dependency arrow between crates needs an ADR.

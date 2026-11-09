@@ -52,6 +52,15 @@ _Avoid_: skin, palette (a palette is only the tokens)
 **Token**:
 A named colour in the theme (`accent`, `red`); style overrides refer to tokens.
 
+**Active theme**:
+The Omarchy theme the desktop shows now. The bar's theme is derived from its `colors.toml`, or is
+the bundled Tokyo Night when that file cannot be read.
+_Avoid_: current theme, system theme
+
+**Theme switch**:
+Omarchy replacing the active theme (`omarchy theme set`). The bar shows the new theme within 1 s.
+_Avoid_: theme change event, reload
+
 **Scene**:
 A layer resolved against a theme and pressed state: everything the view needs, nothing more.
 _Avoid_: model, render state

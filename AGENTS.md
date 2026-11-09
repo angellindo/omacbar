@@ -20,6 +20,8 @@ buttons per Fn + modifier layer. This is a POC/MVP to prove viability; scope is 
 | `crates/tb-core` | Pure domain: model, chords, spacing rules, layout engine, hit-test, reorder, theme, config |
 | `crates/tb-render` | Rune view of a bar scene + offscreen render to RGBA frames |
 | `crates/tb-app` | `touchbar-customizer` configurator window (Rune) |
+| `contrib/` | Files a human installs outside the repo (the Omarchy `theme-set.d` hook) |
+| `fixtures/` | Test data shared by crates (Omarchy `colors.toml` per theme) |
 | `docs/research/` | Cited findings (hardware, input, Rune, testing, Omarchy) |
 | `docs/design/` | Button standard and theming |
 | `docs/standards/` | Coding (R1-R12) and testing standards |

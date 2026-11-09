@@ -53,7 +53,8 @@ finds it in the same place whatever chord is held.
 ## Label
 
 - One line, never wrapped. Lowercase words or short symbols (`vol+`, `play`, `F5`).
-- Font: theme mono font (Omarchy: JetBrainsMono Nerd Font), **20 px**, semibold.
+- Font: the system monospace font (Omarchy: JetBrainsMono Nerd Font), **20 px**, semibold where
+  the face has it (`tb_render::view::label_style`, `docs/design/theming.md` § Label font).
 - Must fit its room, `width - 2 x label_padding`, measured with Rune's text system at the
   theme's font size (`tb_render::label_width`); otherwise validation warns
   (`tb_core::config::warnings`) and the renderer ellipsizes it inside the room.
