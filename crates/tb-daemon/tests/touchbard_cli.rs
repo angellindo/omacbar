@@ -1,6 +1,8 @@
 //! Functional: the `touchbard` binary with the simulator backend. Touches come as stdin lines
 //! (`down <x>` | `up`); frames land in `--sim <dir>` as `frame-NNNN.png`. Needs a Vulkan adapter
 //! (lavapipe is fine). Rects come from `tb_core::place`; pixels compare with ±2 per channel.
+//! Every run gets an empty `HOME` (no Omarchy theme, so the bundled Tokyo Night): the binary reads
+//! the active theme from `$HOME`, and a test never reads or writes the real one.
 //!
 //! The binary path is read with `option_env!`, so this file compiles before the package has a
 //! `touchbard` target and each case fails at run time until it exists.
@@ -10,6 +12,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tb_core::{BarSize, BarTheme, Chord, Rect, Rgba, SpacingRules, place, presets};
 
@@ -21,8 +24,10 @@ fn touchbard() -> Command {
 }
 
 fn run(args: &[&str], stdin: &str) -> Output {
+    let home = empty_home();
     let mut child = touchbard()
         .args(args)
+        .env("HOME", &home)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -30,6 +35,18 @@ fn run(args: &[&str], stdin: &str) -> Output {
         .unwrap();
     child.stdin.take().unwrap().write_all(stdin.as_bytes()).unwrap();
     child.wait_with_output().unwrap()
+}
+
+/// A new empty home directory for one run.
+fn empty_home() -> PathBuf {
+    static RUNS: AtomicUsize = AtomicUsize::new(0);
+    let n = RUNS.fetch_add(1, Ordering::Relaxed);
+    let home = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("touchbard_cli")
+        .join(format!("home-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    home
 }
 
 fn fresh_dir(name: &str) -> PathBuf {
