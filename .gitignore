@@ -1,6 +1,6 @@
 /target
 **/*.rs.bk
-/out/
+out/
 # local issue scratch (plans and review outputs are mirrored to Notion)
 .scratch/*/review-*.json
 *.png.new
