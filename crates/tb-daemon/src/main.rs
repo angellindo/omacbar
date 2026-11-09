@@ -13,6 +13,12 @@
 //! `--sim-window` also shows the simulator's screen live in a desktop window at the bar's
 //! proportions, and a mouse press on it is the touch instead of stdin (ADR-0010); the run ends
 //! when the window closes. Without a display it exits 1 with the reason.
+//!
+//! A tap runs its button's action (ADR-0011, ADR-0012). `--emit uinput` presses keys on a
+//! virtual keyboard named `touchbard`; `--emit PATH` writes the same `input_event` records to
+//! PATH instead. Without `--emit`, or when the keyboard cannot be made, the reason is logged and
+//! each tapped key action logs that nothing was pressed. Commands run through `sh -c`, detached;
+//! their failures are logged. No action failure stops the bar.
 
 mod log;
 
@@ -21,14 +27,17 @@ use std::process::ExitCode;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 
+use std::sync::Arc;
 use tb_config::ActiveTheme;
 use tb_core::{BarSize, BarTheme, presets};
+
 use tb_daemon::{
-    Daemon, EvdevModifiers, Event, GpuRenderer, LineTouches, SimDisplay, SimWindow, TouchError, TouchSource,
-    find_fn_keyboard, forward_modifiers, sim_window_app,
+    ActionError, Actions, Daemon, EvdevModifiers, Event, GpuRenderer, KeyEmitter, LineTouches, Report,
+    ShSpawner, SimDisplay, SimWindow, TouchError, TouchSource, VirtualKeyboard, find_fn_keyboard,
+    forward_modifiers, sim_window_app,
 };
 
-const USAGE: &str = "usage: touchbard [--sim DIR] [--keys auto|PATH] [--sim-window]   (without --sim-window, touches on stdin: `down <x>` | `up`)";
+const USAGE: &str = "usage: touchbard [--sim DIR] [--keys auto|PATH] [--emit uinput|PATH] [--sim-window]   (without --sim-window, touches on stdin: `down <x>` | `up`)";
 const DEFAULT_SIM_DIR: &str = "out/touchbard";
 /// The kernel's list of input devices and their capabilities.
 const DEVICES: &str = "/proc/bus/input/devices";
@@ -42,10 +51,20 @@ enum Keys {
     Path(PathBuf),
 }
 
+/// Where the keys of tapped buttons are pressed.
+#[derive(Debug, PartialEq, Eq)]
+enum Emit {
+    /// A uinput virtual keyboard.
+    Uinput,
+    /// `input_event` records written to this file.
+    Path(PathBuf),
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct Args {
     sim_dir: PathBuf,
     keys: Option<Keys>,
+    emit: Option<Emit>,
     /// Show the simulator window, whose presses are the touches (stdin is not read).
     window: bool,
 }
@@ -64,10 +83,10 @@ fn main() -> ExitCode {
     }
 }
 
-/// `[--sim DIR] [--keys auto|PATH] [--sim-window]` in any order, each at most once; `None` for
-/// anything else.
+/// `[--sim DIR] [--keys auto|PATH] [--emit uinput|PATH] [--sim-window]` in any order, each at
+/// most once; `None` for anything else.
 fn parse_args(mut args: impl Iterator<Item = String>) -> Option<Args> {
-    let (mut sim_dir, mut keys, mut window) = (None, None, false);
+    let (mut sim_dir, mut keys, mut emit, mut window) = (None, None, None, false);
     while let Some(flag) = args.next() {
         if flag == "--sim-window" {
             if std::mem::replace(&mut window, true) {
@@ -80,13 +99,15 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Option<Args> {
             "--sim" => sim_dir.replace(PathBuf::from(value)).is_none(),
             "--keys" if value == "auto" => keys.replace(Keys::Auto).is_none(),
             "--keys" => keys.replace(Keys::Path(PathBuf::from(value))).is_none(),
+            "--emit" if value == "uinput" => emit.replace(Emit::Uinput).is_none(),
+            "--emit" => emit.replace(Emit::Path(PathBuf::from(value))).is_none(),
             _ => return None,
         };
         if !slot_was_empty {
             return None;
         }
     }
-    Some(Args { sim_dir: sim_dir.unwrap_or_else(|| PathBuf::from(DEFAULT_SIM_DIR)), keys, window })
+    Some(Args { sim_dir: sim_dir.unwrap_or_else(|| PathBuf::from(DEFAULT_SIM_DIR)), keys, emit, window })
 }
 
 /// What reaches the daemon loop. The theme thread never ends on its own, so the end of the
@@ -112,9 +133,10 @@ fn run(args: Args) -> Result<(), String> {
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
     let theme = follow_keys_and_theme(args.keys, &tx);
+    let actions = actions(args.emit);
     let touches =
         thread::spawn(move || forward_until_ended(&mut LineTouches::new(std::io::stdin().lock()), &tx));
-    run_daemon(renderer, display, theme, rx)?;
+    run_daemon(renderer, display, theme, actions, rx)?;
     join(touches, "touch reader")
 }
 
@@ -127,6 +149,7 @@ fn run_with_window(args: Args) -> Result<(), String> {
         .on_present(window.show_screen());
     let (tx, rx) = mpsc::channel();
     let theme = follow_keys_and_theme(args.keys, &tx);
+    let actions = actions(args.emit);
     let app = sim_window_app(window);
     let handle = app.handle();
     let forward_tx = tx.clone();
@@ -134,7 +157,7 @@ fn run_with_window(args: Args) -> Result<(), String> {
     let daemon = thread::spawn(move || {
         let ran = GpuRenderer::new()
             .map_err(|e| e.to_string())
-            .and_then(|renderer| run_daemon(renderer, display, theme, rx));
+            .and_then(|renderer| run_daemon(renderer, display, theme, actions, rx));
         if ran.is_err() {
             // Nothing new will be shown: close the window rather than leave it frozen.
             handle.quit();
@@ -168,14 +191,32 @@ fn follow_keys_and_theme(keys: Option<Keys>, tx: &Sender<Message>) -> BarTheme {
     }
 }
 
+/// The actions taps run: keys on the virtual keyboard `emit` asks for, commands through `sh -c`,
+/// every failure logged. Without a keyboard the reason is logged once and key actions do nothing.
+fn actions(emit: Option<Emit>) -> Actions {
+    let made = match emit {
+        None => Err("no --emit given".to_owned()),
+        Some(Emit::Uinput) => VirtualKeyboard::create().map(boxed).map_err(|e| e.to_string()),
+        Some(Emit::Path(path)) => VirtualKeyboard::record_to(&path).map(boxed).map_err(|e| e.to_string()),
+    };
+    let keys = made.map_err(|reason| log::error(format_args!("{reason}; key actions do nothing"))).ok();
+    let report: Report = Arc::new(|e: ActionError| log::error(e));
+    Actions::new(keys, Box::new(ShSpawner::new(Arc::clone(&report))), report)
+}
+
+fn boxed(keyboard: VirtualKeyboard<std::fs::File>) -> Box<dyn KeyEmitter + Send> {
+    Box::new(keyboard)
+}
+
 /// Runs the daemon on `messages` until the touches end.
 fn run_daemon(
     renderer: GpuRenderer,
     display: SimDisplay,
     theme: BarTheme,
+    actions: Actions,
     messages: mpsc::Receiver<Message>,
 ) -> Result<(), String> {
-    let mut daemon = Daemon::new(presets::default_layout(), theme, renderer, display);
+    let mut daemon = Daemon::new(presets::default_layout(), theme, renderer, display).with_actions(actions);
     let events = messages.into_iter().map_while(|message| match message {
         Message::Event(event) => Some(event),
         Message::TouchesEnded => None,

@@ -5,7 +5,7 @@ fn parse(args: &[&str]) -> Option<Args> {
 }
 
 fn sim(dir: &str, keys: Option<Keys>) -> Args {
-    Args { sim_dir: PathBuf::from(dir), keys, window: false }
+    Args { sim_dir: PathBuf::from(dir), keys, emit: None, window: false }
 }
 
 fn windowed(args: Args) -> Args {
@@ -50,4 +50,28 @@ fn sim_window_takes_no_value_and_combines_with_sim_and_keys_in_any_order() {
     );
     assert_eq!(parse(&["--sim-window", "--sim-window"]), None);
     assert_eq!(parse(&["--sim-window", "extra"]), None);
+}
+
+fn emitting(args: Args, emit: Emit) -> Args {
+    Args { emit: Some(emit), ..args }
+}
+
+#[test]
+fn emit_is_uinput_or_a_path_in_any_order_with_the_other_flags() {
+    assert_eq!(parse(&["--emit", "uinput"]), Some(emitting(sim("out/touchbard", None), Emit::Uinput)));
+    assert_eq!(
+        parse(&["--keys", "auto", "--emit", "k.bin", "--sim", "s"]),
+        Some(emitting(sim("s", Some(Keys::Auto)), Emit::Path(PathBuf::from("k.bin"))))
+    );
+    assert_eq!(
+        parse(&["--sim-window", "--emit", "uinput"]),
+        Some(emitting(windowed(sim("out/touchbard", None)), Emit::Uinput))
+    );
+}
+
+#[test]
+fn emit_takes_exactly_one_value_once() {
+    assert_eq!(parse(&["--emit"]), None);
+    assert_eq!(parse(&["--emit", "a", "--emit", "b"]), None);
+    assert_eq!(parse(&["--emit", "uinput", "--emit", "uinput"]), None);
 }

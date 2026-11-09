@@ -16,6 +16,7 @@ tb-core.workspace = true
 tb-config.workspace = true
 tb-render.workspace = true
 rune.workspace = true
+rustix.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
