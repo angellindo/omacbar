@@ -11,4 +11,4 @@ pub mod view;
 
 pub use offscreen::{Frame, RenderError, Renderer, render_frame};
 pub use scene::{BarScene, SceneButton, build_scene};
-pub use view::{bar_view, label_style, label_width};
+pub use view::{bar_button, bar_view, label_style, label_width};

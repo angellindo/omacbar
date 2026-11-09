@@ -5,7 +5,7 @@
 use rune::{Drag, El, Phase, Tx, el, text};
 use tb_core::reorder::drop_button;
 use tb_core::{BarSize, ButtonId, Rgba, SpacingRules};
-use tb_render::{BarScene, SceneButton, build_scene, label_style, view::color};
+use tb_render::{BarScene, SceneButton, bar_button, build_scene, view::color};
 
 use crate::app::State;
 
@@ -31,7 +31,6 @@ pub(crate) fn preview(s: &State) -> El {
         return text("this layer does not fit the bar").key("preview").color(color(t.accent));
     };
     let k = PREVIEW_SCALE;
-    let label = label_style(f32::from(scene.font_size) * k);
     let dragged = |b: &&SceneButton| s.drag.as_ref().is_some_and(|d| d.id == b.id);
     // The dragged button comes last so it is drawn over the buttons it passes.
     let (lifted, resting): (Vec<_>, Vec<_>) = scene.buttons.iter().partition(dragged);
@@ -42,17 +41,22 @@ pub(crate) fn preview(s: &State) -> El {
             let dx = s.drag.as_ref().filter(|d| d.id == b.id).map(|d| d.dx);
             let marked = dx.is_some() || s.selected.as_ref() == Some(&b.id);
             let (id, left) = (b.id.clone(), b.rect.x);
-            el().key(format!("preview-{}", b.id))
-                .role("button")
-                .absolute(f32::from(b.rect.x) * k + dx.unwrap_or(0.0), f32::from(b.rect.y) * k)
-                .size(f32::from(b.rect.width) * k, f32::from(b.rect.height) * k)
+            // Drawn by the bar's own button view at preview scale: radius, clip, border, label
+            // padding and the ellipsized label are the bar's.
+            let mut button = bar_button(&scene, b, k)
+                .key(format!("preview-{}", b.id))
+                .on_drag(move |s: &mut State, d: &mut Drag, tx: &mut Tx| on_drag(s, &id, left, d, tx));
+            if let Some(dx) = dx {
                 // Fills are translucent: the lifted button is backed by the bar so what it passes
                 // over does not show through.
-                .fill(color(if dx.is_some() { over(b.fill, scene.background) } else { b.fill }))
-                .border(if marked { 2.0 } else { 1.0 }, color(if marked { t.accent } else { b.border }))
-                .center()
-                .on_drag(move |s: &mut State, d: &mut Drag, tx: &mut Tx| on_drag(s, &id, left, d, tx))
-                .child(text(b.label.clone()).font(label).color(color(b.text)))
+                button = button
+                    .absolute(f32::from(b.rect.x) * k + dx, f32::from(b.rect.y) * k)
+                    .fill(color(over(b.fill, scene.background)));
+            }
+            if marked {
+                button = button.border(2.0, color(t.accent));
+            }
+            button
         }))
 }
 
