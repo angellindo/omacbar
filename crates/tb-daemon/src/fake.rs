@@ -1,9 +1,10 @@
 //! Fakes at the daemon's device seams, for tests here and in later tickets (testing standard rule 2).
 
-use tb_core::{Rect, Rgba};
+use tb_core::{Modifiers, Rect, Rgba};
 use tb_render::{BarScene, Frame};
 
 use crate::display::{Display, DisplayError};
+use crate::keys::{KeyError, ModifierSource};
 use crate::render::SceneRenderer;
 use crate::touch::{Touch, TouchError, TouchSource};
 
@@ -80,5 +81,23 @@ impl ScriptedTouches {
 impl TouchSource for ScriptedTouches {
     fn next_touch(&mut self) -> Result<Option<Touch>, TouchError> {
         Ok(self.touches.next())
+    }
+}
+
+/// A modifier source that yields a fixed list of held modifiers, then closes.
+#[derive(Debug)]
+pub struct ScriptedModifiers {
+    changes: std::vec::IntoIter<Modifiers>,
+}
+
+impl ScriptedModifiers {
+    pub fn new(changes: impl IntoIterator<Item = Modifiers>) -> Self {
+        Self { changes: changes.into_iter().collect::<Vec<_>>().into_iter() }
+    }
+}
+
+impl ModifierSource for ScriptedModifiers {
+    fn next_modifiers(&mut self) -> Result<Option<Modifiers>, KeyError> {
+        Ok(self.changes.next())
     }
 }

@@ -4,6 +4,11 @@
 //! (start, F5 pressed, released). Touch lines are `down <x>` or `up`; it exits when stdin closes.
 //! The bar is drawn in the active Omarchy theme of `$HOME` (ADR-0008), or in the bundled Tokyo
 //! Night with the reason on stderr, and redrawn when the theme is switched.
+//!
+//! `--keys auto` follows the held Fn and modifier keys of the Fn keyboard (found by its `KEY_FN`
+//! capability in `/proc/bus/input/devices`) and shows their layer; `--keys PATH` reads key events
+//! from PATH instead (ADR-0009). Without `--keys` no keyboard is read. A keyboard that cannot be
+//! opened or fails is logged and the bar stays on, or goes back to, the default layer.
 
 mod log;
 
@@ -14,17 +19,37 @@ use std::thread;
 
 use tb_config::ActiveTheme;
 use tb_core::{BarSize, BarTheme, presets};
-use tb_daemon::{Daemon, Event, GpuRenderer, LineTouches, SimDisplay, TouchError, TouchSource};
+use tb_daemon::{
+    Daemon, EvdevModifiers, Event, GpuRenderer, LineTouches, SimDisplay, TouchError, TouchSource,
+    find_fn_keyboard, forward_modifiers,
+};
 
-const USAGE: &str = "usage: touchbard [--sim DIR]   (touches on stdin: `down <x>` | `up`)";
+const USAGE: &str = "usage: touchbard [--sim DIR] [--keys auto|PATH]   (touches on stdin: `down <x>` | `up`)";
 const DEFAULT_SIM_DIR: &str = "out/touchbard";
+/// The kernel's list of input devices and their capabilities.
+const DEVICES: &str = "/proc/bus/input/devices";
+
+/// Where the held modifier keys are read from.
+#[derive(Debug, PartialEq, Eq)]
+enum Keys {
+    /// The Fn keyboard, found in `/proc/bus/input/devices`.
+    Auto,
+    /// Key event records from this file or device.
+    Path(PathBuf),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Args {
+    sim_dir: PathBuf,
+    keys: Option<Keys>,
+}
 
 fn main() -> ExitCode {
-    let Some(sim_dir) = parse_args(std::env::args().skip(1)) else {
+    let Some(args) = parse_args(std::env::args().skip(1)) else {
         log::error(USAGE);
         return ExitCode::from(2);
     };
-    match run(sim_dir) {
+    match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             log::error(message);
@@ -33,13 +58,22 @@ fn main() -> ExitCode {
     }
 }
 
-/// The simulator directory from `[--sim DIR]`; `None` for anything else.
-fn parse_args(mut args: impl Iterator<Item = String>) -> Option<PathBuf> {
-    match (args.next().as_deref(), args.next(), args.next()) {
-        (None, _, _) => Some(PathBuf::from(DEFAULT_SIM_DIR)),
-        (Some("--sim"), Some(dir), None) => Some(PathBuf::from(dir)),
-        _ => None,
+/// `[--sim DIR] [--keys auto|PATH]` in any order, each at most once; `None` for anything else.
+fn parse_args(mut args: impl Iterator<Item = String>) -> Option<Args> {
+    let (mut sim_dir, mut keys) = (None, None);
+    while let Some(flag) = args.next() {
+        let value = args.next()?;
+        let slot_was_empty = match flag.as_str() {
+            "--sim" => sim_dir.replace(PathBuf::from(value)).is_none(),
+            "--keys" if value == "auto" => keys.replace(Keys::Auto).is_none(),
+            "--keys" => keys.replace(Keys::Path(PathBuf::from(value))).is_none(),
+            _ => return None,
+        };
+        if !slot_was_empty {
+            return None;
+        }
     }
+    Some(Args { sim_dir: sim_dir.unwrap_or_else(|| PathBuf::from(DEFAULT_SIM_DIR)), keys })
 }
 
 /// What reaches the daemon loop. The theme thread never ends on its own, so the end of the
@@ -49,11 +83,20 @@ enum Message {
     TouchesEnded,
 }
 
+impl From<Event> for Message {
+    fn from(event: Event) -> Self {
+        Message::Event(event)
+    }
+}
+
 /// Startup state: the default preset (config file: a later ticket) and the active theme of `$HOME`,
 /// followed while running.
-fn run(sim_dir: PathBuf) -> Result<(), String> {
-    let display = SimDisplay::new(BarSize::MACBOOK_PRO, sim_dir).map_err(|e| e.to_string())?;
+fn run(args: Args) -> Result<(), String> {
+    let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
+    if let Some(keys) = args.keys {
+        follow_keys(keys, tx.clone());
+    }
     let theme = if let Some(home) = std::env::var_os("HOME") {
         follow_theme(ActiveTheme::under_home(Path::new(&home)), tx.clone())
     } else {
@@ -86,6 +129,44 @@ fn forward_touches(source: &mut impl TouchSource, events: &Sender<Message>) -> R
         }
     }
     Ok(())
+}
+
+/// A thread that sends `Event::Modifiers` for every change of the held keys on `keys`. When the
+/// keyboard is not found, cannot be opened or fails, the reason is logged and the bar stays on,
+/// or goes back to, the default layer; touches and theme switches go on.
+fn follow_keys(keys: Keys, events: Sender<Message>) {
+    thread::spawn(move || {
+        let path = match keys {
+            Keys::Path(path) => path,
+            Keys::Auto => match std::fs::read_to_string(DEVICES).map(|text| find_fn_keyboard(&text)) {
+                Ok(Some(keyboard)) => {
+                    log::info(format_args!("layers follow {} ({})", keyboard.name, keyboard.path.display()));
+                    keyboard.path
+                }
+                Ok(None) => {
+                    log::error(format_args!(
+                        "no keyboard reports Fn in {DEVICES}; the bar stays on the default layer"
+                    ));
+                    return;
+                }
+                Err(e) => {
+                    log::error(format_args!(
+                        "cannot read {DEVICES}: {e}; the bar stays on the default layer"
+                    ));
+                    return;
+                }
+            },
+        };
+        let ended =
+            EvdevModifiers::open(&path).and_then(|mut keyboard| forward_modifiers(&mut keyboard, &events));
+        match ended {
+            Ok(()) => log::info(format_args!(
+                "the keyboard {} closed; the bar is on the default layer",
+                path.display()
+            )),
+            Err(e) => log::error(format_args!("{e}; the bar is on the default layer")),
+        }
+    });
 }
 
 /// The active theme now, and a thread that sends `Event::Theme` after every theme switch. The
@@ -126,20 +207,36 @@ fn active_theme(active: &ActiveTheme) -> BarTheme {
 mod tests {
     use super::*;
 
-    fn parse(args: &[&str]) -> Option<PathBuf> {
+    fn parse(args: &[&str]) -> Option<Args> {
         parse_args(args.iter().map(|a| (*a).to_owned()))
     }
 
+    fn sim(dir: &str, keys: Option<Keys>) -> Option<Args> {
+        Some(Args { sim_dir: PathBuf::from(dir), keys })
+    }
+
     #[test]
-    fn no_arguments_use_the_default_simulator_directory() {
-        assert_eq!(parse(&[]), Some(PathBuf::from("out/touchbard")));
+    fn no_arguments_use_the_default_simulator_directory_and_read_no_keyboard() {
+        assert_eq!(parse(&[]), sim("out/touchbard", None));
     }
 
     #[test]
     fn sim_takes_exactly_one_directory() {
-        assert_eq!(parse(&["--sim", "x/y"]), Some(PathBuf::from("x/y")));
+        assert_eq!(parse(&["--sim", "x/y"]), sim("x/y", None));
         assert_eq!(parse(&["--sim"]), None);
         assert_eq!(parse(&["--sim", "x", "extra"]), None);
+        assert_eq!(parse(&["--sim", "x", "--sim", "y"]), None);
         assert_eq!(parse(&["x"]), None);
+    }
+
+    #[test]
+    fn keys_is_auto_or_a_path_in_either_order_with_sim() {
+        assert_eq!(parse(&["--keys", "auto"]), sim("out/touchbard", Some(Keys::Auto)));
+        assert_eq!(
+            parse(&["--keys", "k.bin", "--sim", "s"]),
+            sim("s", Some(Keys::Path(PathBuf::from("k.bin"))))
+        );
+        assert_eq!(parse(&["--sim", "s", "--keys", "auto"]), sim("s", Some(Keys::Auto)));
+        assert_eq!(parse(&["--keys", "auto", "--keys", "auto"]), None);
     }
 }

@@ -5,10 +5,14 @@ mod daemon;
 mod damage;
 mod display;
 pub mod fake;
+mod fn_keyboard;
+mod keys;
 mod render;
 mod touch;
 
 pub use daemon::{Daemon, DaemonError, Event};
 pub use display::{Display, DisplayError, SimDisplay};
+pub use fn_keyboard::{FnKeyboard, find_fn_keyboard};
+pub use keys::{EvdevModifiers, KeyError, ModifierSource, forward_modifiers};
 pub use render::{GpuRenderer, SceneRenderer};
 pub use touch::{LineTouches, Touch, TouchError, TouchSource, forward_touches};
