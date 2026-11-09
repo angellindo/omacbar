@@ -42,7 +42,7 @@ fn press_f5() -> Vec<(Frame, Vec<Rect>)> {
     let mut d = Daemon::new(
         presets::default_layout(),
         BarTheme::omarchy_fallback(),
-        GpuRenderer::new(),
+        GpuRenderer::new().unwrap(),
         RecordingDisplay::new(),
     );
     d.run(rx).unwrap();
@@ -108,8 +108,12 @@ fn with_f5_label(label: &str) -> Layout {
 
 /// Runs `layout` through `events` with the real renderer; returns every present.
 fn presents(layout: Layout, events: Vec<Event>) -> Vec<(Frame, Vec<Rect>)> {
-    let mut d =
-        Daemon::new(layout, BarTheme::omarchy_fallback(), GpuRenderer::new(), RecordingDisplay::new());
+    let mut d = Daemon::new(
+        layout,
+        BarTheme::omarchy_fallback(),
+        GpuRenderer::new().unwrap(),
+        RecordingDisplay::new(),
+    );
     d.run(events).unwrap();
     d.display().presents().iter().map(|p| (p.frame.clone(), p.damage.clone())).collect()
 }
