@@ -1,6 +1,10 @@
 //! The layout a user edits: layers of grouped buttons.
 
+use std::fmt;
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::chord::Chord;
 
@@ -55,6 +59,39 @@ impl Width {
             Width::Auto => 1,
             Width::Span(n) => n as u32,
             Width::Px(_) => 0,
+        }
+    }
+}
+
+/// Text that is not a width in the config file's words (`auto`, `span N`, `px N`).
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("`{0}` is not a width: write `auto`, `span N` or `px N`")]
+pub struct WidthTextError(pub String);
+
+/// Reads `auto`, `span N` (N in 0..=255) or `px N` (N in 0..=65535); spaces around and between
+/// the words are ignored. Range problems for the bar are left to validation.
+impl FromStr for Width {
+    type Err = WidthTextError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let err = || WidthTextError(s.trim().to_owned());
+        let words: Vec<&str> = s.split_whitespace().collect();
+        match words.as_slice() {
+            ["auto"] => Ok(Width::Auto),
+            ["span", n] => n.parse().map(Width::Span).map_err(|_| err()),
+            ["px", n] => n.parse().map(Width::Px).map_err(|_| err()),
+            _ => Err(err()),
+        }
+    }
+}
+
+/// The text [`Width::from_str`] reads back: `auto`, `span 2`, `px 120`.
+impl fmt::Display for Width {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Width::Auto => f.write_str("auto"),
+            Width::Span(n) => write!(f, "span {n}"),
+            Width::Px(px) => write!(f, "px {px}"),
         }
     }
 }

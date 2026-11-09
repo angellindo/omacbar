@@ -2,7 +2,10 @@
 
 use thiserror::Error;
 
-use crate::model::Layer;
+use crate::geometry::BarSize;
+use crate::layout::{LayoutError, place};
+use crate::model::{ButtonId, Layer};
+use crate::spacing::SpacingRules;
 
 /// A button slot: group index, then index inside the group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +37,85 @@ pub fn move_button(layer: &mut Layer, from: Slot, to: Slot) -> Result<(), Reorde
     let button = layer.groups[from.group].buttons.remove(from.index);
     layer.groups[to.group].buttons.insert(to.index, button);
     Ok(())
+}
+
+/// Which way a keyboard reorder moves a button along the bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Toward {
+    /// Toward the bar's left edge, the ESC side.
+    Left,
+    /// Toward the bar's right edge.
+    Right,
+}
+
+/// Where button `id` sits in `layer` (the first match when ids repeat).
+pub(crate) fn slot_of(layer: &Layer, id: &ButtonId) -> Option<Slot> {
+    layer
+        .groups
+        .iter()
+        .enumerate()
+        .find_map(|(group, g)| g.buttons.iter().position(|b| &b.id == id).map(|index| Slot { group, index }))
+}
+
+/// Moves button `id` one step toward the bar's left (ESC side) or right edge: past its neighbour
+/// in its group, or from the group's edge to the near end of the adjacent group. The layer is left
+/// with no empty group. False (nothing changed) at the layer's ends or when `id` is not in `layer`.
+pub fn step_button(layer: &mut Layer, id: &ButtonId, toward: Toward) -> bool {
+    let Some(from) = slot_of(layer, id) else { return false };
+    let len = layer.groups[from.group].buttons.len();
+    let to = match toward {
+        Toward::Left if from.index > 0 => Slot { index: from.index - 1, ..from },
+        Toward::Left if from.group > 0 => {
+            let group = from.group - 1;
+            Slot { group, index: layer.groups[group].buttons.len() }
+        }
+        Toward::Right if from.index + 1 < len => Slot { index: from.index + 1, ..from },
+        Toward::Right if from.group + 1 < layer.groups.len() => Slot { group: from.group + 1, index: 0 },
+        Toward::Left | Toward::Right => return false,
+    };
+    if move_button(layer, from, to).is_err() {
+        return false;
+    }
+    drop_if_empty(layer, from.group);
+    true
+}
+
+/// Moves button `id` to where a drop at bar x `x` puts it: before the button under x (else the
+/// nearest, ties left) when x is left of that button's centre, after it otherwise, in its group.
+/// The layer is left with no empty group. `Ok(false)` when nothing changes (dropped on itself,
+/// unknown id); `Err` when the layer does not fit the bar (no placements to drop on).
+pub fn drop_button(
+    layer: &mut Layer,
+    id: &ButtonId,
+    x: u16,
+    size: BarSize,
+    rules: &SpacingRules,
+) -> Result<bool, LayoutError> {
+    let placed = place(layer, size, rules)?;
+    let Some(from) = slot_of(layer, id) else { return Ok(false) };
+    let target = placed.iter().find(|p| p.rect.contains_x(x)).or_else(|| {
+        // `min_by_key` keeps the first of equals: placements run left to right, so ties go left.
+        placed.iter().min_by_key(|p| p.rect.distance_x(x))
+    });
+    let Some(target) = target.filter(|t| &t.id != id) else { return Ok(false) };
+    let before_target = u32::from(x) * 2 < u32::from(target.rect.x) * 2 + u32::from(target.rect.width);
+    let old = layer.clone();
+    let button = layer.groups[from.group].buttons.remove(from.index);
+    let Some(at) = slot_of(layer, &target.id) else {
+        *layer = old;
+        return Ok(false);
+    };
+    let index = if before_target { at.index } else { at.index + 1 };
+    layer.groups[at.group].buttons.insert(index, button);
+    drop_if_empty(layer, from.group);
+    Ok(*layer != old)
+}
+
+/// Removes group `group` when it holds no button, so no editing step leaves an empty group.
+pub(crate) fn drop_if_empty(layer: &mut Layer, group: usize) {
+    if layer.groups.get(group).is_some_and(|g| g.buttons.is_empty()) {
+        layer.groups.remove(group);
+    }
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@
 
 pub mod chord;
 pub mod config;
+pub mod edit;
 pub mod geometry;
 pub mod hit;
 pub mod layout;

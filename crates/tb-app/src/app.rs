@@ -1,72 +1,223 @@
-//! Configurator state and view. Editing (add, edit, drag to reorder) lands in TB tickets; this is
-//! the tracer: pick a layer, see it drawn by the real bar renderer at preview scale.
+//! Configurator state and view: the config file it edits, the shown layer, the selected button,
+//! and what a key, a press or the save button does to them.
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use rune::tok::TextStyle;
-use rune::{AppSpec, Cx, El, Family, col, el, row, text};
-use tb_config::ActiveTheme;
-use tb_core::{BarSize, BarTheme, Chord, Layout, SpacingRules, presets};
-use tb_render::{BarScene, build_scene, label_style, view::color};
+use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, Tx, col, el, row, text};
+use tb_config::{ActiveTheme, ConfigFile, ConfigFileError, Loaded, default_path};
+use tb_core::config::Config;
+use tb_core::reorder::{Toward, step_button};
+use tb_core::{BarSize, BarTheme, Button, ButtonId, Chord, Layer, SpacingRules, place};
+use tb_render::view::color;
 
-/// Preview scale: the 2170 px bar shown at half size fits a 1200 pt window.
-const PREVIEW_SCALE: f32 = 0.5;
+use crate::panel::{Fields, issues, panel, toolbar};
+use crate::preview::{Dragging, PREVIEW_SCALE, preview};
+
+/// The window size: the bar preview on top, the button list and edit panel below it.
+pub const WINDOW: (f32, f32) = (1200.0, 760.0);
 
 pub struct State {
-    pub layout: Layout,
+    /// What is shown, edited and saved.
+    pub config: Config,
     pub theme: BarTheme,
+    /// The shown layer.
     pub chord: Chord,
+    /// The selected button on the shown layer.
+    pub selected: Option<ButtonId>,
+    /// The file `save` writes; `None` when `HOME` is unset.
+    file: Option<ConfigFile>,
+    /// The edit panel's text buffers for the selected button.
+    pub(crate) fields: Fields,
+    pub(crate) drag: Option<Dragging>,
+    status: String,
 }
 
-/// Startup: the active Omarchy theme of `$HOME` (read once, here), or the bundled Tokyo Night when
-/// `HOME` is unset or the theme cannot be used (`ActiveTheme::load`).
+impl State {
+    /// The configurator on the config file at `path` (None: `HOME` unset), drawn in `theme`.
+    /// Loads it with `ConfigFile::load` (writes the default when missing); an invalid or
+    /// unreadable file leaves the default config in the editor, the file untouched, and says so
+    /// in the status. Without a path the default config is edited and saving is refused.
+    pub fn open(path: Option<PathBuf>, theme: BarTheme) -> State {
+        let mut s = State {
+            config: Config::default(),
+            theme,
+            chord: Chord::Default,
+            selected: None,
+            file: None,
+            fields: Fields::default(),
+            drag: None,
+            status: String::new(),
+        };
+        let Some(path) = path else {
+            NO_HOME.clone_into(&mut s.status);
+            return s;
+        };
+        let mut file = ConfigFile::new(path);
+        let shown = file.path().display().to_string();
+        s.status = match file.load(&s.theme) {
+            Ok(Loaded::Read | Loaded::WroteDefault) => {
+                s.config = file.config().clone();
+                format!("editing {shown}")
+            }
+            Ok(Loaded::Rejected(issues)) => {
+                format!("{shown} has {} issue(s): editing the default; saving replaces it", issues.len())
+            }
+            Err(e) => format!("{e}: editing the default; saving replaces it"),
+        };
+        s.file = Some(file);
+        s
+    }
+
+    /// The shown layer.
+    pub(crate) fn layer(&self) -> Option<&Layer> {
+        self.config.layout.layer(self.chord)
+    }
+
+    pub(crate) fn layer_mut(&mut self) -> Option<&mut Layer> {
+        self.config.layout.layer_mut(self.chord)
+    }
+
+    /// The selected button, when it is on the shown layer.
+    pub(crate) fn selected_button(&self) -> Option<&Button> {
+        let id = self.selected.as_ref()?;
+        self.layer()?.buttons().find(|b| &b.id == id)
+    }
+
+    pub(crate) fn selected_button_mut(&mut self) -> Option<&mut Button> {
+        let id = self.selected.clone()?;
+        self.layer_mut()?.groups.iter_mut().flat_map(|g| g.buttons.iter_mut()).find(|b| b.id == id)
+    }
+
+    /// Makes `id` the selected button and fills the edit panel with its fields.
+    pub(crate) fn select(&mut self, id: Option<ButtonId>) {
+        self.selected = id;
+        self.fields = Fields::of(self.selected_button());
+    }
+
+    /// Moves the selected button one step toward `toward`; false when nothing is selected.
+    fn step_selected(&mut self, toward: Toward) -> bool {
+        let Some(id) = self.selected.clone() else { return false };
+        if let Some(layer) = self.layer_mut() {
+            step_button(layer, &id, toward);
+        }
+        true
+    }
+
+    fn show_layer(&mut self, chord: Chord) {
+        self.chord = chord;
+        self.select(None);
+    }
+
+    /// Writes the config through `ConfigFile::save`, which refuses a config with issues.
+    pub(crate) fn save(&mut self) {
+        let Some(file) = &mut self.file else {
+            NO_HOME.clone_into(&mut self.status);
+            return;
+        };
+        self.status = match file.save(self.config.clone(), &self.theme) {
+            Ok(()) => format!("saved {}", file.path().display()),
+            Err(ConfigFileError::Invalid(issues)) => format!("not saved: {} issue(s)", issues.len()),
+            Err(e) => format!("not saved: {e}"),
+        };
+    }
+}
+
+const NO_HOME: &str = "HOME is not set: the config cannot be saved";
+
+/// Alt+Left / Alt+Right move the selected button one step toward the bar's left / right edge.
+/// Other keys, other modifiers, or no selection: not consumed.
+pub fn on_key(s: &mut State, ev: &KeyEvent, _: &mut Tx) -> bool {
+    let m = ev.mods;
+    if !m.alt || m.ctrl || m.cmd || m.logo {
+        return false;
+    }
+    let toward = match ev.key {
+        Key::Left => Toward::Left,
+        Key::Right => Toward::Right,
+        _ => return false,
+    };
+    s.step_selected(toward)
+}
+
+/// Startup: `$HOME` is read once, here. The config file is `default_path(home)`, drawn in the
+/// active Omarchy theme of that home (`ActiveTheme::load`); without `HOME`, the bundled Tokyo
+/// Night and no file.
 fn init() -> State {
-    let theme = std::env::var_os("HOME").map_or_else(BarTheme::omarchy_fallback, |home| {
-        ActiveTheme::under_home(Path::new(&home)).load().theme
-    });
-    with_theme(theme)
-}
-
-/// The default layout on its default layer, drawn in `theme`.
-fn with_theme(theme: BarTheme) -> State {
-    State { layout: presets::default_layout(), theme, chord: Chord::Default }
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let theme = home
+        .as_deref()
+        .map_or_else(BarTheme::omarchy_fallback, |home| ActiveTheme::under_home(home).load().theme);
+    State::open(home.as_deref().map(default_path), theme)
 }
 
 pub fn spec() -> AppSpec<State> {
     AppSpec {
-        scenes: &[("fn", |s| s.chord = Chord::Fn), ("fn-ctrl", |s| s.chord = Chord::FnCtrl)],
-        ..AppSpec::new("Touch Bar Customizer", (1200.0, 360.0), init, view)
+        scenes: &[
+            ("fn", |s| s.show_layer(Chord::Fn)),
+            ("fn-ctrl", |s| s.show_layer(Chord::FnCtrl)),
+            ("selected", |s| s.select(Some(ButtonId::new("f3")))),
+            ("dragging", |s| {
+                s.select(Some(ButtonId::new("f3")));
+                lift(s, "f3");
+            }),
+            ("reordered", |s| {
+                s.select(Some(ButtonId::new("f3")));
+                s.step_selected(Toward::Left);
+                s.step_selected(Toward::Left);
+            }),
+            ("added", |s| {
+                s.select(Some(ButtonId::new("f3")));
+                s.add(false);
+            }),
+            ("issues", |s| {
+                let f3 = ButtonId::new("f3");
+                s.select(Some(f3.clone()));
+                if let Some(b) = s.selected_button_mut() {
+                    b.label.clear();
+                    b.style.fill = Some("nope".to_owned());
+                }
+                s.select(Some(f3));
+            }),
+        ],
+        on_key: Some(on_key),
+        ..AppSpec::new("Touch Bar Customizer", WINDOW, init, view)
     }
 }
 
-fn scene(s: &State) -> Option<BarScene> {
-    let layer = s.layout.layer(s.chord)?;
-    build_scene(layer, &s.theme, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD, None).ok()
+/// The `dragging` scene: button `id` lifted and carried left by its own width, not yet dropped.
+fn lift(s: &mut State, id: &str) {
+    let width = s
+        .layer()
+        .and_then(|layer| place(layer, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD).ok())
+        .and_then(|placed| placed.into_iter().find(|p| p.id.as_str() == id))
+        .map(|p| f32::from(p.rect.width) * PREVIEW_SCALE);
+    if let Some(width) = width {
+        s.drag = Some(Dragging { id: ButtonId::new(id), dx: -width });
+    }
 }
 
-fn view(s: &State, _: &mut Cx<State>) -> El {
+pub(crate) fn body() -> TextStyle {
+    TextStyle::new(14.0, 500.0).family(Family::SystemMono)
+}
+
+/// A pressable, keyed text button in the configurator's look; `active` draws it in the accent.
+pub(crate) fn pressable(t: &BarTheme, key: &str, label: &str, active: bool) -> El {
+    el().key(key)
+        .role("button")
+        .label(label)
+        .padding(8.0)
+        .fill(color(if active { t.accent } else { t.button_fill }))
+        .border(1.0, color(t.button_border))
+        .child(text(label).font(body()).color(color(if active { t.pressed_text } else { t.button_text })))
+}
+
+pub fn view(s: &State, _: &mut Cx<State>) -> El {
     let t = &s.theme;
-    let body = TextStyle::new(14.0, 500.0).family(Family::SystemMono);
-    let tabs = row().gap(8.0).children(s.layout.chords().into_iter().map(|chord| {
-        let active = chord == s.chord;
-        el().key(format!("tab-{chord:?}").to_lowercase())
-            .role("tab")
-            .label(chord.label())
-            .padding(8.0)
-            .fill(color(if active { t.accent } else { t.button_fill }))
-            .border(1.0, color(t.button_border))
-            .on_press(move |s: &mut State| s.chord = chord)
-            .child(text(chord.label()).font(body).color(color(if active {
-                t.pressed_text
-            } else {
-                t.button_text
-            })))
+    let tabs = row().gap(8.0).children(s.config.layout.chords().into_iter().map(|chord| {
+        let key = format!("tab-{chord:?}").to_lowercase();
+        pressable(t, &key, chord.label(), chord == s.chord).on_press(move |s: &mut State| s.show_layer(chord))
     }));
-    let list = s.layout.layer(s.chord).map(|layer| {
-        col().key("button-list").gap(4.0).children(layer.buttons().map(|b| {
-            text(format!("{:<18} {:<8} {:?}", b.id, b.label, b.width)).font(body).color(color(t.button_text))
-        }))
-    });
     col()
         .w_full()
         .h_full()
@@ -75,28 +226,33 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
         .fill(color(t.background))
         .child(tabs)
         .child(preview(s))
-        .children(list)
+        .child(toolbar(s))
+        .child(row().gap(32.0).children(button_list(s)).child(panel(s)))
+        .child(issues(s))
+        .child(text(s.status.clone()).key("status").w_full().wrap().font(body()).color(color(t.button_text)))
 }
 
-/// The bar exactly as the renderer lays it out, scaled down.
-fn preview(s: &State) -> El {
-    let Some(scene) = scene(s) else {
-        return text("this layer does not fit the bar").color(color(s.theme.accent));
-    };
-    let k = PREVIEW_SCALE;
-    let label = label_style(f32::from(scene.font_size) * k);
-    el().key("preview")
-        .size(f32::from(scene.size.width) * k, f32::from(scene.size.height) * k)
-        .fill(color(scene.background))
-        .children(scene.buttons.iter().map(|b| {
-            el().key(format!("preview-{}", b.id))
-                .absolute(f32::from(b.rect.x) * k, f32::from(b.rect.y) * k)
-                .size(f32::from(b.rect.width) * k, f32::from(b.rect.height) * k)
-                .fill(color(b.fill))
-                .border(1.0, color(b.border))
-                .center()
-                .child(text(b.label.clone()).font(label).color(color(b.text)))
-        }))
+/// One row per button of the shown layer; pressing a row selects its button.
+fn button_list(s: &State) -> Option<El> {
+    let t = &s.theme;
+    let layer = s.layer()?;
+    Some(col().key("button-list").gap(2.0).children(layer.buttons().map(|b| {
+        let selected = s.selected.as_ref() == Some(&b.id);
+        let id = b.id.clone();
+        el().key(format!("row-{}", b.id))
+            .role("button")
+            .padding(2.0)
+            .fill(color(if selected { t.accent } else { t.background }))
+            .on_press_tx(move |s: &mut State, tx: &mut Tx| {
+                s.select(Some(id.clone()));
+                tx.blur();
+            })
+            .child(
+                text(format!("{:<12} {:<10} {}", b.id, b.label, b.width))
+                    .font(body())
+                    .color(color(if selected { t.pressed_text } else { t.button_text })),
+            )
+    })))
 }
 
 #[cfg(test)]
@@ -105,13 +261,10 @@ mod tests {
     use rune::{Env, Runtime};
 
     #[test]
-    fn tapping_a_layer_tab_switches_the_previewed_layer() {
-        let mut rt = Runtime::new(
-            with_theme(BarTheme::omarchy_fallback()),
-            view,
-            (1200.0, 360.0),
-            Env::new(true, 1.0),
-        );
+    fn tapping_a_layer_tab_switches_the_previewed_layer_and_clears_the_selection() {
+        let mut state = State::open(None, BarTheme::omarchy_fallback());
+        state.select(Some(ButtonId::new("f1")));
+        let mut rt = Runtime::new(state, view, WINDOW, Env::new(true, 1.0));
         rt.frame(0.0);
         assert!(rt.presented("preview-f1").is_some(), "starts on the F-key layer");
         let (x, y) = rt.find("tab-fnctrl").unwrap();
@@ -121,7 +274,16 @@ mod tests {
             rt.frame(1.0 / 60.0);
         }
         assert_eq!(rt.state.chord, Chord::FnCtrl);
+        assert_eq!(rt.state.selected, None);
         assert!(rt.find("preview-lock").is_some(), "Fn + Ctrl buttons are previewed");
         assert!(rt.find("preview-f1").is_none(), "F-keys are gone (lookups skip exiting elements)");
+    }
+
+    #[test]
+    fn without_home_the_default_config_is_edited_and_saving_is_refused() {
+        let mut s = State::open(None, BarTheme::omarchy_fallback());
+        assert_eq!(s.config, Config::default());
+        s.save();
+        assert_eq!(s.status, NO_HOME);
     }
 }
