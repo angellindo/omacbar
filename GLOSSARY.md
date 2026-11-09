@@ -83,7 +83,14 @@ Where frames go: the Touch Bar via DRM, `/dev/dfr0`, or the simulator (PNG/windo
 _Avoid_: output, sink, driver
 
 **Simulator**:
-The display backend that shows frames on screen or writes PNGs, for work without the bar.
+The display backend for work without the bar: it writes each screen it shows as a PNG and, with
+the simulator window, shows it live.
+_Avoid_: emulator, mock bar
+
+**Simulator window**:
+A desktop window that shows the simulator's screen live at the bar's proportions. Pressing the
+primary mouse button on it lands a touch at the matching bar x; releasing the button lifts it.
+_Avoid_: preview (that is the configurator's), bar window, emulator
 
 **Daemon**:
 `touchbard`, the background process that owns the bar: it renders the shown layer, presents

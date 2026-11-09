@@ -2,7 +2,7 @@
 
 `tb-daemon` (library `tb_daemon`, binary `touchbard`) is the only crate that will touch devices
 (R1). It depends on `tb-core` (layout, hit-test, chords) and `tb-render` (scene, frame,
-offscreen render); it does not depend on `rune` directly, and nothing depends on it. It is a
+offscreen render); it does not depend on `rune` directly (amended by ADR-0010: the simulator window), and nothing depends on it. It is a
 library plus a thin binary so tests reach its seams (`Display`, `TouchSource`, the scene
 renderer) without spawning a process.
 
