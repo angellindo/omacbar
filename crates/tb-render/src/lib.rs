@@ -10,4 +10,4 @@ pub mod view;
 
 pub use offscreen::{Frame, render_frame};
 pub use scene::{BarScene, SceneButton, build_scene};
-pub use view::bar_view;
+pub use view::{bar_view, label_width};

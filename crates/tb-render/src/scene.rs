@@ -65,7 +65,7 @@ pub fn build_scene(
 
 /// The label as the bar shows it: one line (button standard § Label), so every control character
 /// (line breaks, tabs) becomes a space. A label still too wide is ellipsized by the view.
-fn one_line(label: &str) -> String {
+pub(crate) fn one_line(label: &str) -> String {
     label.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
 }
 
