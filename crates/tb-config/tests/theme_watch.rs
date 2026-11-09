@@ -1,13 +1,15 @@
 //! A theme watch reports a theme switch (as `omarchy theme set` makes it: stage `next-theme`,
-//! remove `theme`, rename `next-theme` to `theme`, write `theme.generation` and `theme.name`) and
-//! a signal from the shipped `theme-set.d` hook; other changes under the Omarchy state directory
-//! are not switches. Each test builds its own home under cargo's temp dir from the theme fixtures
-//! (never the real `$HOME`). Positive waits are long (loaded laptop), negative waits short.
+//! remove `theme`, rename `next-theme` to `theme`, write `theme.generation` and `theme.name`);
+//! other changes under the Omarchy state directory are not switches. No test in this file may
+//! start a child process: a spawned child holds the other tests' setup write handles until it
+//! execs, and that late last close on `theme.name` looks like a theme switch to a watch that has
+//! already started. Cases that spawn live in `theme_hook.rs`. Each test builds its own home under
+//! cargo's temp dir from the theme fixtures (never the real `$HOME`). Positive waits are long
+//! (loaded laptop), negative waits short.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::thread;
 use std::time::Duration;
@@ -24,10 +26,6 @@ fn fixture(theme: &str) -> String {
         .join(theme)
         .join("colors.toml");
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
-}
-
-fn hook() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contrib/omarchy/hooks/theme-set.d/touchbar-customizer")
 }
 
 /// An empty home directory for one test.
@@ -128,25 +126,6 @@ fn a_theme_switch_is_a_change_and_the_next_load_reads_the_new_theme() {
     assert!(loaded.fallback.is_none(), "{:?}", loaded.fallback);
     assert_eq!(loaded.theme.background, Rgba::parse_hex("#eff1f5").unwrap());
     assert_eq!(loaded.theme, BarTheme::from_omarchy_colors(&fixture("catppuccin-latte")).unwrap());
-}
-
-#[test]
-fn running_the_shipped_hook_is_a_change_and_records_the_theme_name() {
-    let home = omarchy_home("hook", "tokyo-night");
-    let state = home.join(".local/state/touchbar-customizer");
-    assert!(!state.exists());
-    let changes = watched(&home);
-
-    let run = Command::new("bash").arg(hook()).arg("catppuccin-latte").env("HOME", &home).output().unwrap();
-
-    assert!(
-        run.status.success(),
-        "hook exit {:?}, stderr: {}",
-        run.status,
-        String::from_utf8_lossy(&run.stderr)
-    );
-    one_change(&changes);
-    assert_eq!(fs::read_to_string(state.join("theme-set")).unwrap(), "catppuccin-latte\n");
 }
 
 #[test]
