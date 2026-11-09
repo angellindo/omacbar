@@ -58,7 +58,11 @@ finds it in the same place whatever chord is held.
 - Must fit its room, `width - 2 x label_padding`, measured with Rune's text system at the
   theme's font size (`tb_render::label_width`); otherwise validation warns
   (`tb_core::config::warnings`) and the renderer ellipsizes it inside the room.
-- Nerd Font glyphs are allowed as labels until icons land.
+- Nerd Font glyphs are allowed as labels until icons land. A glyph comes from the system
+  monospace font like any other label: JetBrainsMono Nerd Font draws it (one cell wide in layout,
+  but its ink can reach about two cells to the right, so it sits a few px right of centre), and a
+  font without it draws its missing-glyph box in the label room. Either way nothing leaves the
+  button (`tb-render` test `glyph_label`; snapshot `out/glyph-label.png`).
 
 ## States
 
@@ -69,6 +73,12 @@ finds it in the same place whatever chord is held.
 | Overridden (idle) | style `fill` | style `text` | style `border` |
 
 Pressed always wins over a style override, so feedback is consistent.
+
+Press feedback is presented within one frame of touch down: the daemon presents only when the
+scene changes (ADR-0006), so its frames are its presents, and the first present after a touch
+lands on a button already shows that button pressed, in full (no transition), and nothing else
+changed. A touch that lands in a dead zone presents nothing. How soon the panel shows that
+present is the display backend's part, checked on the bar.
 
 ## Style overrides
 
