@@ -14,6 +14,9 @@ use crate::theme::BarTheme;
 
 pub const CONFIG_VERSION: u32 = 1;
 
+/// Layers with more buttons than this validate, with a warning (button standard § Width).
+pub const RECOMMENDED_MAX_BUTTONS: usize = 16;
+
 /// Where colours come from.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(tag = "source", rename_all = "kebab-case", deny_unknown_fields)]
@@ -69,6 +72,19 @@ pub enum ConfigIssue {
     Syntax(String),
 }
 
+/// A problem found by [`warnings`] that does not reject the config: the bar still draws it.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ConfigWarning {
+    /// The layer has more buttons than [`RECOMMENDED_MAX_BUTTONS`].
+    #[error("layer `{chord:?}` has {buttons} buttons; aim for at most {RECOMMENDED_MAX_BUTTONS}")]
+    TooManyButtons { chord: Chord, buttons: usize },
+    /// The label is wider than its label room, so the bar ellipsizes it.
+    #[error(
+        "layer `{chord:?}`: label of `{id}` is {width} px wide but its room is {room} px; it will be ellipsized"
+    )]
+    LabelTooWide { chord: Chord, id: ButtonId, width: u32, room: u32 },
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("config is not valid TOML: {0}")]
@@ -122,6 +138,36 @@ pub fn validate(config: &Config, size: BarSize, rules: &SpacingRules, theme: &Ba
         }
     }
     issues
+}
+
+/// Every warning for `config`, layers in config order. `label_width` gives a label's width in
+/// device px as the bar draws it (tb-render: `label_width`). Never rejects; [`validate`] reports issues.
+pub fn warnings(
+    config: &Config,
+    size: BarSize,
+    rules: &SpacingRules,
+    label_width: impl Fn(&str) -> u32,
+) -> Vec<ConfigWarning> {
+    let mut found = Vec::new();
+    for layer in &config.layout.layers {
+        let chord = layer.chord;
+        let buttons = layer.buttons().count();
+        if buttons > RECOMMENDED_MAX_BUTTONS {
+            found.push(ConfigWarning::TooManyButtons { chord, buttons });
+        }
+        // A layer that does not fit is a `ConfigIssue::Layout`; there is no room to measure against.
+        let Ok(placed) = place(layer, size, rules) else { continue };
+        for (button, at) in layer.buttons().zip(&placed) {
+            let room = u32::from(
+                at.rect.width.saturating_sub(rules.label_padding).saturating_sub(rules.label_padding),
+            );
+            let width = label_width(&button.label);
+            if width > room {
+                found.push(ConfigWarning::LabelTooWide { chord, id: button.id.clone(), width, room });
+            }
+        }
+    }
+    found
 }
 
 /// Parses and validates config text: the config, or every issue (a parse error is one `Syntax` issue).
