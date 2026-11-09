@@ -3,6 +3,7 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tb_core::config::{Config, ConfigError, ConfigIssue, parse_valid, to_toml, validate};
 use tb_core::{BarSize, BarTheme, SpacingRules};
@@ -100,7 +101,7 @@ impl ConfigFile {
 
 /// Writes `text` to a temp file next to `path`, syncs it and renames it over `path`, so a reader
 /// sees the old file or the new one, never half of it. The directory is created if missing; on
-/// any failure the temp file is removed.
+/// any failure the temp file this call created is removed.
 fn write_atomically(path: &Path, text: &str) -> Result<(), ConfigFileError> {
     let io_at = |at: &Path| {
         let at = at.to_path_buf();
@@ -108,8 +109,8 @@ fn write_atomically(path: &Path, text: &str) -> Result<(), ConfigFileError> {
     };
     let dir = path.parent().unwrap_or(Path::new(""));
     fs::create_dir_all(dir).map_err(io_at(dir))?;
-    let temp = temp_path(path);
-    let written = write_synced(&temp, text)
+    let (temp, file) = create_temp(path).map_err(io_at(dir))?;
+    let written = write_synced(file, text)
         .map_err(io_at(&temp))
         .and_then(|()| fs::rename(&temp, path).map_err(io_at(path)));
     if written.is_err() {
@@ -119,15 +120,26 @@ fn write_atomically(path: &Path, text: &str) -> Result<(), ConfigFileError> {
     written
 }
 
-fn write_synced(path: &Path, text: &str) -> io::Result<()> {
-    let mut file = fs::File::create(path)?;
+fn write_synced(mut file: fs::File, text: &str) -> io::Result<()> {
     file.write_all(text.as_bytes())?;
     file.sync_all()
 }
 
-/// `.<file name>.<pid>.tmp` in the same directory: same filesystem (so `rename` is atomic), and
-/// the pid keeps two processes from sharing a temp file.
-fn temp_path(path: &Path) -> PathBuf {
+/// Numbers the temp files of this process, so concurrent saves never share one.
+static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
+/// Creates a new temp file `.<file name>.<pid>.<n>.tmp` next to `path`: same filesystem (so
+/// `rename` is atomic). It is created exclusively, so no other save (this process or another)
+/// can write into it; a name already taken (a stale temp) is skipped.
+fn create_temp(path: &Path) -> io::Result<(PathBuf, fs::File)> {
     let name = path.file_name().map_or_else(Default::default, |n| n.to_string_lossy().into_owned());
-    path.with_file_name(format!(".{name}.{}.tmp", std::process::id()))
+    loop {
+        let n = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+        let temp = path.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()));
+        match fs::OpenOptions::new().write(true).create_new(true).open(&temp) {
+            Ok(file) => return Ok((temp, file)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
 }
