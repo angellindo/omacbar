@@ -87,6 +87,17 @@ One finger on the bar, known by its x position in bar pixels from the moment it 
 lifts. A touch presses the button it hits.
 _Avoid_: tap (a touch that lands and lifts on one button), click, pointer
 
+## Config
+
+**Config**:
+The user's file of layers and theme source, `~/.config/touchbar-customizer/config.toml`. The bar
+uses the last valid config read; an invalid file never replaces it.
+_Avoid_: settings, preferences, profile
+
+**Issue**:
+One problem found when checking a config. A check reports every issue, not only the first.
+_Avoid_: error (for config problems), warning
+
 ## Hardware
 
 **Key mode**:
