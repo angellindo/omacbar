@@ -9,6 +9,10 @@
 //! capability in `/proc/bus/input/devices`) and shows their layer; `--keys PATH` reads key events
 //! from PATH instead (ADR-0009). Without `--keys` no keyboard is read. A keyboard that cannot be
 //! opened or fails is logged and the bar stays on, or goes back to, the default layer.
+//!
+//! `--sim-window` also shows the simulator's screen live in a desktop window at the bar's
+//! proportions, and a mouse press on it is the touch instead of stdin (ADR-0010); the run ends
+//! when the window closes. Without a display it exits 1 with the reason.
 
 mod log;
 
@@ -20,11 +24,11 @@ use std::thread;
 use tb_config::ActiveTheme;
 use tb_core::{BarSize, BarTheme, presets};
 use tb_daemon::{
-    Daemon, EvdevModifiers, Event, GpuRenderer, LineTouches, SimDisplay, TouchError, TouchSource,
-    find_fn_keyboard, forward_modifiers,
+    Daemon, EvdevModifiers, Event, GpuRenderer, LineTouches, SimDisplay, SimWindow, TouchError, TouchSource,
+    find_fn_keyboard, forward_modifiers, sim_window_app,
 };
 
-const USAGE: &str = "usage: touchbard [--sim DIR] [--keys auto|PATH]   (touches on stdin: `down <x>` | `up`)";
+const USAGE: &str = "usage: touchbard [--sim DIR] [--keys auto|PATH] [--sim-window]   (without --sim-window, touches on stdin: `down <x>` | `up`)";
 const DEFAULT_SIM_DIR: &str = "out/touchbard";
 /// The kernel's list of input devices and their capabilities.
 const DEVICES: &str = "/proc/bus/input/devices";
@@ -42,6 +46,8 @@ enum Keys {
 struct Args {
     sim_dir: PathBuf,
     keys: Option<Keys>,
+    /// Show the simulator window, whose presses are the touches (stdin is not read).
+    window: bool,
 }
 
 fn main() -> ExitCode {
@@ -58,10 +64,17 @@ fn main() -> ExitCode {
     }
 }
 
-/// `[--sim DIR] [--keys auto|PATH]` in any order, each at most once; `None` for anything else.
+/// `[--sim DIR] [--keys auto|PATH] [--sim-window]` in any order, each at most once; `None` for
+/// anything else.
 fn parse_args(mut args: impl Iterator<Item = String>) -> Option<Args> {
-    let (mut sim_dir, mut keys) = (None, None);
+    let (mut sim_dir, mut keys, mut window) = (None, None, false);
     while let Some(flag) = args.next() {
+        if flag == "--sim-window" {
+            if std::mem::replace(&mut window, true) {
+                return None;
+            }
+            continue;
+        }
         let value = args.next()?;
         let slot_was_empty = match flag.as_str() {
             "--sim" => sim_dir.replace(PathBuf::from(value)).is_none(),
@@ -73,7 +86,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Option<Args> {
             return None;
         }
     }
-    Some(Args { sim_dir: sim_dir.unwrap_or_else(|| PathBuf::from(DEFAULT_SIM_DIR)), keys })
+    Some(Args { sim_dir: sim_dir.unwrap_or_else(|| PathBuf::from(DEFAULT_SIM_DIR)), keys, window })
 }
 
 /// What reaches the daemon loop. The theme thread never ends on its own, so the end of the
@@ -92,33 +105,97 @@ impl From<Event> for Message {
 /// Startup state: the default preset (config file: a later ticket) and the active theme of `$HOME`,
 /// followed while running.
 fn run(args: Args) -> Result<(), String> {
+    if args.window {
+        return run_with_window(args);
+    }
     let renderer = GpuRenderer::new().map_err(|e| e.to_string())?;
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
-    if let Some(keys) = args.keys {
+    let theme = follow_keys_and_theme(args.keys, &tx);
+    let touches =
+        thread::spawn(move || forward_until_ended(&mut LineTouches::new(std::io::stdin().lock()), &tx));
+    run_daemon(renderer, display, theme, rx)?;
+    join(touches, "touch reader")
+}
+
+/// `run` with the simulator window as the touch source. winit needs the main thread for the
+/// window and `GpuRenderer` is not `Send`, so the daemon is built and run on another thread.
+fn run_with_window(args: Args) -> Result<(), String> {
+    let (window, mut touches) = SimWindow::new();
+    let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir)
+        .map_err(|e| e.to_string())?
+        .on_present(window.show_screen());
+    let (tx, rx) = mpsc::channel();
+    let theme = follow_keys_and_theme(args.keys, &tx);
+    let app = sim_window_app(window);
+    let handle = app.handle();
+    let forward_tx = tx.clone();
+    let touches = thread::spawn(move || forward_until_ended(&mut touches, &forward_tx));
+    let daemon = thread::spawn(move || {
+        let ran = GpuRenderer::new()
+            .map_err(|e| e.to_string())
+            .and_then(|renderer| run_daemon(renderer, display, theme, rx));
+        if ran.is_err() {
+            // Nothing new will be shown: close the window rather than leave it frozen.
+            handle.quit();
+        }
+        ran
+    });
+    // The window closed (or never opened), and with it its touches: stop the daemon.
+    let shown = app.try_run();
+    let _ = tx.send(Message::TouchesEnded);
+    let ran = join(daemon, "daemon");
+    if let Err(e) = shown {
+        if let Err(daemon_error) = ran {
+            log::error(daemon_error);
+        }
+        return Err(format!("cannot open the simulator window: {e}"));
+    }
+    ran?;
+    join(touches, "touch reader")
+}
+
+/// Starts following the keys (when given) and the active theme of `$HOME`; the theme now.
+fn follow_keys_and_theme(keys: Option<Keys>, tx: &Sender<Message>) -> BarTheme {
+    if let Some(keys) = keys {
         follow_keys(keys, tx.clone());
     }
-    let theme = if let Some(home) = std::env::var_os("HOME") {
+    if let Some(home) = std::env::var_os("HOME") {
         follow_theme(ActiveTheme::under_home(Path::new(&home)), tx.clone())
     } else {
         log::error("HOME is not set: showing the bundled Tokyo Night, theme switches are not followed");
         BarTheme::omarchy_fallback()
-    };
+    }
+}
+
+/// Runs the daemon on `messages` until the touches end.
+fn run_daemon(
+    renderer: GpuRenderer,
+    display: SimDisplay,
+    theme: BarTheme,
+    messages: mpsc::Receiver<Message>,
+) -> Result<(), String> {
     let mut daemon = Daemon::new(presets::default_layout(), theme, renderer, display);
-    let touches = thread::spawn(move || {
-        let ended = forward_touches(&mut LineTouches::new(std::io::stdin().lock()), &tx);
-        // A dropped receiver means the daemon already stopped: nobody is left to tell.
-        let _ = tx.send(Message::TouchesEnded);
-        ended
-    });
-    let events = rx.into_iter().map_while(|message| match message {
+    let events = messages.into_iter().map_while(|message| match message {
         Message::Event(event) => Some(event),
         Message::TouchesEnded => None,
     });
-    daemon.run(events).map_err(|e| e.to_string())?;
-    match touches.join() {
+    daemon.run(events).map_err(|e| e.to_string())
+}
+
+/// Forwards `source`'s touches, then tells the daemon they ended.
+fn forward_until_ended(source: &mut impl TouchSource, tx: &Sender<Message>) -> Result<(), TouchError> {
+    let ended = forward_touches(source, tx);
+    // A dropped receiver means the daemon already stopped: nobody is left to tell.
+    let _ = tx.send(Message::TouchesEnded);
+    ended
+}
+
+/// The result of the thread `what`, or that it panicked.
+fn join<E: ToString>(thread: thread::JoinHandle<Result<(), E>>, what: &str) -> Result<(), String> {
+    match thread.join() {
         Ok(result) => result.map_err(|e| e.to_string()),
-        Err(_) => Err("the touch reader thread panicked".to_owned()),
+        Err(_) => Err(format!("the {what} thread panicked")),
     }
 }
 
@@ -213,7 +290,11 @@ mod tests {
     }
 
     fn sim(dir: &str, keys: Option<Keys>) -> Args {
-        Args { sim_dir: PathBuf::from(dir), keys }
+        Args { sim_dir: PathBuf::from(dir), keys, window: false }
+    }
+
+    fn windowed(args: Args) -> Args {
+        Args { window: true, ..args }
     }
 
     #[test]
@@ -239,5 +320,20 @@ mod tests {
         );
         assert_eq!(parse(&["--sim", "s", "--keys", "auto"]), Some(sim("s", Some(Keys::Auto))));
         assert_eq!(parse(&["--keys", "auto", "--keys", "auto"]), None);
+    }
+
+    #[test]
+    fn sim_window_takes_no_value_and_combines_with_sim_and_keys_in_any_order() {
+        assert_eq!(parse(&["--sim-window"]), Some(windowed(sim("out/touchbard", None))));
+        assert_eq!(
+            parse(&["--sim", "s", "--sim-window", "--keys", "auto"]),
+            Some(windowed(sim("s", Some(Keys::Auto))))
+        );
+        assert_eq!(
+            parse(&["--keys", "auto", "--sim-window"]),
+            Some(windowed(sim("out/touchbard", Some(Keys::Auto))))
+        );
+        assert_eq!(parse(&["--sim-window", "--sim-window"]), None);
+        assert_eq!(parse(&["--sim-window", "extra"]), None);
     }
 }

@@ -25,14 +25,28 @@ pub enum DisplayError {
     Write(#[from] FrameError),
 }
 
+/// What `SimDisplay::on_present` calls with the screen.
+type OnPresent = Box<dyn FnMut(&Frame) + Send>;
+
 /// The simulator: a headless panel that writes its whole screen as `frame-NNNN.png` after each
-/// non-empty present.
-#[derive(Debug)]
+/// non-empty present, and hands it to its `on_present` function (the simulator window).
 pub struct SimDisplay {
     size: BarSize,
     screen: Frame,
     dir: PathBuf,
     written: u32,
+    on_present: Option<OnPresent>,
+}
+
+impl std::fmt::Debug for SimDisplay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SimDisplay")
+            .field("size", &self.size)
+            .field("dir", &self.dir)
+            .field("written", &self.written)
+            .field("on_present", &self.on_present.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl SimDisplay {
@@ -51,7 +65,16 @@ impl SimDisplay {
         let (width, height) = (u32::from(size.width), u32::from(size.height));
         let pixels = usize::from(size.width) * usize::from(size.height);
         let screen = Frame { width, height, rgba: [0, 0, 0, 255].repeat(pixels) };
-        Ok(Self { size, screen, dir, written: 0 })
+        Ok(Self { size, screen, dir, written: 0, on_present: None })
+    }
+
+    /// `f` sees the whole screen after each non-empty present that succeeded (after its PNG is
+    /// written), in present order, from the presenting thread. An empty or refused present, or a
+    /// failed write, does not call it. Replaces an earlier `f`.
+    #[must_use]
+    pub fn on_present(mut self, f: impl FnMut(&Frame) + Send + 'static) -> SimDisplay {
+        self.on_present = Some(Box::new(f));
+        self
     }
 
     /// What the simulated panel shows now (after every damage applied so far).
@@ -74,6 +97,9 @@ impl Display for SimDisplay {
         let number = self.written.saturating_add(1);
         screen.write_png(&self.dir.join(format!("frame-{number:04}.png")))?;
         (self.screen, self.written) = (screen, number);
+        if let Some(f) = &mut self.on_present {
+            f(&self.screen);
+        }
         Ok(())
     }
 }

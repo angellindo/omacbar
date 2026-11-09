@@ -15,11 +15,11 @@ path = "src/main.rs"
 tb-core.workspace = true
 tb-config.workspace = true
 tb-render.workspace = true
+rune.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 png.workspace = true
-rune.workspace = true
 
 [lints]
 workspace = true
