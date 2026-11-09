@@ -243,6 +243,42 @@ fn the_end_of_the_stream_inside_a_record_is_an_io_error() {
     }
 }
 
+/// A byte stream that reports its end once, then has more records, like a file appended to
+/// after it was read to the end.
+struct EndsThenGrows {
+    first: Cursor<Vec<u8>>,
+    ended: bool,
+    later: Cursor<Vec<u8>>,
+}
+
+impl Read for EndsThenGrows {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if !self.ended {
+            let n = self.first.read(buf)?;
+            if n > 0 {
+                return Ok(n);
+            }
+            self.ended = true;
+            return Ok(0);
+        }
+        self.later.read(buf)
+    }
+}
+
+#[test]
+fn a_closed_source_never_reports_records_that_arrive_after_its_end() {
+    let mut kb = EvdevModifiers::new(EndsThenGrows {
+        first: Cursor::new([press(KEY_FN), syn()].concat()),
+        ended: false,
+        later: Cursor::new([press(KEY_LEFTCTRL), syn(), release(KEY_FN), syn()].concat()),
+    });
+    assert_eq!(kb.next_modifiers().unwrap(), Some(held(&["fn"])));
+    assert_eq!(kb.next_modifiers().unwrap(), None, "the end of the stream closes the source");
+    for call in 0..3 {
+        assert_eq!(kb.next_modifiers().unwrap(), None, "call {call} after the end: stays closed");
+    }
+}
+
 /// A byte stream that hands out at most 5 bytes per read, as a pipe may.
 struct Trickle(Cursor<Vec<u8>>);
 
