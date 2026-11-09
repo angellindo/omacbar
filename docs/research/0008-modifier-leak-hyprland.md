@@ -1,9 +1,8 @@
 # 0008 · Modifier leak on Hyprland: keys emitted while a modifier is held
 
-Status: predicted from source, waiting for the human's run (TB-11) · Machine: `MacBookPro14,3`, kernel
+Status: confirmed by the human's run on 2026-11-09 (§ HIL results) · Machine: `MacBookPro14,3`, kernel
 `7.2.15-1-omarchy`, Hyprland 0.56.2 (commit `efb5099`, Lua config), libinput 1.32.0, libxkbcommon
-1.13.2 · Investigated read-only on 2026-11-09. Every prediction below is **unverified** until the
-human posts the results of § HIL run.
+1.13.2 · Investigated read-only on 2026-11-09; every prediction below matched the live run.
 
 ## Question
 
@@ -54,7 +53,7 @@ backlight, not the screen.
 | With the Lua config (this machine: `~/.config/hypr/hyprland.lua`), `hyprctl dispatch X` evaluates `return hl.dispatch(X)`; the dispatcher is `hl.dsp.send_shortcut({ mods = "...", key = "...", window = "..."? })` | `H` `debug/HyprCtl.cpp:1126-1141`; `config/lua/bindings/LuaBindingsDispatchers.cpp:402-454`, `1404` | high |
 | It resolves the key name through the active keyboard's keymap, then sends the focused surface: modifiers = exactly `mods`, key press, key release, then modifiers = 0 (depressed, latched **and locked**) | `H` `config/shared/actions/ConfigActions.cpp:1530-1598` (lines 1554, 1576) | high |
 | It goes straight to the seat: Hyprland binds and the input method (fcitx5 runs here: `pgrep -a fcitx5`) never see the key | same; contrast `InputManager.cpp:1638-1678` | high |
-| Until the next physical modifier change, the client believes no modifier and no lock (NumLock, Caps Lock) is active, even though Ctrl is still held: a physical Ctrl+C in that window arrives as plain `c` | `ConfigActions.cpp:1576`; resync on the next mod change via `InputManager.cpp:1685-1722` | medium-high |
+| Until the next physical modifier change, the client believes no modifier and no lock (NumLock, Caps Lock) is active, even though Ctrl is still held: a physical Ctrl+C in that window arrives as plain `c` | `ConfigActions.cpp:1576`; resync on the next mod change via `InputManager.cpp:1685-1722` | high (seen live in step 3) |
 | With the legacy hyprlang config the form would be `hyprctl dispatch sendshortcut ,F5,` (exactly three fields) | `H` `config/legacy/DispatcherTranslator.cpp:531-588` | high (not used here) |
 
 ### 4. Fn is not a modifier
@@ -139,6 +138,24 @@ udev rule, group change or file outside the repo.
 **What to post** (one `[RESEARCH]` comment per step): the step number, the wev lines from the
 moment the chord was pressed until it was released, and whether that matched the prediction table.
 
+## HIL results (2026-11-09)
+
+The human ran every step once on this machine, with a wev window focused for each step and the
+emitter `.scratch/TB-11/uinput-emit.py`. wev's `modifiers` line below is `depressed` (`locked` was
+`Mod2`, NumLock, unless stated). All five steps matched the predictions.
+
+| Step | Human held | Sent | Client received | Matches |
+|---|---|---|---|---|
+| 0 | nothing | uinput F5 | F5 down/up, mods 0; `tb11-emitter` listed under Keyboards | yes |
+| 1 | Left Ctrl | uinput F5 | Ctrl down → mods `Control`; F5 down/up with no new modifiers event, so the client reads **Ctrl+F5** | yes (§1) |
+| 2a | Left Ctrl | uinput Ctrl up, F5 | same as step 1: the virtual release changed nothing, F5 arrives as Ctrl+F5 | yes (§2) |
+| 2b | Left Ctrl | uinput Ctrl down/up, F5 | no virtual Ctrl key events reached the client (two extra modifiers events, both still `Control`); F5 arrives as Ctrl+F5 | yes (§2) |
+| 3 | Left Ctrl, then `c` | `hyprctl dispatch 'hl.dsp.send_shortcut({ mods = "", key = "F5" })'` | modifiers set to 0 with `locked` 0 (NumLock cleared), F5 down/up: an **exact F5**. Ctrl was still held, but the next `c` arrived with mods 0 (plain `c`, not Ctrl+C) until Ctrl was released, which resent NumLock | yes (§3) |
+| 4 | Fn | uinput F5 | `XF86Fn` key down (Fn is a key, not a modifier), F5 down/up with mods 0: plain F5 | yes (§4) |
+
+Every run ended with `grep -c tb11-emitter /proc/bus/input/devices` = 0. Evidence (not committed):
+`.scratch/HIL-20261109-141856/`.
+
 ## Decision input: options for TB-18
 
 | Option | Exact on Hyprland? | Cost / risk | Fits ADR-0009? |
@@ -150,7 +167,7 @@ moment the chord was pressed until it was released, and whether that matched the
 | E · Hold the emitted key until the chord is released | Yes (merged mods are empty by then) | Fires late, after the bar has already switched back to the default layer; surprising | yes |
 | F · Wayland virtual-keyboard protocol (wtype style) instead of uinput | No (same merge, §1 `share_states` row) | Needs a Wayland connection in the daemon | yes |
 
-**Provisional recommendation (to confirm with the run):** A for the MVP, with C as the documented
+**Recommendation (confirmed by the run, ADR-0011):** A for the MVP, with C as the documented
 recipe for an exact key on a modifier layer, written as a `command` action. TB-18 then emits
 uinput `key` actions on `default` and `fn` only (they must stay real key events: the live config
 binds plain `F9` to push-to-talk dictation and plain brightness/volume keys, which `send_shortcut`

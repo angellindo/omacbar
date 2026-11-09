@@ -12,7 +12,7 @@ with user-arranged, themed buttons per Fn + modifier layer?**
 | T1 firmware lives on the ESP and has been lost once on this machine | Pixel-mode work starts only after an external backup of the EFI/T1 set (research 0006). |
 | T1 firmware draws key mode in config 1 | While the stack is off, the stock F-key bar keeps working. Never leave the user with a dead bar. |
 | Fn is reported only by the SPI keyboard | Layers are chosen from that keyboard's state. |
-| Held modifiers leak into emitted keys | Modifier layers default to `command` actions until TB-11 resolves it. |
+| Held modifiers leak into emitted keys | Hyprland merges modifiers across keyboards, so a key emitted under a held Ctrl/Alt/Shift/Super arrives with it (ADR-0011, research 0008). `key` actions fire on `default` and `fn`; `fn-*` layers use `command` actions, and an exact key there is a `hyprctl dispatch 'hl.dsp.send_shortcut(...)'` command. |
 | Touch ID / Secure Enclave | Out of scope, permanently. |
 | OLED-like panel, always on | Static content; idle dim then off with wake on input, like macOS (TB-24); optional pixel shift later. |
 | Suspend/resume with config 2 unproven | MVP may stop the daemon on suspend; fix is post-MVP. |
