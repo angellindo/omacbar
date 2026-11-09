@@ -18,6 +18,11 @@ The held Fn/modifier combination that selects a layer: `default`, `fn`, `fn-ctrl
 `fn-shift`, `fn-super`.
 _Avoid_: shortcut, combo, modifier mode
 
+**Modifier layer**:
+A layer whose chord holds a modifier besides Fn: `fn-ctrl`, `fn-alt`, `fn-shift`, `fn-super`. Its
+buttons run commands, because a key pressed from it would combine with the held modifier.
+_Avoid_: mod layer, shortcut layer
+
 **Group**:
 An ordered run of buttons inside a layer, separated from other groups by the group gap.
 _Avoid_: section, cluster, segment
@@ -40,8 +45,13 @@ The pixel rect the layout engine computed for a button.
 _Avoid_: frame (reserved), bounds
 
 **Action**:
-What a tap does: press a key chord (`key`), run a command (`command`) or nothing.
+What a tap does: press keys (`key`), run a command (`command`) or nothing.
 _Avoid_: binding, handler, command (for the general concept)
+
+**Key**:
+One keyboard key that a `key` action presses, written by its Linux name without `KEY_` (`F5`,
+`LeftCtrl`, `BrightnessUp`). A key action presses its keys in order and releases them in reverse.
+_Avoid_: keycode, scancode, keysym, key chord (a chord picks a layer)
 
 ## Drawing
 
@@ -104,6 +114,11 @@ One finger on the bar, known by its x position in bar pixels from the moment it 
 lifts. A touch presses the button it hits.
 _Avoid_: tap (a touch that lands and lifts on one button), click, pointer
 
+**Tap**:
+A touch that lands on a button and lifts while still over it. A tap runs the button's action once,
+when the finger lifts.
+_Avoid_: click, press (a touch presses a button while it is down)
+
 **Fn keyboard**:
 The keyboard that reports the Fn key; its held Fn and modifier keys pick the layer. It is found by
 its Fn capability, never by its event number (on the MacBookPro14,3, the Apple SPI keyboard).
@@ -113,6 +128,11 @@ _Avoid_: internal keyboard, SPI keyboard (except citing drivers), event5
 Where the daemon learns which Fn and modifier keys are held: the Fn keyboard, or recorded key
 events in tests.
 _Avoid_: key listener, keyboard reader, key hook
+
+**Virtual keyboard**:
+The keyboard `touchbard` creates to press the keys of `key` actions. The compositor sees it as one
+more keyboard.
+_Avoid_: uinput device (except citing the kernel), emitter, fake keyboard
 
 ## Config
 
