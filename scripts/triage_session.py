@@ -60,7 +60,7 @@ def write_private(directory_fd, name, text):
         output.write(text)
 
 
-def prepare(profile):
+def prepare(profile, timestamp_ns):
     evidence = doctor(profile)
     metadata = context(profile)
     playbook = (ROOT / 'docs/agents/install-triage.md').read_text()
@@ -69,7 +69,7 @@ def prepare(profile):
     try:
         scratch_fd = directory(root_fd, '.scratch')
         triage_fd = directory(scratch_fd, 'triage')
-        name = secrets.token_hex(16)
+        name = f'{timestamp_ns:020d}-{secrets.token_hex(16)}'
         os.mkdir(name, mode=0o700, dir_fd=triage_fd)
         session_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=triage_fd)
         path = ROOT / '.scratch/triage' / name

@@ -4,6 +4,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from doctor_support import ROOT
@@ -17,7 +18,7 @@ def main():
     parser.add_argument('--prepare-only', action='store_true', help='write evidence without resolving or launching an agent')
     args = parser.parse_args()
     try:
-        session = prepare(args.profile)
+        session = prepare(args.profile, time.time_ns())
     except (OSError, ValueError, KeyError, TypeError):
         print('triage: doctor/preparation failed; check the local doctor report and artifact directory safety', file=sys.stderr)
         return 2
