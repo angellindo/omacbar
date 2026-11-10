@@ -9,3 +9,6 @@ out/
 .scratch/*/.session-id
 .scratch/*/gates-*.log
 __pycache__/
+
+# Private local diagnostic sessions
+.scratch/triage/

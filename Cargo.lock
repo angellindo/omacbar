@@ -2382,6 +2382,8 @@ dependencies = [
  "png 0.17.16",
  "rune",
  "rustix 1.1.6",
+ "serde",
+ "serde_json",
  "tb-config",
  "tb-core",
  "tb-render",

@@ -11,7 +11,13 @@ publish.workspace = true
 name = "touchbard"
 path = "src/main.rs"
 
+[[bin]]
+name = "touchbar-doctor-probe"
+path = "src/doctor.rs"
+
 [dependencies]
+serde.workspace = true
+serde_json = "1"
 tb-core.workspace = true
 tb-config.workspace = true
 tb-render.workspace = true
