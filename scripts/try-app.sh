@@ -6,7 +6,7 @@ repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$repo"
 session="$repo/.scratch/manual-test"
 
-for tool in cargo nice flock; do
+for tool in cargo nice flock setsid; do
   command -v "$tool" >/dev/null || {
     printf 'Falta %s; instálalo antes de ejecutar las pruebas.\n' "$tool" >&2
     exit 1
@@ -20,10 +20,33 @@ if ! flock -n 9; then
   exit 1
 fi
 
+pids=()
+build_pid=""
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  # The build owns a session so cancellation also stops its compiler descendants.
+  if [[ -n "$build_pid" ]]; then
+    kill -- "-$build_pid" 2>/dev/null || true
+    wait "$build_pid" 2>/dev/null || true
+  fi
+  for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # Cargo needs the caller's real HOME for its toolchain and cache.
 printf 'Preparando el configurador y el simulador…\n'
-nice -n 19 env CARGO_BUILD_JOBS=2 cargo build --locked \
-  -p tb-app -p tb-daemon --target-dir "$repo/target"
+setsid --wait nice -n 19 env CARGO_BUILD_JOBS=2 cargo build --locked \
+  -p tb-app -p tb-daemon --target-dir "$repo/target" &
+build_pid=$!
+status=0
+wait "$build_pid" || status=$?
+build_pid=""
+if (( status != 0 )); then exit "$status"; fi
 
 configurator="$repo/target/debug/touchbar-customizer"
 daemon="$repo/target/debug/touchbard"
@@ -45,19 +68,6 @@ printf '%s\n' \
   'Se reutiliza la config guardada; logs y registros corresponden a esta ejecución.' \
   'El HOME aislado usa el tema incluido salvo que configures un tema de prueba.' \
   'Cierra cualquiera de las ventanas o pulsa Ctrl+C para terminar ambas.'
-
-pids=()
-cleanup() {
-  local status=$?
-  trap - EXIT INT TERM
-  # Only stop and reap children created by this launcher, keeping the original exit status.
-  for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
-  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
-  exit "$status"
-}
-trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
 HOME="$test_home" "$configurator" >"$session/logs/configurator.log" 2>&1 &
 pids+=("$!")
