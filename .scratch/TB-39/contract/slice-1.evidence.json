@@ -47,6 +47,38 @@
         "tests": "FAILED"
       },
       "log": ".scratch/TB-39/gate/2026-11-10T174133Z-slice-1"
+    },
+    {
+      "at": "2026-11-10T17:51:29Z",
+      "seal": "sha256:0513eb06224a9315a4d922b5a4f20aa2b1886678af2beb22b0a2e64cbed2d100",
+      "head": "fa183f3cab8320403eba497ffb253cb35cf83828",
+      "final": false,
+      "results": {
+        "QA-01": "RED_BEHAVIOR",
+        "QA-02": "RED_BEHAVIOR",
+        "QA-03": "RED_BEHAVIOR",
+        "QA-04": "RED_BEHAVIOR",
+        "QA-05": "RED_BEHAVIOR",
+        "QA-06": "RED_BEHAVIOR",
+        "tests": "FAILED"
+      },
+      "log": ".scratch/TB-39/gate/2026-11-10T175128Z-slice-1"
+    },
+    {
+      "at": "2026-11-10T18:04:42Z",
+      "seal": "sha256:3f090325d2b877b01176890072c71c76e4abb609cdf170523864b1c18ac025da",
+      "head": "fa183f3cab8320403eba497ffb253cb35cf83828",
+      "final": false,
+      "results": {
+        "QA-01": "RED_BEHAVIOR",
+        "QA-02": "RED_BEHAVIOR",
+        "QA-03": "RED_BEHAVIOR",
+        "QA-04": "RED_BEHAVIOR",
+        "QA-05": "RED_BEHAVIOR",
+        "QA-06": "RED_BEHAVIOR",
+        "tests": "FAILED"
+      },
+      "log": ".scratch/TB-39/gate/2026-11-10T180421Z-slice-1"
     }
   ]
 }

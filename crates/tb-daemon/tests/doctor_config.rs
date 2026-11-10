@@ -33,6 +33,10 @@ fn save(home: &Path, text: &str) {
 }
 
 fn probe(home: &Path) -> String {
+    #[allow(
+        clippy::option_env_unwrap,
+        reason = "Compile before the probe exists so its absence is a runtime acceptance failure"
+    )]
     let binary = option_env!("CARGO_BIN_EXE_touchbar-doctor-probe")
         .expect("the doctor must provide its native config probe executable");
     let output = Command::new(binary)
@@ -106,8 +110,7 @@ fn malformed_config_is_failed_without_echoing_its_source() {
 #[test]
 fn domain_issues_reject_a_parsed_config_and_keep_its_values_private() {
     let home = home("issues");
-    let mut config = Config::default();
-    config.version = 2;
+    let mut config = Config { version: 2, ..Config::default() };
     let button = &mut config.layout.layers[0].groups[0].buttons[0];
     button.label.clear();
     button.action = Action::Key { keys: vec![SECRET.to_owned()] };
