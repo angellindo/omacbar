@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "mode": "tooling",
+  "reason": "Private local Codex handoff, bounded collected context, and reproducible cited onboarding.",
+  "files": [
+    "scripts/tests/doctor_cli_fixture.py",
+    "scripts/tests/test_triage_cli.py"
+  ],
+  "cases": [],
+  "checks": [
+    {
+      "id": "tests",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_triage_cli.py"
+      ]
+    }
+  ]
+}

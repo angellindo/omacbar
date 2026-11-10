@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Read-only native config and theme validation plus bounded bootstrap report processes.",
+  "files": [
+    "crates/tb-daemon/tests/doctor_config.rs",
+    "scripts/tests/doctor_cli_fixture.py",
+    "scripts/tests/test_doctor_cli.py"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-daemon",
+      "target": "test:doctor_config",
+      "test": "a_missing_config_validates_first_run_defaults_without_creating_files",
+      "red": "required"
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-daemon",
+      "target": "test:doctor_config",
+      "test": "valid_config_and_active_theme_are_checked_without_exposing_commands",
+      "red": "required"
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-daemon",
+      "target": "test:doctor_config",
+      "test": "malformed_config_is_failed_without_echoing_its_source",
+      "red": "required"
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-daemon",
+      "target": "test:doctor_config",
+      "test": "domain_issues_reject_a_parsed_config_and_keep_its_values_private",
+      "red": "required"
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-daemon",
+      "target": "test:doctor_config",
+      "test": "an_explicit_missing_or_malformed_theme_is_failed_instead_of_using_fallback",
+      "red": "required"
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-daemon",
+      "target": "test:doctor_config",
+      "test": "an_existing_unreadable_config_is_not_reported_as_a_first_run_default",
+      "red": "required"
+    }
+  ],
+  "checks": [
+    {
+      "id": "tests",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_doctor_cli.py"
+      ]
+    }
+  ]
+}

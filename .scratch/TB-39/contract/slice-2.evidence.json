@@ -1,0 +1,24 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-10T17:40:40Z",
+      "seal": "sha256:9e15d22ba667bcfba4aa7f78f33af944a2eda46906a5d3ff4a7f61d324b10aae",
+      "head": "057086d8510e26cb9619e5852bdd4294a6fafb69",
+      "final": false,
+      "results": {
+        "tests": "FAILED"
+      },
+      "log": ".scratch/TB-39/gate/2026-11-10T174039Z-slice-2"
+    },
+    {
+      "at": "2026-11-10T17:41:38Z",
+      "seal": "sha256:bc41b58806366ef6ff3015a9444afa6b1a3723c80697ba03f29731eaea172f1c",
+      "head": "645ac85c0b89d1c6f8a77b43cdb979bcc687adf8",
+      "final": false,
+      "results": {
+        "tests": "FAILED"
+      },
+      "log": ".scratch/TB-39/gate/2026-11-10T174138Z-slice-2"
+    }
+  ]
+}
