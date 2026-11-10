@@ -43,7 +43,7 @@ fn set_keys(config: &mut Config, chord: Chord, id: &str, keys: &[&str]) {
 /// The default config with its `chord` layer replaced (or added) as one group of `buttons`.
 fn with_layer(mut config: Config, chord: Chord, buttons: Vec<Button>) -> Config {
     config.layout.layers.retain(|l| l.chord != chord);
-    config.layout.layers.push(Layer { chord, groups: vec![Group { buttons }] });
+    config.layout.layers.push(Layer { group_gap: None, chord, groups: vec![Group { buttons }] });
     config
 }
 

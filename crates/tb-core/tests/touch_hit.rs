@@ -1,6 +1,6 @@
 //! Touch slop bridges only the gap between two buttons of the same group. Bar edges and group
-//! gaps are dead. Default layer: esc 8..128, group gap 128..152, F1 152..313, gap 313..321,
-//! F2 321..482, F12 2002..2162, right edge 2162..2170.
+//! gaps are dead. Default layer: esc 88..204, group gap 204..232, F1 232..376, gap 376..388,
+//! F2 388..532, F12 1939..2082, right edge 2082..2170.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use tb_core::hit::hit;
@@ -27,55 +27,55 @@ fn misses(placed: &[Placed], x: u16) {
 #[test]
 fn a_touch_in_the_left_edge_padding_hits_nothing() {
     let p = placed(Chord::Default);
-    misses(&p, 4);
-    misses(&p, 7);
+    misses(&p, 84);
+    misses(&p, 87);
 }
 
 #[test]
 fn a_touch_in_the_right_edge_padding_hits_nothing() {
     let p = placed(Chord::Default);
-    misses(&p, 2162);
-    misses(&p, 2165);
+    misses(&p, 2082);
+    misses(&p, 2085);
 }
 
 #[test]
 fn a_touch_in_a_group_gap_next_to_the_left_group_hits_nothing() {
     let p = placed(Chord::Default);
-    misses(&p, 128);
-    misses(&p, 131);
+    misses(&p, 204);
+    misses(&p, 207);
 }
 
 #[test]
 fn a_touch_in_a_group_gap_next_to_the_right_group_hits_nothing() {
     let p = placed(Chord::Default);
-    misses(&p, 148);
-    misses(&p, 151);
+    misses(&p, 228);
+    misses(&p, 231);
 }
 
 #[test]
-fn a_touch_in_a_group_gap_between_two_shared_groups_hits_nothing() {
+fn a_touch_in_a_group_gap_between_two_media_groups_hits_nothing() {
     let p = placed(Chord::Fn);
-    misses(&p, 643);
-    misses(&p, 664);
+    misses(&p, 568);
+    misses(&p, 655);
 }
 
 #[test]
 fn a_touch_in_a_gap_inside_a_group_hits_the_nearer_button() {
     let p = placed(Chord::Default);
-    hits(&p, 315, "f1");
-    hits(&p, 316, "f1");
-    hits(&p, 317, "f2");
-    hits(&p, 318, "f2");
+    hits(&p, 379, "f1");
+    hits(&p, 381, "f1");
+    hits(&p, 382, "f2");
+    hits(&p, 385, "f2");
 }
 
 #[test]
 fn a_touch_inside_a_button_hits_it_and_far_touches_hit_nothing() {
     let p = placed(Chord::Default);
-    hits(&p, 8, "esc");
-    hits(&p, 127, "esc");
-    hits(&p, 152, "f1");
-    hits(&p, 2161, "f12");
+    hits(&p, 88, "esc");
+    hits(&p, 203, "esc");
+    hits(&p, 232, "f1");
+    hits(&p, 2081, "f12");
     misses(&p, 0);
     misses(&p, 3);
-    misses(&p, 140);
+    misses(&p, 218);
 }

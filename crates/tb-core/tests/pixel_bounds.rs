@@ -48,6 +48,7 @@ fn a_touch_at_the_last_pixel_column_hits_nothing() {
 fn edge_padding_at_the_limit_leaves_no_room() {
     let rules = SpacingRules { edge_padding: u16::MAX, ..RULES };
     let l = Layer {
+        group_gap: None,
         chord: Chord::Default,
         groups: vec![Group { buttons: vec![Button::new("a", "a", Action::None)] }],
     };
@@ -68,17 +69,17 @@ fn a_vertical_inset_at_the_limit_leaves_buttons_zero_tall() {
 fn the_widest_bar_lays_out_the_default_layer() {
     let wide = BarSize { width: u16::MAX, height: 60 };
     let placed = place(&default_layer(), wide, &RULES).unwrap();
-    let mut want = vec![("esc", 8, 120)];
+    let mut want = vec![("esc", 88, 116)];
     let ids = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"];
-    let mut x = 152;
+    let mut x = 232;
     for (i, id) in ids.into_iter().enumerate() {
-        let w = if i < 7 { 5441 } else { 5440 };
+        let w = if i < 7 { 5424 } else { 5423 };
         want.push((id, x, w));
-        x += w + 8;
+        x += w + 12;
     }
     assert_eq!(spans(&placed), want);
-    assert_eq!(spans(&placed)[7], ("f7", 32846, 5441));
-    assert_eq!(spans(&placed)[8], ("f8", 38295, 5440));
-    assert_eq!(spans(&placed)[12], ("f12", 60087, 5440));
-    assert_eq!(placed.last().unwrap().rect.right(), 65527);
+    assert_eq!(spans(&placed)[7], ("f7", 32848, 5424));
+    assert_eq!(spans(&placed)[8], ("f8", 38284, 5423));
+    assert_eq!(spans(&placed)[12], ("f12", 60024, 5423));
+    assert_eq!(placed.last().unwrap().rect.right(), 65447);
 }

@@ -3,7 +3,7 @@
 /// Pixel spacing applied by the layout engine. All values sit on the 4 px grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpacingRules {
-    /// Empty space between the bar edge and the first/last button.
+    /// Minimum empty space between the bar edge and the first/last button.
     pub edge_padding: u16,
     /// Space between two buttons in the same group.
     pub gap: u16,
@@ -19,9 +19,9 @@ pub struct SpacingRules {
 
 impl SpacingRules {
     pub const STANDARD: SpacingRules = SpacingRules {
-        edge_padding: 8,
-        gap: 8,
-        group_gap: 24,
+        edge_padding: 88,
+        gap: 12,
+        group_gap: 88,
         vertical_inset: 8,
         min_button_width: 64,
         label_padding: 12,

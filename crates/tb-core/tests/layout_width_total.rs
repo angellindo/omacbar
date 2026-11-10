@@ -12,7 +12,7 @@ fn fixed(id: &str, px: u16) -> Button {
 }
 
 fn one_group(buttons: Vec<Button>) -> Layer {
-    Layer { chord: Chord::Default, groups: vec![Group { buttons }] }
+    Layer { group_gap: None, chord: Chord::Default, groups: vec![Group { buttons }] }
 }
 
 fn widest_buttons(n: usize) -> Vec<Button> {
@@ -23,7 +23,7 @@ fn widest_buttons(n: usize) -> Vec<Button> {
 fn fixed_widths_summing_past_the_integer_type_overflow_with_the_largest_need() {
     // 65,538 x 65,535 px is past u32::MAX.
     let err = place(&one_group(widest_buttons(65_538)), BAR, &RULES).unwrap_err();
-    assert_eq!(err, LayoutError::Overflow { needed: u32::MAX, available: 2154 });
+    assert_eq!(err, LayoutError::Overflow { needed: u32::MAX, available: 1994 });
 }
 
 #[test]
@@ -34,20 +34,20 @@ fn fixed_widths_that_would_wrap_to_a_tiny_total_still_overflow() {
     buttons.push(fixed("tail", 2));
     let rules = SpacingRules { gap: 0, group_gap: 0, ..RULES };
     let err = place(&one_group(buttons), BAR, &rules).unwrap_err();
-    assert_eq!(err, LayoutError::Overflow { needed: u32::MAX, available: 2154 });
+    assert_eq!(err, LayoutError::Overflow { needed: u32::MAX, available: 1994 });
 }
 
 #[test]
 fn fixed_widths_a_little_past_the_bar_overflow_with_their_exact_need() {
-    // 1,100 + 8 (gap) + 1,100 = 2,208 px on a 2,154 px usable bar.
+    // 1,100 + 12 (gap) + 1,100 = 2,212 px on a 1,994 px usable bar.
     let err = place(&one_group(vec![fixed("a", 1100), fixed("b", 1100)]), BAR, &RULES).unwrap_err();
-    assert_eq!(err, LayoutError::Overflow { needed: 2208, available: 2154 });
+    assert_eq!(err, LayoutError::Overflow { needed: 2212, available: 1994 });
 }
 
 #[test]
 fn a_fixed_width_equal_to_the_usable_bar_fills_it() {
-    let placed = place(&one_group(vec![fixed("all", 2154)]), BAR, &RULES).unwrap();
+    let placed = place(&one_group(vec![fixed("all", 1994)]), BAR, &RULES).unwrap();
     assert_eq!(placed.len(), 1);
-    assert_eq!((placed[0].rect.x, placed[0].rect.width), (8, 2154));
-    assert_eq!(placed[0].rect.right(), 2162);
+    assert_eq!((placed[0].rect.x, placed[0].rect.width), (88, 1994));
+    assert_eq!(placed[0].rect.right(), 2082);
 }

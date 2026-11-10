@@ -73,7 +73,7 @@ fn selecting_another_button_shows_its_fields() {
     tap(&mut rt, "preview-esc");
     assert_eq!(text_of(&rt, "panel-id").as_deref(), Some("esc"));
     assert_eq!(text_of(&rt, "field-label").as_deref(), Some("esc"));
-    assert_eq!(text_of(&rt, "field-width").as_deref(), Some("px 120"));
+    assert_eq!(text_of(&rt, "field-width").as_deref(), Some("px 116"));
     assert_eq!(text_of(&rt, "field-action").as_deref(), Some("Esc"));
 }
 

@@ -22,6 +22,12 @@ is reused under `.scratch/manual-test/home`; frames, recorded keys and current-r
 `.scratch/manual-test/`. Keys are recorded to a file rather than sent to other apps. The isolated
 HOME uses the bundled theme unless a test theme is configured. Your normal config is unchanged.
 
+The current default presets use the photo-derived spacing in `docs/design/button-standard.md`:
+wide edges, a separate ESC and fixed-width media groups with trailing space. Existing saved
+configs keep their buttons, widths and groups; only a missing config creates the new presets.
+For an independent fresh preview, launch the compiled binaries with the same temporary HOME.
+Back up a saved test config before deliberately replacing it; updating never resets it automatically.
+
 El lanzador sigue el teclado Fn del portátil con `--keys auto`, independientemente de qué
 ventana tenga el foco y sin capturar el teclado. Mantén **Fn** para mostrar su capa o **Fn+Ctrl**
 para la capa modificadora; suelta ambas para volver a `default`. Tras actualizar el lanzador,

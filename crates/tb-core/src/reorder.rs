@@ -131,7 +131,7 @@ mod tests {
     fn layer() -> Layer {
         let g =
             |ids: &[&str]| Group { buttons: ids.iter().map(|i| Button::new(i, i, Action::None)).collect() };
-        Layer { chord: Chord::Default, groups: vec![g(&["a", "b", "c"]), g(&["x", "y"])] }
+        Layer { chord: Chord::Default, group_gap: None, groups: vec![g(&["a", "b", "c"]), g(&["x", "y"])] }
     }
 
     #[test]

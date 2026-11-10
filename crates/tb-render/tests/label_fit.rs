@@ -98,15 +98,15 @@ fn a_long_label_measured_by_rune_is_one_label_too_wide_warning() {
     let config = config_with_f5_label(Some(LONG_LABEL));
     let found = warnings(&config, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD, |l| label_width(l, FONT));
     let measured = label_width(LONG_LABEL, FONT);
-    assert!(measured > 136, "{measured}");
-    // F-keys on the default layer are 160 px wide (button standard § Width): room 160 - 2 x 12.
+    assert!(measured > 119, "{measured}");
+    // F-keys on the default layer are 143 px wide (button standard § Width): room 143 - 2 x 12.
     assert_eq!(
         found,
         vec![ConfigWarning::LabelTooWide {
             chord: Chord::Default,
             id: tb_core::ButtonId::new("f5"),
             width: measured,
-            room: 136
+            room: 119
         }]
     );
 }
@@ -125,7 +125,7 @@ fn a_long_label_is_cut_to_its_room_and_no_other_label_is_cut() {
     let rt = runtime(&scene);
     let f5 = rect_of(&scene, "f5");
     let [x, _, width, _] = label_rect(&rt, "f5");
-    assert_close(width, 136.0, 0.5, "f5 label width (its room)");
+    assert_close(width, 119.0, 0.5, "f5 label width (its room)");
     assert_close(x, f32::from(f5.x) + 12.0, 0.5, "f5 label start (after the label padding)");
     assert!(width < label_width(LONG_LABEL, FONT) as f32, "the label is cut");
     for b in scene.buttons.iter().filter(|b| b.id.as_str() != "f5") {
@@ -165,9 +165,11 @@ fn a_long_label_inks_its_room_to_the_end_and_leaves_the_padding_and_its_neighbou
     let f5 = rect_of(&long, "f5");
     let (left, right) = (u32::from(f5.x), u32::from(f5.right()));
     // The short "F5" is centred, so near both ends of the room the default frame shows bare fill.
+    // At the new 143 px width, whole mono glyphs can leave 24 px after their last inked
+    // column. Include one rounding pixel around the final two cells, not only bare fill.
     assert!(
-        differs_somewhere(&long_frame, &short_frame, right - 12 - 24..right - 12),
-        "the long label reaches the last 24 px of its room (the ellipsis)"
+        differs_somewhere(&long_frame, &short_frame, right - 12 - 25..right - 12),
+        "the long label reaches the last two mono cells plus one rounding px (the ellipsis)"
     );
     assert!(
         differs_somewhere(&long_frame, &short_frame, left + 12..left + 12 + 24),

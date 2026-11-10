@@ -85,7 +85,7 @@ fn dropping_on_the_right_half_of_esc_moves_the_button_into_the_esc_group() {
 #[test]
 fn a_drop_in_the_group_gap_counts_for_the_nearest_button() {
     let mut layer = default_layer();
-    // Two px left of F1: inside the 24 px group gap, nearer F1 than ESC.
+    // Two px left of F1: inside the 28 px group gap, nearer F1 than ESC.
     let x = rect_of("f1").x - 2;
     assert!(drop_at(&mut layer, "f3", x));
     assert_eq!(ids(&layer), groups("esc | f3 f1 f2 f4 f5 f6 f7 f8 f9 f10 f11 f12"));

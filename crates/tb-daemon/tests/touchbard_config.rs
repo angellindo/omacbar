@@ -40,7 +40,11 @@ fn config(fill: &str, key: &str) -> Config {
     button.style.fill = Some(fill.to_owned());
     Config {
         layout: Layout {
-            layers: vec![Layer { chord: Chord::Default, groups: vec![Group { buttons: vec![button] }] }],
+            layers: vec![Layer {
+                group_gap: None,
+                chord: Chord::Default,
+                groups: vec![Group { buttons: vec![button] }],
+            }],
         },
         ..Config::default()
     }
@@ -108,7 +112,7 @@ impl Bar {
     }
 
     fn fill(&self, n: u32, expected: [u8; 3]) {
-        colour(&self.frame(n), 20, expected);
+        colour(&self.frame(n), 100, expected);
     }
 
     fn logged(&self, text: &str) {
@@ -129,7 +133,7 @@ impl Bar {
     }
 
     fn tap(&mut self, count: usize, code: u16) {
-        self.child.stdin.as_mut().unwrap().write_all(b"down 40\nup\n").unwrap();
+        self.child.stdin.as_mut().unwrap().write_all(b"down 120\nup\n").unwrap();
         let deadline = Instant::now() + WAIT;
         loop {
             let bytes = fs::read(&self.keys).unwrap_or_default();
@@ -320,7 +324,7 @@ fn file_theme_resolves_before_validation_and_source_changes_are_atomic() {
 
     save(&home, &config("#20c050", "F10"));
     let switched = bar.frame(2);
-    colour(&switched, 20, GREEN);
+    colour(&switched, 100, GREEN);
     colour(&switched, 2, LATTE);
     bar.quiet_after(2);
 
@@ -332,12 +336,12 @@ fn file_theme_resolves_before_validation_and_source_changes_are_atomic() {
     bar.quiet_after(2);
     bar.tap(1, 68);
     let retained = bar.frame(4);
-    colour(&retained, 20, GREEN);
+    colour(&retained, 100, GREEN);
     colour(&retained, 2, LATTE);
 
     save(&home, &saved);
     let restored = bar.frame(5);
-    colour(&restored, 20, RED);
+    colour(&restored, 100, RED);
     colour(&restored, 2, [0x10, 0x18, 0x20]);
     bar.quiet_after(5);
     bar.close();

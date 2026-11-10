@@ -37,7 +37,7 @@ _Avoid_: stretch, flex, weight
 
 **Spacing rules**:
 The pixel tokens (edge padding, gap, group gap, vertical inset, minimum width, label padding)
-every layer obeys.
+every layer obeys. A layer may override its group gap; omitted, it inherits the standard.
 _Avoid_: margins, paddings (as a collective name)
 
 **Placement**:

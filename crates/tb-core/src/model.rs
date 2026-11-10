@@ -151,7 +151,7 @@ impl Button {
     }
 }
 
-/// Buttons laid out together; groups are separated by the wider group gap.
+/// Buttons laid out together; groups are separated by the layer's group gap.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Group {
@@ -164,6 +164,9 @@ pub struct Group {
 #[serde(deny_unknown_fields)]
 pub struct Layer {
     pub chord: Chord,
+    /// Space between nonempty groups; absent means the standard group gap.
+    #[serde(default, rename = "group-gap", skip_serializing_if = "Option::is_none")]
+    pub group_gap: Option<u16>,
     #[serde(default, rename = "group")]
     pub groups: Vec<Group>,
 }

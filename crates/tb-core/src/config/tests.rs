@@ -65,6 +65,7 @@ fn reports_every_problem_at_once() {
         b
     };
     let fn_layer = Layer {
+        group_gap: None,
         chord: Chord::Fn,
         groups: vec![Group { buttons: vec![bad("Bad_Id", " "), bad("Bad_Id", "x")] }],
     };

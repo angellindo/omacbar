@@ -67,7 +67,7 @@ fn adding_after_an_absent_button_ends_the_last_group() {
 
 #[test]
 fn adding_to_a_layer_without_groups_makes_a_first_group() {
-    let mut layer = Layer { chord: Chord::Fn, groups: Vec::new() };
+    let mut layer = Layer { group_gap: None, chord: Chord::Fn, groups: Vec::new() };
     assert_eq!(add_button(&mut layer, None), id("button-1"));
     assert_eq!(ids(&layer), groups("button-1"));
 }
@@ -84,6 +84,7 @@ fn every_added_button_gets_an_id_no_other_button_has() {
 #[test]
 fn a_new_id_takes_the_first_free_number() {
     let mut layer = Layer {
+        group_gap: None,
         chord: Chord::Fn,
         groups: vec![Group {
             buttons: vec![

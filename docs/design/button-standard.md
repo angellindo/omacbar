@@ -7,11 +7,12 @@ them there and here together, in one ticket.
 ## Canvas
 
 - Bar: **2170 x 60 px**. Work in device pixels, 1:1. Never scale the bar.
-- Grid: **4 px**. Every spacing value and every fixed width is a multiple of 4.
+- Grid: **4 px**. Every spacing token and preset fixed width is a multiple of 4. Shared
+  widths use whole pixels; derived touch slop is half the in-group gap.
 - Coordinates: x from the left edge (ESC side), y from the top.
 
 ```
-|<8>|[ esc ]|<24>|[ F1 ]<8>[ F2 ]<8> ... <8>[ F12 ]|<8>|      x: 2170 px
+|<88>|[ esc ]|<28>|[ F1 ]<12>[ F2 ]<12> ... <12>[ F12 ]|<88>|      x: 2170 px
  ^ edge      ^ group gap    ^ gap                   ^ edge
  y: 8 px inset │ 44 px button │ 8 px inset            y: 60 px
 ```
@@ -20,13 +21,19 @@ them there and here together, in one ticket.
 
 | Token | px | Rule |
 |---|---|---|
-| `edge_padding` | 8 | Space between the bar edge and the first/last button. |
-| `gap` | 8 | Between buttons in one group. |
-| `group_gap` | 24 | Between groups. Use groups to show meaning (ESC / brightness / media / volume). |
+| `edge_padding` | 88 | Minimum space at each bar edge; photographed edges are about 88–96 px. |
+| `gap` | 12 | Between buttons in one group; photographed gaps are about 13–14 px. |
+| `group_gap` | 88 | Between groups; photographed media gaps are about 91 px. A layer can override it with `group-gap`; Default uses 28 px for the photographed ESC → F1 gap of about 29 px. |
 | `vertical_inset` | 8 | Above and below every button, so buttons are **44 px** tall. |
 | `min_button_width` | 64 | No button is narrower. Below this a fingertip covers two buttons. |
 | `label_padding` | 12 | Minimum space between label text and the button edge. |
-| touch slop | `gap / 2` = 4 | A touch in a gap within 4 px of a button still hits it. Group gaps and edges are dead. |
+| touch slop | `gap / 2` = 6 | A touch in an in-group gap within 6 px of a button still hits it. Group gaps, edges and trailing space are dead. |
+
+The horizontal values above come from the approximate photo measurements in
+[TB-38](https://app.notion.com/414934e84f7f814d8ae2dbc39971c853). The photos have perspective and
+assume the glass spans the display; these values match proportions, not a calibrated panel.
+Vertical inset, minimum width and label padding retain the previous standard; the photos do not
+establish different values for them.
 
 ## Width
 
@@ -34,21 +41,35 @@ A button's width is one of:
 
 - `auto` (= `span = 1`): an equal share of the free space.
 - `span = n`: n shares. Use 2 for the primary action of a group; never above 4.
-- `px = n`: fixed. Use for ESC (`120`) and for buttons that must not move when others are added.
+- `px = n`: fixed. Use for ESC (`116`) and for position-stable controls. The Fn media preset uses
+  fixed **132 px** buttons, matching the photographed natural width of about 132 px.
 
-The engine fills the bar exactly: free space = 2170 - 2 x 8 - gaps - fixed widths, split by
-shares, leftover pixels one each to the leftmost shared buttons. A layer that cannot give every
-button 64 px is rejected with the width it needed.
+When a layer has shared buttons, the engine fills its available width: free space =
+2170 - 2 x 88 - gaps - fixed widths, split by shares, with leftover pixels one each to the
+leftmost shared buttons. An all-fixed layer stays left-aligned and leaves unused width empty
+on the right. A layer that cannot give every button 64 px is rejected with the width it needed.
 
-Capacity check: at 64 px and 8 px gaps a single-group layer holds at most **30** buttons. The
-default F-key layer (ESC at 120 px + 12 F-keys) gets 160 px per F-key. Aim for **at most 16 buttons per layer**: a layer with more still validates, with a warning
-(`tb_core::config::warnings`).
+The `group-gap` field is optional per layer. Omitted, it inherits `group_gap`; an explicit value
+controls both width preflight and placement. Empty groups add no gaps. Version 1 files without
+this field remain readable, and saving preserves an explicit override.
+
+Capacity check: at 64 px and 12 px gaps a single-group layer holds at most **26** buttons.
+The default F-key layer uses ESC at 116 px and a 28 px group gap: its first two F-buttons are
+144 px and the remaining ten 143 px, with 88 px at both edges. Their widths differ by at most
+one pixel because the 2170 px canvas cannot divide the remaining width evenly.
+Aim for **at most 16 buttons per layer**: a layer with more still validates, with a warning
+(`tb_core::config::warnings`), when it fits.
+
+Fn has five groups: ESC, display brightness (2), keyboard light (2), playback (3), volume (3).
+Its ten 132 px controls, 12 px in-group gaps and 88 px group gaps end at x=1948, leaving
+**222 px** empty to the right (the photo suggests roughly 200 px). Fixed widths are intentional
+here: the controls must retain their natural size instead of sharing the unused width.
 
 ## Escape
 
-Every layer starts with an `esc` button, `px = 120`, alone in the first group. macOS treats Escape
-as its own element outside app content (research 0006); keeping it fixed means the user's thumb
-finds it in the same place whatever chord is held.
+Every preset layer starts with an `esc` button, `px = 116`, alone in the first group, matching
+the photographed 116–117 px width. macOS treats Escape as its own element outside app content
+(research 0006); keeping it fixed means the user's thumb finds it at x=88 whatever chord is held.
 
 ## Label
 
@@ -94,7 +115,7 @@ may set a radius; buttons then use it uniformly.
 ## Checklist for a new button or preset
 
 - [ ] id is kebab-case and unique in its layer
-- [ ] width is `auto`/`span` unless position must be stable
+- [ ] width is `auto`/`span` unless position must be stable or the fixed-width media preset applies
 - [ ] label fits at 20 px inside the width minus 24 px
 - [ ] colours are theme tokens
 - [ ] the layer still validates (`cargo test -p tb-core`) and the preview snapshot looks right

@@ -12,7 +12,11 @@ fn button(id: &str, width: Width) -> Button {
 }
 
 fn layer(groups: Vec<Vec<Button>>) -> Layer {
-    Layer { chord: Chord::Default, groups: groups.into_iter().map(|buttons| Group { buttons }).collect() }
+    Layer {
+        group_gap: None,
+        chord: Chord::Default,
+        groups: groups.into_iter().map(|buttons| Group { buttons }).collect(),
+    }
 }
 
 fn esc() -> Button {
@@ -31,8 +35,8 @@ fn spans(placed: &[Placed]) -> Vec<(&str, u16, u16)> {
 fn two_span_three_buttons_after_esc_fill_the_bar_to_the_right_edge_padding() {
     let l = layer(vec![vec![esc()], vec![button("a", Width::Span(3)), button("b", Width::Span(3))]]);
     let placed = place(&l, BAR, &RULES).unwrap();
-    assert_eq!(spans(&placed), vec![("esc", 8, 120), ("a", 152, 1001), ("b", 1161, 1001)]);
-    assert_eq!(placed.last().unwrap().rect.right(), 2162);
+    assert_eq!(spans(&placed), vec![("esc", 88, 120), ("a", 296, 887), ("b", 1195, 887)]);
+    assert_eq!(placed.last().unwrap().rect.right(), 2082);
 }
 
 #[test]
@@ -42,20 +46,20 @@ fn a_remainder_larger_than_the_shared_buttons_goes_to_the_leftmost_after_proport
         vec![button("a", Width::Auto), button("b", Width::Span(3)), button("c", Width::Auto)],
     ]);
     let placed = place(&l, BAR, &RULES).unwrap();
-    assert_eq!(spans(&placed), vec![("esc", 8, 120), ("a", 152, 399), ("b", 559, 1197), ("c", 1764, 398)]);
-    assert_eq!(placed.last().unwrap().rect.right(), 2162);
+    assert_eq!(spans(&placed), vec![("esc", 88, 120), ("a", 296, 353), ("b", 661, 1057), ("c", 1730, 352)]);
+    assert_eq!(placed.last().unwrap().rect.right(), 2082);
 }
 
 #[test]
 fn the_default_f_key_layer_keeps_its_rects() {
     let placed = place(presets::default_layout().layer(Chord::Default).unwrap(), BAR, &RULES).unwrap();
-    let mut want = vec![("esc", 8, 120), ("f1", 152, 161), ("f2", 321, 161)];
+    let mut want = vec![("esc", 88, 116), ("f1", 232, 144), ("f2", 388, 144)];
     let ids = ["f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"];
     for (i, id) in ids.into_iter().enumerate() {
-        want.push((id, 490 + 168 * u16::try_from(i).unwrap(), 160));
+        want.push((id, 544 + 155 * u16::try_from(i).unwrap(), 143));
     }
     assert_eq!(spans(&placed), want);
-    assert_eq!(placed.last().unwrap().rect.right(), 2162);
+    assert_eq!(placed.last().unwrap().rect.right(), 2082);
 }
 
 #[test]
@@ -64,14 +68,14 @@ fn the_fn_ctrl_layer_keeps_its_rects() {
     assert_eq!(
         spans(&placed),
         vec![
-            ("esc", 8, 120),
-            ("theme-next", 152, 788),
-            ("screenshot", 948, 394),
-            ("background-next", 1350, 394),
-            ("lock", 1768, 394),
+            ("esc", 88, 116),
+            ("theme-next", 292, 672),
+            ("screenshot", 976, 336),
+            ("background-next", 1324, 335),
+            ("lock", 1747, 335),
         ]
     );
-    assert_eq!(placed.last().unwrap().rect.right(), 2162);
+    assert_eq!(placed.last().unwrap().rect.right(), 2082);
 }
 
 #[test]
@@ -79,5 +83,5 @@ fn a_span_two_between_two_auto_buttons_keeps_its_rects() {
     let l =
         layer(vec![vec![button("a", Width::Auto), button("wide", Width::Span(2)), button("c", Width::Auto)]]);
     let placed = place(&l, BAR, &RULES).unwrap();
-    assert_eq!(spans(&placed), vec![("a", 8, 535), ("wide", 551, 1069), ("c", 1628, 534)]);
+    assert_eq!(spans(&placed), vec![("a", 88, 493), ("wide", 593, 985), ("c", 1590, 492)]);
 }

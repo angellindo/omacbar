@@ -9,7 +9,8 @@
 //!    for a minimum they do not need.
 //! 4. Give each shared button the whole pixels of its shares (`free x span / total shares`,
 //!    rounded down). Each floor loses under 1 px, so the leftover is always fewer pixels than
-//!    there are shared buttons: one each to the leftmost fills the bar exactly.
+//!    there are shared buttons: one each to the leftmost fills the bar exactly. With only fixed
+//!    buttons, unused width stays empty on the right.
 //! 5. Reject, by name, the first button whose allocated width is under `min_button_width`.
 
 use thiserror::Error;
@@ -44,7 +45,8 @@ pub fn place(layer: &Layer, size: BarSize, rules: &SpacingRules) -> Result<Vec<P
     // Subtracting twice instead of `2 * edge_padding` cannot overflow.
     let available =
         u32::from(size.width.saturating_sub(rules.edge_padding).saturating_sub(rules.edge_padding));
-    let gaps = gaps_width(&groups, rules);
+    let group_gap = layer.group_gap.unwrap_or(rules.group_gap);
+    let gaps = gaps_width(&groups, rules.gap, group_gap);
     let buttons = || groups.iter().flat_map(|(_, g)| g.buttons.iter());
     let fixed = buttons().map(|b| fixed_px(b.width)).fold(0, u32::saturating_add);
     let shares = buttons().map(|b| b.width.shares()).fold(0, u32::saturating_add);
@@ -66,7 +68,7 @@ pub fn place(layer: &Layer, size: BarSize, rules: &SpacingRules) -> Result<Vec<P
     let mut placed = Vec::new();
     for (pos, (group_index, group)) in groups.iter().enumerate() {
         if pos > 0 {
-            x += u32::from(rules.group_gap);
+            x += u32::from(group_gap);
         }
         for (i, button) in group.buttons.iter().enumerate() {
             if i > 0 {
@@ -99,12 +101,12 @@ pub fn place(layer: &Layer, size: BarSize, rules: &SpacingRules) -> Result<Vec<P
 }
 
 /// Total width of the gaps between the buttons of non-empty `groups` and between the groups.
-fn gaps_width(groups: &[(usize, &Group)], rules: &SpacingRules) -> u32 {
+fn gaps_width(groups: &[(usize, &Group)], gap: u16, group_gap: u16) -> u32 {
     groups
         .iter()
-        .map(|(_, g)| count(g.buttons.len() - 1).saturating_mul(u32::from(rules.gap)))
+        .map(|(_, g)| count(g.buttons.len() - 1).saturating_mul(u32::from(gap)))
         .fold(0, u32::saturating_add)
-        .saturating_add(count(groups.len() - 1).saturating_mul(u32::from(rules.group_gap)))
+        .saturating_add(count(groups.len() - 1).saturating_mul(u32::from(group_gap)))
 }
 
 /// Width of a `Px` button; 0 for shared (`Auto`/`Span`) buttons.

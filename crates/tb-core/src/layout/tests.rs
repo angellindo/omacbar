@@ -7,7 +7,11 @@ const BAR: BarSize = BarSize::MACBOOK_PRO;
 const RULES: SpacingRules = SpacingRules::STANDARD;
 
 fn layer(groups: Vec<Vec<Button>>) -> Layer {
-    Layer { chord: Chord::Default, groups: groups.into_iter().map(|buttons| Group { buttons }).collect() }
+    Layer {
+        group_gap: None,
+        chord: Chord::Default,
+        groups: groups.into_iter().map(|buttons| Group { buttons }).collect(),
+    }
 }
 
 fn b(id: &str) -> Button {
@@ -26,7 +30,7 @@ fn buttons_never_overlap_and_respect_the_gap() {
     let placed = place(presets::default_layout().layer(Chord::Default).unwrap(), BAR, &RULES).unwrap();
     for pair in placed.windows(2) {
         let space = pair[1].rect.x - pair[0].rect.right();
-        let want = if pair[0].group == pair[1].group { RULES.gap } else { RULES.group_gap };
+        let want = if pair[0].group == pair[1].group { RULES.gap } else { 28 };
         assert_eq!(space, want, "{} -> {}", pair[0].id, pair[1].id);
     }
 }
@@ -59,7 +63,7 @@ fn fixed_width_buttons_keep_their_exact_width() {
 #[test]
 fn only_fixed_buttons_are_left_aligned() {
     let placed = place(&layer(vec![vec![b("a").with_width(Width::Px(100))]]), BAR, &RULES).unwrap();
-    assert_eq!(placed[0].rect, Rect { x: 8, y: 8, width: 100, height: 44 });
+    assert_eq!(placed[0].rect, Rect { x: 88, y: 8, width: 100, height: 44 });
 }
 
 #[test]

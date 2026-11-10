@@ -10,7 +10,7 @@ use tb_core::{Action, BarSize, BarTheme, Button, ButtonId, Chord, SpacingRules};
 
 /// Labels with a known measured width; every other label measures 10 px.
 const KNOWN_WIDTHS: [(&str, u32); 4] =
-    [("fits-f-key", 136), ("wide-f-key", 137), ("fits-esc", 96), ("wide-esc", 97)];
+    [("fits-f-key", 119), ("wide-f-key", 120), ("fits-esc", 92), ("wide-esc", 93)];
 
 fn measured(label: &str) -> u32 {
     KNOWN_WIDTHS.iter().find(|(l, _)| *l == label).map_or(10, |(_, w)| *w)
@@ -49,8 +49,8 @@ fn an_f_key_label_exactly_as_wide_as_its_room_has_no_warning() {
 fn an_f_key_label_one_pixel_wider_than_its_room_is_a_label_too_wide_warning() {
     let mut config = Config::default();
     relabel(&mut config, Chord::Default, "f5", "wide-f-key");
-    // F-keys on the default layer are 160 px wide (button standard § Width): room 160 - 2 x 12.
-    assert_eq!(warnings_of(&config, measured), vec![label_too_wide(Chord::Default, "f5", 137, 136)]);
+    // F-keys on the default layer are 143 px wide (button standard § Width): room 143 - 2 x 12.
+    assert_eq!(warnings_of(&config, measured), vec![label_too_wide(Chord::Default, "f5", 120, 119)]);
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn the_room_of_esc_is_its_fixed_width_minus_both_label_paddings() {
     relabel(&mut config, Chord::Default, "esc", "fits-esc");
     assert_eq!(warnings_of(&config, measured), vec![]);
     relabel(&mut config, Chord::Default, "esc", "wide-esc");
-    assert_eq!(warnings_of(&config, measured), vec![label_too_wide(Chord::Default, "esc", 97, 96)]);
+    assert_eq!(warnings_of(&config, measured), vec![label_too_wide(Chord::Default, "esc", 93, 92)]);
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn labels_too_wide_in_one_layer_are_warned_in_button_order() {
     relabel(&mut config, Chord::Default, "f5", "wide-f-key");
     assert_eq!(
         warnings_of(&config, measured),
-        vec![label_too_wide(Chord::Default, "f5", 137, 136), label_too_wide(Chord::Default, "f9", 137, 136)]
+        vec![label_too_wide(Chord::Default, "f5", 120, 119), label_too_wide(Chord::Default, "f9", 120, 119)]
     );
 }
 
@@ -104,7 +104,7 @@ fn a_crowded_layer_lists_its_capacity_warning_before_its_label_warnings() {
     assert_eq!(found[0], ConfigWarning::TooManyButtons { chord: Chord::Default, buttons: 17 });
     assert!(
         matches!(&found[1], ConfigWarning::LabelTooWide { chord: Chord::Default, id, width: 1000, room }
-            if id.as_str() == "f5" && *room > 0 && *room < 136),
+            if id.as_str() == "f5" && *room > 0 && *room < 119),
         "{found:?}"
     );
 }

@@ -17,12 +17,12 @@ fn modifier_layers_of_the_preset() -> Vec<Layer> {
 }
 
 #[test]
-fn every_layer_of_the_default_preset_starts_with_esc_alone_at_120_px() {
+fn every_layer_of_the_default_preset_starts_with_esc_alone_at_116_px() {
     for layer in presets::default_layout().layers {
         let first = &layer.groups[0].buttons;
         assert_eq!(first.len(), 1, "{:?}: esc is alone in the first group", layer.chord);
         assert_eq!(first[0].id.as_str(), "esc", "{:?}", layer.chord);
-        assert_eq!(first[0].width, Width::Px(120), "{:?}", layer.chord);
+        assert_eq!(first[0].width, Width::Px(116), "{:?}", layer.chord);
     }
 }
 
@@ -59,7 +59,11 @@ fn a_key_action_on_a_modifier_layer_is_a_warning_and_still_validates() {
     let mut config = Config::default();
     let key = Button::new("refresh", "F5", Action::Key { keys: vec!["F5".to_owned()] });
     config.layout.layers.retain(|l| l.chord != Chord::FnCtrl);
-    config.layout.layers.push(Layer { chord: Chord::FnCtrl, groups: vec![Group { buttons: vec![key] }] });
+    config.layout.layers.push(Layer {
+        group_gap: None,
+        chord: Chord::FnCtrl,
+        groups: vec![Group { buttons: vec![key] }],
+    });
     let text = to_toml(&config).unwrap();
     let checked =
         parse_valid(&text, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD, &BarTheme::omarchy_fallback());

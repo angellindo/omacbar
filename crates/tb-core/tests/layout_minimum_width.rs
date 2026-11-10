@@ -13,7 +13,11 @@ fn button(id: &str, width: Width) -> Button {
 }
 
 fn layer(groups: Vec<Vec<Button>>) -> Layer {
-    Layer { chord: Chord::Default, groups: groups.into_iter().map(|buttons| Group { buttons }).collect() }
+    Layer {
+        group_gap: None,
+        chord: Chord::Default,
+        groups: groups.into_iter().map(|buttons| Group { buttons }).collect(),
+    }
 }
 
 fn esc() -> Button {
@@ -29,16 +33,16 @@ fn spans(placed: &[Placed]) -> Vec<(String, u16, u16)> {
 }
 
 #[test]
-fn ten_span_four_buttons_after_esc_lay_out_at_about_193_px_each() {
+fn ten_span_four_buttons_after_esc_lay_out_at_about_168_px_each() {
     let placed = place(&layer(vec![vec![esc()], span_fours(10)]), BAR, &RULES).unwrap();
-    let mut want = vec![("esc".to_owned(), 8, 120)];
+    let mut want = vec![("esc".to_owned(), 88, 120)];
     for i in 0..8u16 {
-        want.push((format!("s{i}"), 152 + 202 * i, 194));
+        want.push((format!("s{i}"), 296 + 180 * i, 168));
     }
-    want.push(("s8".to_owned(), 1768, 193));
-    want.push(("s9".to_owned(), 1969, 193));
+    want.push(("s8".to_owned(), 1736, 167));
+    want.push(("s9".to_owned(), 1915, 167));
     assert_eq!(spans(&placed), want);
-    assert_eq!(placed.last().unwrap().rect.right(), 2162);
+    assert_eq!(placed.last().unwrap().rect.right(), 2082);
 }
 
 #[test]
@@ -46,28 +50,28 @@ fn an_auto_button_starved_by_wide_spans_is_too_narrow_by_name() {
     let mut shared = span_fours(8);
     shared.push(button("a", Width::Auto));
     let err = place(&layer(vec![vec![esc()], shared]), BAR, &RULES).unwrap_err();
-    assert_eq!(err, LayoutError::TooNarrow { id: ButtonId::new("a"), width: 58, min: 64 });
+    assert_eq!(err, LayoutError::TooNarrow { id: ButtonId::new("a"), width: 51, min: 64 });
 }
 
 #[test]
-fn thirty_auto_buttons_still_fit_the_bar() {
-    let keys: Vec<Button> = (0..30).map(|i| button(&format!("k{i}"), Width::Auto)).collect();
+fn twenty_six_auto_buttons_still_fit_the_bar() {
+    let keys: Vec<Button> = (0..26).map(|i| button(&format!("k{i}"), Width::Auto)).collect();
     let placed = place(&layer(vec![keys]), BAR, &RULES).unwrap();
     let got = spans(&placed);
-    assert_eq!(got.len(), 30);
-    assert_eq!(got[0], ("k0".to_owned(), 8, 65));
-    assert_eq!(got[1], ("k1".to_owned(), 81, 65));
-    assert_eq!(got[2], ("k2".to_owned(), 154, 64));
-    assert_eq!(got[29], ("k29".to_owned(), 2098, 64));
-    assert!(got[2..].iter().all(|(_, _, w)| *w == 64));
-    assert_eq!(placed.last().unwrap().rect.right(), 2162);
+    assert_eq!(got.len(), 26);
+    assert_eq!(got[0], ("k0".to_owned(), 88, 66));
+    assert_eq!(got[1], ("k1".to_owned(), 166, 66));
+    assert_eq!(got[3], ("k3".to_owned(), 322, 66));
+    assert_eq!(got[25], ("k25".to_owned(), 2017, 65));
+    assert!(got[4..].iter().all(|(_, _, w)| *w == 65));
+    assert_eq!(placed.last().unwrap().rect.right(), 2082);
 }
 
 #[test]
-fn thirty_one_auto_buttons_overflow_with_the_needed_width() {
-    let keys: Vec<Button> = (0..31).map(|i| button(&format!("k{i}"), Width::Auto)).collect();
+fn twenty_seven_auto_buttons_overflow_with_the_needed_width() {
+    let keys: Vec<Button> = (0..27).map(|i| button(&format!("k{i}"), Width::Auto)).collect();
     let err = place(&layer(vec![keys]), BAR, &RULES).unwrap_err();
-    assert_eq!(err, LayoutError::Overflow { needed: 2224, available: 2154 });
+    assert_eq!(err, LayoutError::Overflow { needed: 2040, available: 1994 });
 }
 
 #[test]
