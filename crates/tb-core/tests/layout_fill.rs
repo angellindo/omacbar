@@ -45,9 +45,11 @@ fn a_remainder_larger_than_the_shared_buttons_goes_to_the_leftmost_after_proport
         vec![esc()],
         vec![button("a", Width::Auto), button("b", Width::Span(3)), button("c", Width::Auto)],
     ]);
-    let placed = place(&l, BAR, &RULES).unwrap();
-    assert_eq!(spans(&placed), vec![("esc", 88, 120), ("a", 296, 353), ("b", 661, 1057), ("c", 1730, 352)]);
-    assert_eq!(placed.last().unwrap().rect.right(), 2082);
+    // Keep 1994 free pixels and five shares: a per-share remainder of four for three buttons.
+    let rules = SpacingRules { edge_padding: 8, gap: 8, group_gap: 24, ..RULES };
+    let placed = place(&l, BAR, &rules).unwrap();
+    assert_eq!(spans(&placed), vec![("esc", 8, 120), ("a", 152, 399), ("b", 559, 1197), ("c", 1764, 398)]);
+    assert_eq!(placed.last().unwrap().rect.right(), 2162);
 }
 
 #[test]
