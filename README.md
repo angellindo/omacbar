@@ -10,6 +10,18 @@ and colours that follow your Omarchy theme. Built in Rust with [Rune](https://gi
 
 ## Try it
 
+To open the configurator and simulator together with one persistent, isolated test config:
+
+```sh
+scripts/try-app.sh
+```
+
+The launcher builds both binaries, then opens the two windows. Edit buttons and press **Save**
+to update the simulator; closing either window or pressing **Ctrl+C** stops both. Test config
+is reused under `.scratch/manual-test/home`; frames, recorded keys and current-run logs are in
+`.scratch/manual-test/`. Keys are recorded to a file rather than sent to other apps. The isolated
+HOME uses the bundled theme unless a test theme is configured. Your normal config is unchanged.
+
 ```sh
 mise install                                   # Rust 1.99.1
 cargo run -p tb-app                            # configurator window
