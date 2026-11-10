@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One persistent, isolated manual-test session; never reads a physical keyboard.
+# One persistent, isolated manual-test session following the laptop's Fn keyboard.
 set -euo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -64,15 +64,20 @@ printf '\nConfig de prueba: %s\nLogs: %s\nImágenes: %s\nTeclas registradas: %s\
   "$session/frames" "$session/keys.bin"
 printf '%s\n' \
   'Edita o reordena botones y pulsa Save para actualizar el simulador.' \
+  'Mantén Fn o Fn+Ctrl para cambiar de capa; suelta ambas para volver a default.' \
+  'Fn sigue el teclado del portátil sin capturarlo, aunque otra ventana tenga el foco.' \
   'Haz clic en el simulador: las teclas se registran en un archivo.' \
+  'Los botones command sí ejecutan sus comandos.' \
   'Se reutiliza la config guardada; logs y registros corresponden a esta ejecución.' \
   'El HOME aislado usa el tema incluido salvo que configures un tema de prueba.' \
+  'Si Fn no cambia la capa, consulta .scratch/manual-test/logs/simulator.log.' \
+  'Tras actualizar el lanzador, cierra esta sesión y vuelve a ejecutarlo.' \
   'Cierra cualquiera de las ventanas o pulsa Ctrl+C para terminar ambas.'
 
 HOME="$test_home" "$configurator" >"$session/logs/configurator.log" 2>&1 &
 pids+=("$!")
 HOME="$test_home" "$daemon" --sim-window --sim "$session/frames" \
-  --emit "$session/keys.bin" >"$session/logs/simulator.log" 2>&1 &
+  --keys auto --emit "$session/keys.bin" >"$session/logs/simulator.log" 2>&1 &
 pids+=("$!")
 
 status=0

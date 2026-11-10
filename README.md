@@ -22,6 +22,14 @@ is reused under `.scratch/manual-test/home`; frames, recorded keys and current-r
 `.scratch/manual-test/`. Keys are recorded to a file rather than sent to other apps. The isolated
 HOME uses the bundled theme unless a test theme is configured. Your normal config is unchanged.
 
+El lanzador sigue el teclado Fn del portátil con `--keys auto`, independientemente de qué
+ventana tenga el foco y sin capturar el teclado. Mantén **Fn** para mostrar su capa o **Fn+Ctrl**
+para la capa modificadora; suelta ambas para volver a `default`. Tras actualizar el lanzador,
+cierra la sesión anterior y vuelve a ejecutar `scripts/try-app.sh`. La detección del teclado y
+los errores de lectura o permisos aparecen en `.scratch/manual-test/logs/simulator.log`; si el
+teclado no está disponible, el daemon conserva o vuelve a la capa `default`. Las acciones `key`
+siguen registrándose en el archivo de prueba; las acciones `command` sí ejecutan sus comandos.
+
 ```sh
 mise install                                   # Rust 1.99.1
 cargo run -p tb-app                            # configurator window
