@@ -13,10 +13,21 @@ and colours that follow your Omarchy theme. Built in Rust with [Rune](https://gi
 ```sh
 mise install                                   # Rust 1.99.1
 cargo run -p tb-app                            # configurator window
+cargo run -p tb-daemon -- --sim-window          # live simulator; click buttons to tap
 cargo run -p tb-app -- --snap out/app.png      # headless screenshot
 TB_WRITE_SNAPSHOTS=1 cargo test -p tb-render --test functional   # out/default-layer.png, 2170x60
 scripts/check.sh                               # all gates
 ```
+
+`touchbard` loads `~/.config/touchbar-customizer/config.toml`, creating the default config
+when it is missing. Saving in the configurator updates the running simulator without a restart.
+Invalid saves are reported and leave the last valid config running. Without `HOME`, the daemon
+uses the default layout and bundled Tokyo Night without loading or following a config file.
+
+The saved theme source selects live Omarchy colours or a fixed `colors.toml`. A fixed file is
+read at startup and each config save; a missing or invalid theme rejects that config together
+with its layout. The configurator preview currently follows Omarchy regardless of this field.
+Key actions need the existing `--emit` option; without it they are reported without pressing keys.
 
 ## Docs
 

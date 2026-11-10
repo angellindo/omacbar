@@ -5,9 +5,11 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tb_core::config::{Config, ConfigError, ConfigIssue, parse_valid, to_toml, validate};
+use tb_core::config::{Config, ConfigError, ConfigIssue, ThemeSource, parse, parse_valid, to_toml, validate};
 use tb_core::{BarSize, BarTheme, SpacingRules};
 use thiserror::Error;
+
+use crate::ThemeFileError;
 
 /// `<home>/.config/touchbar-customizer/config.toml`.
 pub fn default_path(home: &Path) -> PathBuf {
@@ -33,6 +35,8 @@ pub enum ConfigFileError {
     Invalid(Vec<ConfigIssue>),
     #[error(transparent)]
     Serialize(#[from] ConfigError),
+    #[error(transparent)]
+    Theme(#[from] ThemeFileError),
     #[error("the config directory `{}` is no longer watched (it was removed)", dir.display())]
     WatchEnded { dir: PathBuf },
 }
@@ -58,6 +62,47 @@ impl ConfigFile {
     /// The current config: always the last valid one read or saved.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Reads a candidate, resolves its saved theme source, then validates and accepts both.
+    /// Rejection leaves the current config untouched. Missing files get the existing default.
+    pub fn load_resolved(&mut self, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
+        self.read_resolved(active, true)
+    }
+
+    /// Like `load_resolved`, but a missing file is a read failure, never a request to replace
+    /// the accepted config with the default during a save.
+    pub fn reload_resolved(&mut self, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
+        self.read_resolved(active, false)
+    }
+
+    fn read_resolved(
+        &mut self,
+        active: &BarTheme,
+        create_default: bool,
+    ) -> Result<BarTheme, ConfigFileError> {
+        let text = match fs::read_to_string(&self.path) {
+            Ok(text) => text,
+            Err(e) if create_default && e.kind() == io::ErrorKind::NotFound => {
+                let default = Config::default();
+                write_atomically(&self.path, &to_toml(&default)?)?;
+                self.config = default;
+                return Ok(active.clone());
+            }
+            Err(source) => return Err(self.io(source)),
+        };
+        let candidate =
+            parse(&text).map_err(|e| ConfigFileError::Invalid(vec![ConfigIssue::Syntax(e.to_string())]))?;
+        let theme = resolve_theme(&candidate.theme, active)?;
+        check(&candidate, &theme)?;
+        self.config = candidate;
+        Ok(theme)
+    }
+
+    /// Validates the accepted config against a new active Omarchy theme without reading disk.
+    /// Callers use this only while the accepted source is Omarchy.
+    pub fn check_active_theme(&self, active: &BarTheme) -> Result<(), ConfigFileError> {
+        check(&self.config, active)
     }
 
     /// Reads and checks the file. A missing file gets the default config written atomically.
@@ -97,6 +142,19 @@ impl ConfigFile {
     fn io(&self, source: io::Error) -> ConfigFileError {
         ConfigFileError::Io { path: self.path.clone(), source }
     }
+}
+
+fn check(config: &Config, theme: &BarTheme) -> Result<(), ConfigFileError> {
+    let issues = validate(config, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD, theme);
+    if issues.is_empty() { Ok(()) } else { Err(ConfigFileError::Invalid(issues)) }
+}
+
+fn resolve_theme(source: &ThemeSource, active: &BarTheme) -> Result<BarTheme, ThemeFileError> {
+    let ThemeSource::File { path } = source else { return Ok(active.clone()) };
+    let path = PathBuf::from(path);
+    let text =
+        fs::read_to_string(&path).map_err(|source| ThemeFileError::Io { path: path.clone(), source })?;
+    BarTheme::from_omarchy_colors(&text).map_err(|source| ThemeFileError::Invalid { path, source })
 }
 
 /// The directory that holds `path`; a bare file name (`config.toml`) is in the current directory,

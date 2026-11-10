@@ -25,6 +25,11 @@ pub enum Event {
     Modifiers(Modifiers),
     Theme(BarTheme),
     Layout(Layout),
+    /// A saved config's layout and selected theme, accepted together.
+    Config {
+        layout: Layout,
+        theme: BarTheme,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -87,6 +92,12 @@ impl<R: SceneRenderer, D: Display> Daemon<R, D> {
     pub fn handle(&mut self, event: Event) -> Result<(), DaemonError> {
         let pressed = self.pressed.as_ref();
         match event {
+            Event::Config { layout, theme } => {
+                let scene = scene(&layout, &theme, self.modifiers, pressed)?;
+                self.present(scene)?;
+                self.layout = layout;
+                self.theme = theme;
+            }
             Event::Modifiers(m) => {
                 let scene = scene(&self.layout, &self.theme, m, pressed)?;
                 self.present(scene)?;

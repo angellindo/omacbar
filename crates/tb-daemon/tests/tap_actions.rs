@@ -351,6 +351,29 @@ fn a_layout_change_during_a_touch_runs_the_button_it_landed_on() {
 }
 
 #[test]
+fn a_config_change_keeps_held_fn_selection_and_falls_back_when_its_layer_is_removed() {
+    let layout = preset();
+    let f5 = x_of(&layout, Chord::Default, "f5");
+    let bright = x_of(&layout, Chord::Fn, "brightness-up");
+    let mut default_only = layout.clone();
+    default_only.layers.retain(|layer| layer.chord == Chord::Default);
+    let out = run(
+        layout.clone(),
+        vec![
+            held(true, false),
+            Event::Config { layout: default_only, theme: BarTheme::omarchy_fallback() },
+            down(f5),
+            up(),
+            Event::Config { layout, theme: BarTheme::omarchy_fallback() },
+            down(bright),
+            up(),
+        ],
+    );
+    assert_eq!(out.emitted, vec![vec![key("F5")], vec![key("BrightnessUp")]]);
+    assert!(out.reports.is_empty(), "{:?}", out.reports);
+}
+
+#[test]
 fn a_tap_still_presents_the_press_and_the_release() {
     let x = x_of(&preset(), Chord::Default, "f5");
     let out = run(preset(), tap(x).to_vec());

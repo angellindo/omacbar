@@ -19,7 +19,11 @@
 //! PATH instead. Without `--emit`, or when the keyboard cannot be made, the reason is logged and
 //! each tapped key action logs that nothing was pressed. Commands run through `sh -c`, detached;
 //! their failures are logged. No action failure stops the bar.
+//!
+//! The saved config under `$HOME/.config/touchbar-customizer/config.toml` supplies the layout
+//! and theme source. Atomic saves are followed live; invalid saves retain the accepted config.
 
+mod config;
 mod log;
 
 use std::path::{Path, PathBuf};
@@ -29,7 +33,9 @@ use std::thread;
 
 use std::sync::Arc;
 use tb_config::ActiveTheme;
-use tb_core::{BarSize, BarTheme, presets};
+use tb_core::{BarSize, BarTheme};
+
+use config::ConfigState;
 
 use tb_daemon::{
     ActionError, Actions, Daemon, EvdevModifiers, Event, GpuRenderer, KeyEmitter, LineTouches, Report,
@@ -115,6 +121,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Option<Args> {
 enum Message {
     Event(Event),
     TouchesEnded,
+    ConfigChanged,
 }
 
 impl From<Event> for Message {
@@ -123,32 +130,34 @@ impl From<Event> for Message {
     }
 }
 
-/// Startup state: the default preset (config file: a later ticket) and the active theme of `$HOME`,
-/// followed while running.
+/// Startup config and theme under HOME, followed while running; both modes share the coordinator.
 fn run(args: Args) -> Result<(), String> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
     if args.window {
-        return run_with_window(args);
+        return run_with_window(args, home.as_deref());
     }
     let renderer = GpuRenderer::new().map_err(|e| e.to_string())?;
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
-    let theme = follow_keys_and_theme(args.keys, &tx);
+    let theme = follow_keys_and_theme(args.keys, home.as_deref(), &tx);
+    let config = ConfigState::start(home.as_deref(), theme, &tx);
     let actions = actions(args.emit);
     let touches =
         thread::spawn(move || forward_until_ended(&mut LineTouches::new(std::io::stdin().lock()), &tx));
-    run_daemon(renderer, display, theme, actions, rx)?;
+    run_daemon(renderer, display, config, actions, rx)?;
     join(touches, "touch reader")
 }
 
 /// `run` with the simulator window as the touch source. winit needs the main thread for the
 /// window and `GpuRenderer` is not `Send`, so the daemon is built and run on another thread.
-fn run_with_window(args: Args) -> Result<(), String> {
+fn run_with_window(args: Args, home: Option<&Path>) -> Result<(), String> {
     let (window, mut touches) = SimWindow::new();
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir)
         .map_err(|e| e.to_string())?
         .on_present(window.show_screen());
     let (tx, rx) = mpsc::channel();
-    let theme = follow_keys_and_theme(args.keys, &tx);
+    let theme = follow_keys_and_theme(args.keys, home, &tx);
+    let config = ConfigState::start(home, theme, &tx);
     let actions = actions(args.emit);
     let app = sim_window_app(window);
     let handle = app.handle();
@@ -157,7 +166,7 @@ fn run_with_window(args: Args) -> Result<(), String> {
     let daemon = thread::spawn(move || {
         let ran = GpuRenderer::new()
             .map_err(|e| e.to_string())
-            .and_then(|renderer| run_daemon(renderer, display, theme, actions, rx));
+            .and_then(|renderer| run_daemon(renderer, display, config, actions, rx));
         if ran.is_err() {
             // Nothing new will be shown: close the window rather than leave it frozen.
             handle.quit();
@@ -179,12 +188,12 @@ fn run_with_window(args: Args) -> Result<(), String> {
 }
 
 /// Starts following the keys (when given) and the active theme of `$HOME`; the theme now.
-fn follow_keys_and_theme(keys: Option<Keys>, tx: &Sender<Message>) -> BarTheme {
+fn follow_keys_and_theme(keys: Option<Keys>, home: Option<&Path>, tx: &Sender<Message>) -> BarTheme {
     if let Some(keys) = keys {
         follow_keys(keys, tx.clone());
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        follow_theme(ActiveTheme::under_home(Path::new(&home)), tx.clone())
+    if let Some(home) = home {
+        follow_theme(ActiveTheme::under_home(home), tx.clone())
     } else {
         log::error("HOME is not set: showing the bundled Tokyo Night, theme switches are not followed");
         BarTheme::omarchy_fallback()
@@ -212,16 +221,24 @@ fn boxed(keyboard: VirtualKeyboard<std::fs::File>) -> Box<dyn KeyEmitter + Send>
 fn run_daemon(
     renderer: GpuRenderer,
     display: SimDisplay,
-    theme: BarTheme,
+    mut config: ConfigState,
     actions: Actions,
     messages: mpsc::Receiver<Message>,
 ) -> Result<(), String> {
-    let mut daemon = Daemon::new(presets::default_layout(), theme, renderer, display).with_actions(actions);
-    let events = messages.into_iter().map_while(|message| match message {
-        Message::Event(event) => Some(event),
-        Message::TouchesEnded => None,
-    });
-    daemon.run(events).map_err(|e| e.to_string())
+    let mut daemon = Daemon::new(config.layout(), config.theme(), renderer, display).with_actions(actions);
+    daemon.run([]).map_err(|e| e.to_string())?;
+    for message in messages {
+        let event = match message {
+            Message::TouchesEnded => break,
+            Message::ConfigChanged => config.reload(),
+            Message::Event(Event::Theme(theme)) => config.active_theme(theme),
+            Message::Event(event) => Some(event),
+        };
+        if let Some(event) = event {
+            daemon.handle(event).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 /// Forwards `source`'s touches, then tells the daemon they ended.
