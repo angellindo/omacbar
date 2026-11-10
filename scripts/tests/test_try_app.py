@@ -140,7 +140,7 @@ class Launcher(unittest.TestCase):
                 self.assertTrue(window["built"], "a window started before Cargo completed")
             daemon = next(w for w in windows if w["name"] == "touchbard")
             self.assertEqual(daemon["args"], ["--sim-window", "--sim", str(self.session / "frames"),
-                "--emit", str(self.session / "keys.bin")])
+                "--keys", "auto", "--emit", str(self.session / "keys.bin")])
             self.close_window("touchbar-customizer")
             output = self.finished(proc, windows)
             (self.root / "exit-touchbar-customizer").unlink()
