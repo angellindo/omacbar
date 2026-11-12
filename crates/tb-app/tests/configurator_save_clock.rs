@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use support::configurator::*;
 
 static READS: AtomicU64 = AtomicU64::new(0);
+// Match the injected public clock signature while supplying deterministic available times.
+#[allow(clippy::unnecessary_wraps)]
 fn clock() -> Option<u64> {
     // First explicit save: 01:02:03 UTC; second: 04:05:06 UTC.
     Some(if READS.fetch_add(1, Ordering::SeqCst) == 0 { 3723 } else { 14706 })
