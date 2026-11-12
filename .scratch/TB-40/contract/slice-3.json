@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Protects safe edit buffers, measured label room, width/action policy and all-layer shared validation.",
+  "files": [
+    "crates/tb-app/tests/configurator_drafts.rs",
+    "crates/tb-app/tests/configurator_command_file.rs",
+    "crates/tb-core/tests/command_validation.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-301",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "label_room_uses_resolved_device_width_and_shared_font_measurement",
+      "red": "required"
+    },
+    {
+      "id": "QA-302",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "width_mode_numeric_fields_edit_span_and_pixels_and_keep_full_string_entry",
+      "red": "required"
+    },
+    {
+      "id": "QA-303",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "numeric_zero_and_overflow_drafts_are_never_silently_clamped_or_saved_as_old_widths",
+      "red": "required"
+    },
+    {
+      "id": "QA-304",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "two_buttons_and_two_layers_keep_independent_invalid_width_buffers_until_each_is_repaired",
+      "red": "required"
+    },
+    {
+      "id": "QA-305",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "key_and_command_switches_keep_separate_text_buffers_and_none_keeps_the_command_memory",
+      "red": "required"
+    },
+    {
+      "id": "QA-306",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "ordinary_modifier_buttons_cannot_newly_select_key_but_legacy_keys_and_escape_stay_readable",
+      "red": "required"
+    },
+    {
+      "id": "QA-307",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "default_and_fn_still_allow_key_actions_with_shared_unknown_key_diagnostics",
+      "red": "preserve",
+      "reason": "Existing shared validation/config compatibility behavior remains supported."
+    },
+    {
+      "id": "QA-308",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "selected_invalid_cards_and_preview_have_distinct_error_and_accent_decorations",
+      "red": "required"
+    },
+    {
+      "id": "QA-309",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "fill_text_and_border_diagnostics_and_hex_notices_keep_the_shared_theme_semantics",
+      "red": "preserve",
+      "reason": "Existing shared validation/config compatibility behavior remains supported."
+    },
+    {
+      "id": "QA-310",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "all_shared_warning_kinds_are_visible_and_remain_nonblocking",
+      "red": "required"
+    },
+    {
+      "id": "QA-311",
+      "package": "tb-app",
+      "target": "test:configurator_command_file",
+      "test": "empty_command_save_rejection_preserves_the_accepted_config_and_exact_file_bytes",
+      "red": "required"
+    },
+    {
+      "id": "QA-312",
+      "package": "tb-app",
+      "target": "test:configurator_command_file",
+      "test": "command_diagnostics_remain_global_after_switching_to_a_valid_layer",
+      "red": "required"
+    },
+    {
+      "id": "QA-313",
+      "package": "tb-core",
+      "target": "test:command_validation",
+      "test": "empty_and_whitespace_commands_report_each_chord_and_button_in_shared_validation",
+      "red": "required"
+    },
+    {
+      "id": "QA-314",
+      "package": "tb-core",
+      "target": "test:command_validation",
+      "test": "version_one_parse_rejects_empty_commands_and_accepts_none_without_executing_any_action",
+      "red": "required"
+    },
+    {
+      "id": "QA-315",
+      "package": "tb-core",
+      "target": "test:command_validation",
+      "test": "legacy_modifier_keys_remain_valid_and_report_nonblocking_shared_warnings",
+      "red": "preserve",
+      "reason": "Existing shared validation/config compatibility behavior remains supported."
+    }
+  ],
+  "checks": []
+}

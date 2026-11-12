@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Protects B shell literal geometry, canonical layer navigation, shared preview and real narrow/short-window scrolling.",
+  "files": [
+    "crates/tb-app/tests/configurator_shell.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-101",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "the_shell_matches_the_three_columns_and_half_size_footer_canvas",
+      "red": "required"
+    },
+    {
+      "id": "QA-102",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "all_six_layers_are_navigable_and_visiting_an_absent_layer_does_not_create_it",
+      "red": "required"
+    },
+    {
+      "id": "QA-103",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "header_counts_and_resolved_widths_come_from_the_shown_grouped_layer",
+      "red": "required"
+    },
+    {
+      "id": "QA-104",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "selecting_cards_and_preview_keeps_the_edit_panel_and_action_description_together",
+      "red": "required"
+    },
+    {
+      "id": "QA-105",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "modifiers_never_switch_the_manually_selected_layer_or_button",
+      "red": "preserve",
+      "reason": "Existing public configurator behavior remains supported by the B redesign."
+    },
+    {
+      "id": "QA-106",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "the_preview_keeps_the_shared_default_and_fn_device_placements",
+      "red": "preserve",
+      "reason": "Existing public configurator behavior remains supported by the B redesign."
+    },
+    {
+      "id": "QA-107",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "short_and_narrow_windows_reach_and_operate_fields_groups_and_save_by_real_scrolling",
+      "red": "required"
+    },
+    {
+      "id": "QA-108",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "long_group_content_scrolls_to_the_last_card_without_overlapping_the_edit_panel",
+      "red": "required"
+    },
+    {
+      "id": "QA-109",
+      "package": "tb-app",
+      "target": "test:configurator_shell",
+      "test": "shell_ink_and_background_follow_two_real_omarchy_themes",
+      "red": "required"
+    }
+  ],
+  "checks": []
+}

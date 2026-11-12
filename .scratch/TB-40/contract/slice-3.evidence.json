@@ -1,0 +1,52 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-12T08:17:00Z",
+      "seal": "sha256:dcabc555488099c1dbf2f2b1e1a4588aaea4d722b85e0714a66028f534849418",
+      "head": "8eee25d02473d79ae2c090c28820734c1bb9a97e",
+      "final": false,
+      "results": {
+        "QA-301": "RED_BEHAVIOR",
+        "QA-302": "RED_BEHAVIOR",
+        "QA-303": "RED_BEHAVIOR",
+        "QA-304": "RED_BEHAVIOR",
+        "QA-305": "RED_BEHAVIOR",
+        "QA-306": "RED_BEHAVIOR",
+        "QA-307": "GREEN",
+        "QA-308": "RED_BEHAVIOR",
+        "QA-309": "GREEN",
+        "QA-310": "RED_BEHAVIOR",
+        "QA-311": "RED_BEHAVIOR",
+        "QA-312": "RED_BEHAVIOR",
+        "QA-313": "RED_BEHAVIOR",
+        "QA-314": "RED_BEHAVIOR",
+        "QA-315": "GREEN"
+      },
+      "log": ".scratch/TB-40/gate/2026-11-12T081659Z-slice-3"
+    },
+    {
+      "at": "2026-11-12T08:18:46Z",
+      "seal": "sha256:c4cd4d4deed1e56851c1dc13c2a0ffc3a13c7b00e215e345982b004188e2e803",
+      "head": "8eee25d02473d79ae2c090c28820734c1bb9a97e",
+      "final": false,
+      "results": {
+        "QA-301": "RED_BEHAVIOR",
+        "QA-302": "RED_BEHAVIOR",
+        "QA-303": "RED_BEHAVIOR",
+        "QA-304": "RED_BEHAVIOR",
+        "QA-305": "RED_BEHAVIOR",
+        "QA-306": "RED_BEHAVIOR",
+        "QA-307": "GREEN",
+        "QA-308": "RED_BEHAVIOR",
+        "QA-309": "GREEN",
+        "QA-310": "RED_BEHAVIOR",
+        "QA-311": "RED_BEHAVIOR",
+        "QA-312": "RED_BEHAVIOR",
+        "QA-313": "RED_BEHAVIOR",
+        "QA-314": "RED_BEHAVIOR",
+        "QA-315": "GREEN"
+      },
+      "log": ".scratch/TB-40/gate/2026-11-12T081842Z-slice-3"
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Protects baseline dirty state, guarded file saving, focused Ctrl+S and deterministic successful-save time.",
+  "files": [
+    "crates/tb-app/tests/configurator_save.rs",
+    "crates/tb-app/tests/configurator_save_clock.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-401",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "edit_then_revert_clears_dirty_and_marks_only_the_layers_that_still_differ",
+      "red": "required"
+    },
+    {
+      "id": "QA-402",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "reversed_reorder_and_add_remove_restore_baseline_including_absent_optional_layers",
+      "red": "required"
+    },
+    {
+      "id": "QA-403",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "an_originally_present_empty_layer_keeps_its_presence_and_explicit_gap_after_add_remove",
+      "red": "required"
+    },
+    {
+      "id": "QA-404",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "invalid_width_alone_is_dirty_but_equivalent_width_spelling_and_inactive_action_memory_are_clean",
+      "red": "required"
+    },
+    {
+      "id": "QA-405",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "another_layers_invalid_draft_blocks_the_actual_save_and_focused_save_shortcut_until_repaired",
+      "red": "required"
+    },
+    {
+      "id": "QA-406",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "save_shortcut_works_from_each_field_without_swallowing_ordinary_text_or_select_all",
+      "red": "required"
+    },
+    {
+      "id": "QA-407",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "successful_save_updates_the_baseline_and_reports_only_file_state_and_no_acknowledgement",
+      "red": "required"
+    },
+    {
+      "id": "QA-408",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "deterministic_write_failure_preserves_edits_baseline_and_previous_file_bytes",
+      "red": "required"
+    },
+    {
+      "id": "QA-409",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "invalid_startup_and_missing_home_explain_the_unsaved_replacement_and_unavailable_save",
+      "red": "required"
+    },
+    {
+      "id": "QA-410",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "whole_config_changes_remain_dirty_even_when_no_layer_differs",
+      "red": "required"
+    },
+    {
+      "id": "QA-411",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "warning_only_legacy_keys_round_trip_version_one_with_style_and_explicit_group_gaps",
+      "red": "preserve",
+      "reason": "Existing shared validation/config compatibility behavior remains supported."
+    },
+    {
+      "id": "QA-412",
+      "package": "tb-app",
+      "target": "test:configurator_save_clock",
+      "test": "only_successful_explicit_saves_sample_the_injected_clock_and_update_the_displayed_utc_time",
+      "red": "required",
+      "symbol": "set_save_clock"
+    }
+  ],
+  "checks": []
+}

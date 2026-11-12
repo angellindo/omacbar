@@ -1,0 +1,40 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-12T08:16:47Z",
+      "seal": "sha256:4e969044ab541a156288bc44f36ab43818d79051c13f6a09d4b12fbb69b58509",
+      "head": "8eee25d02473d79ae2c090c28820734c1bb9a97e",
+      "final": false,
+      "results": {
+        "QA-101": "RED_BEHAVIOR",
+        "QA-102": "RED_BEHAVIOR",
+        "QA-103": "RED_BEHAVIOR",
+        "QA-104": "RED_BEHAVIOR",
+        "QA-105": "GREEN",
+        "QA-106": "GREEN",
+        "QA-107": "RED_BEHAVIOR",
+        "QA-108": "RED_BEHAVIOR",
+        "QA-109": "RED_BEHAVIOR"
+      },
+      "log": ".scratch/TB-40/gate/2026-11-12T081646Z-slice-1"
+    },
+    {
+      "at": "2026-11-12T08:18:27Z",
+      "seal": "sha256:50655e2c58cd86d6be3259d5ed73099b09dceb50cada073f5865caa30642e329",
+      "head": "8eee25d02473d79ae2c090c28820734c1bb9a97e",
+      "final": false,
+      "results": {
+        "QA-101": "RED_BEHAVIOR",
+        "QA-102": "RED_BEHAVIOR",
+        "QA-103": "RED_BEHAVIOR",
+        "QA-104": "RED_BEHAVIOR",
+        "QA-105": "GREEN",
+        "QA-106": "GREEN",
+        "QA-107": "RED_BEHAVIOR",
+        "QA-108": "RED_BEHAVIOR",
+        "QA-109": "RED_BEHAVIOR"
+      },
+      "log": ".scratch/TB-40/gate/2026-11-12T081826Z-slice-1"
+    }
+  ]
+}

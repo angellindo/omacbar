@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Protects group-specific insertion, absent/empty groups and layers, card drag/reorder and draft identity.",
+  "files": [
+    "crates/tb-app/tests/configurator_groups.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-201",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "a_group_add_targets_its_own_group_independently_of_selection_and_allocates_free_ids",
+      "red": "required"
+    },
+    {
+      "id": "QA-202",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "an_explicit_loaded_empty_group_can_receive_its_first_button",
+      "red": "required"
+    },
+    {
+      "id": "QA-203",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "add_group_on_an_absent_layer_creates_exactly_one_group_and_selects_its_none_button",
+      "red": "required"
+    },
+    {
+      "id": "QA-204",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "card_drag_moves_before_and_after_targets_in_other_groups_without_losing_selection",
+      "red": "required"
+    },
+    {
+      "id": "QA-205",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "card_drag_reorders_inside_a_group_and_cancel_or_self_drop_changes_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-206",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "selecting_a_card_blurs_text_and_alt_arrows_move_across_groups_with_the_draft_attached",
+      "red": "required"
+    },
+    {
+      "id": "QA-207",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "removing_the_only_button_discards_its_issue_and_reindexes_group_add_targets",
+      "red": "required"
+    },
+    {
+      "id": "QA-208",
+      "package": "tb-app",
+      "target": "test:configurator_groups",
+      "test": "existing_toolbar_add_and_keyboard_step_keep_their_domain_order",
+      "red": "preserve",
+      "reason": "Existing public configurator behavior remains supported by the B redesign."
+    }
+  ],
+  "checks": []
+}
