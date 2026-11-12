@@ -58,11 +58,24 @@ fn scroll_into_view(rt: &mut Runtime<State>, key: &str) -> bool {
         if fully_shown(rt, key) {
             return true;
         }
-        let rect = element(rt, key).rect;
-        let at_x = (rect[0] + rect[2] / 2.0).clamp(2.0, width - 2.0);
-        let at_y = (rect[1] + rect[3] / 2.0).clamp(2.0, height - 2.0);
-        // Positive dy moves content down: an element below the window needs a negative one.
-        let dy = if rect[1] + rect[3] > height { -60.0 } else { 60.0 };
+        let target = element(rt, key);
+        let mut bounds = [0.0_f32, 0.0, width, height];
+        for owner in rt.elements().iter().filter(|owner| {
+            owner.key.as_deref().is_some_and(|key| key.ends_with("scroll"))
+                && target.path.starts_with(&format!("{}/", owner.path))
+        }) {
+            let right = (bounds[0] + bounds[2]).min(owner.visible[0] + owner.visible[2]);
+            let bottom = (bounds[1] + bounds[3]).min(owner.visible[1] + owner.visible[3]);
+            bounds[0] = bounds[0].max(owner.visible[0]);
+            bounds[1] = bounds[1].max(owner.visible[1]);
+            bounds[2] = right - bounds[0];
+            bounds[3] = bottom - bounds[1];
+        }
+        let rect = target.rect;
+        let at_x = (rect[0] + rect[2] / 2.0).clamp(bounds[0] + 1.0, bounds[0] + bounds[2] - 1.0);
+        let at_y = (rect[1] + rect[3] / 2.0).clamp(bounds[1] + 1.0, bounds[1] + bounds[3] - 1.0);
+        // Each B column owns scrolling above the footer, so its viewport bounds the reveal.
+        let dy = if rect[1] + rect[3] > bounds[1] + bounds[3] { -60.0 } else { 60.0 };
         rt.wheel(at_x, at_y, dy);
         settle(rt);
     }
@@ -130,6 +143,7 @@ fn a_long_label_is_shown_shortened_in_the_button_list() {
 fn with_twenty_five_buttons_every_issue_the_status_and_the_panel_can_be_brought_into_view() {
     let mut rt = open("twenty_five_buttons");
     for _ in 0..12 {
+        assert!(scroll_into_view(&mut rt, "add-button"), "the growing workspace add control stays reachable");
         tap(&mut rt, "add-button");
     }
     assert_eq!(default_layer(&rt).buttons().count(), 25);

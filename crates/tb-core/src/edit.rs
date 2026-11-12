@@ -29,6 +29,15 @@ pub fn add_group(layer: &mut Layer, after: Option<&ButtonId>) -> ButtonId {
     id
 }
 
+/// Appends a new button to the explicit existing group, including an empty group.
+/// An absent group returns `None` without changing the layer or allocating an id.
+pub fn add_button_to_group(layer: &mut Layer, group: usize) -> Option<ButtonId> {
+    layer.groups.get(group)?;
+    let id = free_id(layer);
+    layer.groups[group].buttons.push(new_button(&id));
+    Some(id)
+}
+
 /// Removes button `id`; a group left empty is removed. The removed button, or `None` if absent.
 pub fn remove_button(layer: &mut Layer, id: &ButtonId) -> Option<Button> {
     let at = slot_of(layer, id)?;

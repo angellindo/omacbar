@@ -112,7 +112,7 @@ pub enum Action {
     /// Press `keys` in order, then release them in reverse, e.g. `["LeftCtrl", "F5"]`. Each name is
     /// a [`crate::Key`] name; validation rejects an unknown name or an empty list.
     Key { keys: Vec<String> },
-    /// Run a command line through `sh -c`.
+    /// Run a nonblank command line through `sh -c`; use `None` for a no-op.
     Command { run: String },
     /// Decorative or not yet wired.
     #[default]

@@ -1,0 +1,98 @@
+[
+  {
+    "t": 0.3,
+    "type": "tap",
+    "key": "row-f3"
+  },
+  {
+    "t": 0.6,
+    "type": "key",
+    "name": "Left",
+    "alt": true
+  },
+  {
+    "t": 0.9,
+    "type": "tap",
+    "key": "add-button-group-0"
+  },
+  {
+    "t": 1.2,
+    "type": "tap",
+    "key": "field-label"
+  },
+  {
+    "t": 1.4,
+    "type": "key",
+    "name": "a",
+    "ctrl": true,
+    "cmd": true
+  },
+  {
+    "t": 1.5,
+    "type": "type",
+    "text": "launch",
+    "every": 0.02
+  },
+  {
+    "t": 1.9,
+    "type": "tap",
+    "key": "field-width"
+  },
+  {
+    "t": 2.1,
+    "type": "key",
+    "name": "a",
+    "ctrl": true,
+    "cmd": true
+  },
+  {
+    "t": 2.2,
+    "type": "type",
+    "text": "px 180",
+    "every": 0.02
+  },
+  {
+    "t": 2.6,
+    "type": "tap",
+    "key": "action-command"
+  },
+  {
+    "t": 2.9,
+    "type": "tap",
+    "key": "field-action"
+  },
+  {
+    "t": 3.1,
+    "type": "type",
+    "text": "printf configured",
+    "every": 0.02
+  },
+  {
+    "t": 3.8,
+    "type": "tap",
+    "key": "row-button-1"
+  },
+  {
+    "t": 4.1,
+    "type": "key",
+    "name": "Left",
+    "alt": true
+  },
+  {
+    "t": 4.4,
+    "type": "tap",
+    "key": "field-action"
+  },
+  {
+    "t": 4.7,
+    "type": "key",
+    "name": "s",
+    "ctrl": true,
+    "cmd": true
+  },
+  {
+    "t": 5.2,
+    "type": "mark",
+    "name": "end"
+  }
+]

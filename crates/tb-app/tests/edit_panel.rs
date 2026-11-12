@@ -166,7 +166,9 @@ fn width_text_that_is_not_a_width_shows_an_error_and_keeps_the_width() {
     type_into(&mut rt, "field-width", "spam");
     assert!(shown(&rt, "width-error"));
     assert_eq!(button(&rt, "f1").width, Width::Auto, "the model keeps its last width");
-    assert_eq!(issues(&rt), Vec::<String>::new());
+    let listed = issues(&rt);
+    assert_eq!(listed.len(), 1, "an invalid draft is a global save-blocking issue");
+    assert!(listed[0].contains("f1") && listed[0].contains("width"));
     type_into(&mut rt, "field-width", "span 2");
     assert!(!shown(&rt, "width-error"));
     assert_eq!(button(&rt, "f1").width, Width::Span(2));
@@ -243,6 +245,10 @@ fn remove_button_removes_the_selected_button_and_clears_the_selection() {
 #[test]
 fn removing_the_only_button_of_a_group_removes_the_group() {
     let mut rt = open_on("remove_esc", "esc");
+    // Fixed widths have an additional numeric row in B; reveal the panel's remove control.
+    let viewport = rect(&rt, "edit-panel-scroll");
+    rt.wheel(viewport[0] + viewport[2] / 2.0, viewport[1] + viewport[3] / 2.0, -120.0);
+    settle(&mut rt);
     tap(&mut rt, "remove-button");
     assert_eq!(default_ids(&rt), groups("f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12"));
 }

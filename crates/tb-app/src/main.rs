@@ -1,9 +1,17 @@
-//! The configurator. `cargo run -p tb-app` opens the window on `~/.config/touchbar-customizer/config.toml`
-//! (written with the default config when missing); `cargo run -p tb-app -- --snap out/app.png
-//! [--scene <name>]` renders it headless. Run headless with a temp `HOME` so the real config is
-//! never written. Scenes: `fn`, `fn-ctrl` (other layers), `selected`, `dragging`, `reordered`,
-//! `added`, `issues` (editing states).
+//! The configurator binary owns the production clock; library callers inject their own.
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "wall clock is read only at this binary edge and injected into State"
+)]
+fn save_time() -> Option<u64> {
+    SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|duration| duration.as_secs())
+}
 
 fn main() {
-    rune::run(tb_app::spec());
+    let mut spec = tb_app::spec();
+    spec.setup = Some(|state, _| state.set_save_clock(save_time));
+    rune::run(spec);
 }

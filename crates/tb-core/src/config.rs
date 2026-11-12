@@ -72,6 +72,8 @@ pub enum ConfigIssue {
     UnknownKey { chord: Chord, id: ButtonId, key: String },
     #[error("layer `{chord:?}`: button `{id}` is a key action with no keys")]
     NoKeys { chord: Chord, id: ButtonId },
+    #[error("layer `{chord:?}`: button `{id}` has an empty command; use none for a no-op")]
+    EmptyCommand { chord: Chord, id: ButtonId },
     #[error("layer `{chord:?}` does not fit: {error}")]
     Layout { chord: Chord, error: LayoutError },
     /// The text is not valid TOML or not a config shape; the message is the parser's.
@@ -145,6 +147,9 @@ pub fn validate(config: &Config, size: BarSize, rules: &SpacingRules, theme: &Ba
                 }
             }
             key_issues(chord, b, &mut issues);
+            if matches!(&b.action, Action::Command { run } if run.trim().is_empty()) {
+                issues.push(ConfigIssue::EmptyCommand { chord, id: b.id.clone() });
+            }
         }
         if let Err(error) = place(layer, size, rules) {
             issues.push(ConfigIssue::Layout { chord, error });

@@ -76,6 +76,26 @@ There are no prerequisite scratch files: the launcher creates its session. Its i
 uses bundled Tokyo Night unless you configure a test theme. Saved configs keep their arrangement
 across updates; back up a test config before deliberately resetting it.
 
+The configurator follows [variant B's layer → group → button workflow](docs/design/configurator-b.md).
+Choose any of the six layers in the sidebar, add a button within its group, select a card or
+preview button, and edit the panel at right. Drag cards or preview buttons to reorder; Alt+Left
+and Alt+Right move the selected button. The bottom preview stays at 50% of 2170×60; small windows
+scroll to keep every control reachable. Physical Fn keys affect the daemon's layer, while the
+configurator's editing layer stays selected manually.
+
+Width drafts stay with each button and layer; invalid drafts block Save and Ctrl+S. Key and
+command text have separate buffers. Modifier layers offer command/none for new actions because
+held modifiers combine with emitted keys. Existing keyed buttons, including preset ESC, remain
+readable/saveable with warnings; ESC does not promise modifier isolation. Empty or whitespace-only
+commands now fail shared validation even in existing version 1 files: choose `none` for a no-op.
+
+Pending changes compare with the loaded or last successfully saved config, so reverting edits
+clears them. Save/Ctrl+S validates every layer and draft, then writes atomically. A failed write
+keeps edits and the previous successful save time. Startup shows “not saved this session”; only a
+successful explicit save records a timestamp. “Saved config/file” describes the file the daemon
+watches; simulator acknowledgement is unavailable and the configurator does not claim the
+simulator is connected/current or that it consumed a particular save.
+
 The launcher follows the Fn keyboard with `--keys auto`, selected by KEY_FN capability rather
 than event number, independent of window focus. The process must already have read access to
 that keyboard's event node. Hold Fn or Fn+Ctrl, then release to return to the default layer.

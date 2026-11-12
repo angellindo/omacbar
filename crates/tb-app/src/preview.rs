@@ -28,7 +28,14 @@ fn scene(s: &State) -> Option<BarScene> {
 pub(crate) fn preview(s: &State) -> El {
     let t = &s.theme;
     let Some(scene) = scene(s) else {
-        return text("this layer does not fit the bar").key("preview").color(color(t.accent));
+        return el().key("preview").size(1085.0, 30.0).fill(color(t.background)).child(
+            text(if s.layer().is_none_or(|l| l.buttons().next().is_none()) {
+                "empty layer · add a button or group"
+            } else {
+                "this layer does not fit the bar"
+            })
+            .color(color(t.accent)),
+        );
     };
     let k = PREVIEW_SCALE;
     let dragged = |b: &&SceneButton| s.drag.as_ref().is_some_and(|d| d.id == b.id);
@@ -39,7 +46,6 @@ pub(crate) fn preview(s: &State) -> El {
         .fill(color(scene.background))
         .children(resting.into_iter().chain(lifted).map(|b| {
             let dx = s.drag.as_ref().filter(|d| d.id == b.id).map(|d| d.dx);
-            let marked = dx.is_some() || s.selected.as_ref() == Some(&b.id);
             let (id, left) = (b.id.clone(), b.rect.x);
             // Drawn by the bar's own button view at preview scale: radius, clip, border, label
             // padding and the ellipsized label are the bar's.
@@ -53,11 +59,36 @@ pub(crate) fn preview(s: &State) -> El {
                     .absolute(f32::from(b.rect.x) * k + dx, f32::from(b.rect.y) * k)
                     .fill(color(over(b.fill, scene.background)));
             }
-            if marked {
-                button = button.border(2.0, color(t.accent));
-            }
             button
         }))
+        .children(scene.buttons.iter().flat_map(|button| decorations(s, button)))
+}
+
+/// These marks never enter the shared scene or physical pressed state.
+fn decorations(s: &State, button: &SceneButton) -> Vec<El> {
+    let left = f32::from(button.rect.x) * PREVIEW_SCALE;
+    let top = f32::from(button.rect.y) * PREVIEW_SCALE;
+    let width = f32::from(button.rect.width) * PREVIEW_SCALE;
+    let height = f32::from(button.rect.height) * PREVIEW_SCALE;
+    let dx = s.drag.as_ref().filter(|d| d.id == button.id).map_or(0.0, |d| d.dx);
+    let mut marks = Vec::new();
+    if s.selected.as_ref() == Some(&button.id) {
+        marks.push(
+            el().key(format!("preview-selection-{}", button.id))
+                .absolute(left + dx, top)
+                .size(width, height)
+                .border(2.0, color(s.theme.accent)),
+        );
+    }
+    if s.button_invalid(&button.id) {
+        marks.push(
+            el().key(format!("preview-error-{}", button.id))
+                .absolute(left + dx + 3.0, top + 3.0)
+                .size(width - 6.0, height - 6.0)
+                .border(1.0, color(s.error_color())),
+        );
+    }
+    marks
 }
 
 /// `top` painted over `bottom`, as one opaque colour.

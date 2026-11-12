@@ -1,52 +1,51 @@
-//! Configurator state and view: the config file it edits, the shown layer, the selected button,
-//! and what a key, a press or the save button does to them.
+//! Configurator navigation and edits; drafts and successful-save baseline have separate owners.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use rune::tok::TextStyle;
-use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, ScrollSpec, Tx, col, el, row, text};
-use tb_config::{ActiveTheme, ConfigFile, ConfigFileError, Loaded, default_path};
+use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, Tx, el, text};
+use tb_config::{ActiveTheme, ConfigFile, Loaded, default_path};
 use tb_core::config::Config;
+use tb_core::edit::{add_button, add_button_to_group, add_group, remove_button};
 use tb_core::reorder::{Toward, step_button};
 use tb_core::{BarSize, BarTheme, Button, ButtonId, Chord, Layer, SpacingRules, place};
 use tb_render::view::color;
 
-use crate::panel::{Fields, issues, panel, toolbar};
-use crate::preview::{Dragging, PREVIEW_SCALE, preview};
+use crate::drafts::Fields;
+use crate::preview::{Dragging, PREVIEW_SCALE};
+use crate::saving::Saving;
 
-/// The window size: the bar preview on top, the button list and edit panel below it.
+/// Logical window size of configurator variant B.
 pub const WINDOW: (f32, f32) = (1200.0, 760.0);
 
 pub struct State {
-    /// What is shown, edited and saved.
     pub config: Config,
     pub theme: BarTheme,
-    /// The shown layer.
     pub chord: Chord,
-    /// The selected button on the shown layer.
     pub selected: Option<ButtonId>,
-    /// The file `save` writes; `None` when `HOME` is unset.
-    file: Option<ConfigFile>,
-    /// The edit panel's text buffers for the selected button.
+    pub(crate) file: Option<ConfigFile>,
     pub(crate) fields: Fields,
+    pub(crate) drafts: BTreeMap<(Chord, ButtonId), Fields>,
     pub(crate) drag: Option<Dragging>,
-    status: String,
+    pub(crate) saving: Saving,
+    pub(crate) status: String,
 }
 
 impl State {
-    /// The configurator on the config file at `path` (None: `HOME` unset), drawn in `theme`.
-    /// Loads it with `ConfigFile::load` (writes the default when missing); an invalid or
-    /// unreadable file leaves the default config in the editor, the file untouched, and says so
-    /// in the status. Without a path the default config is edited and saving is refused.
-    pub fn open(path: Option<PathBuf>, theme: BarTheme) -> State {
-        let mut s = State {
+    /// Loads the given file or edits defaults with an explicit replacement/unavailable notice.
+    /// Missing files are created by `ConfigFile`; rejected files remain untouched until a save.
+    pub fn open(path: Option<PathBuf>, theme: BarTheme) -> Self {
+        let mut s = Self {
             config: Config::default(),
             theme,
             chord: Chord::Default,
             selected: None,
             file: None,
             fields: Fields::default(),
+            drafts: BTreeMap::new(),
             drag: None,
+            saving: Saving::default(),
             status: String::new(),
         };
         let Some(path) = path else {
@@ -58,6 +57,7 @@ impl State {
         s.status = match file.load(&s.theme) {
             Ok(Loaded::Read | Loaded::WroteDefault) => {
                 s.config = file.config().clone();
+                s.saving.baseline = Some(s.config.clone());
                 format!("editing {shown}")
             }
             Ok(Loaded::Rejected(issues)) => {
@@ -69,16 +69,13 @@ impl State {
         s
     }
 
-    /// The shown layer.
     pub(crate) fn layer(&self) -> Option<&Layer> {
         self.config.layout.layer(self.chord)
     }
-
     pub(crate) fn layer_mut(&mut self) -> Option<&mut Layer> {
         self.config.layout.layer_mut(self.chord)
     }
 
-    /// The selected button, when it is on the shown layer.
     pub(crate) fn selected_button(&self) -> Option<&Button> {
         let id = self.selected.as_ref()?;
         self.layer()?.buttons().find(|b| &b.id == id)
@@ -86,16 +83,40 @@ impl State {
 
     pub(crate) fn selected_button_mut(&mut self) -> Option<&mut Button> {
         let id = self.selected.clone()?;
-        self.layer_mut()?.groups.iter_mut().flat_map(|g| g.buttons.iter_mut()).find(|b| b.id == id)
+        self.layer_mut()?.groups.iter_mut().flat_map(|g| &mut g.buttons).find(|b| b.id == id)
     }
 
-    /// Makes `id` the selected button and fills the edit panel with its fields.
+    fn remember(&mut self) {
+        if let Some(id) = &self.selected {
+            self.drafts.insert((self.chord, id.clone()), std::mem::take(&mut self.fields));
+        }
+    }
+
     pub(crate) fn select(&mut self, id: Option<ButtonId>) {
+        if self.selected == id {
+            return;
+        }
+        self.remember();
         self.selected = id;
-        self.fields = Fields::of(self.selected_button());
+        self.restore_fields();
     }
 
-    /// Moves the selected button one step toward `toward`; false when nothing is selected.
+    fn restore_fields(&mut self) {
+        let cached = self.selected.as_ref().and_then(|id| self.drafts.remove(&(self.chord, id.clone())));
+        self.fields = cached.unwrap_or_else(|| Fields::of(self.selected_button()));
+    }
+
+    pub(crate) fn show_layer(&mut self, chord: Chord) {
+        if self.chord == chord {
+            return;
+        }
+        self.remember();
+        self.chord = chord;
+        self.selected = None;
+        self.fields = Fields::default();
+        self.drag = None;
+    }
+
     fn step_selected(&mut self, toward: Toward) -> bool {
         let Some(id) = self.selected.clone() else { return false };
         if let Some(layer) = self.layer_mut() {
@@ -104,30 +125,59 @@ impl State {
         true
     }
 
-    fn show_layer(&mut self, chord: Chord) {
-        self.chord = chord;
-        self.select(None);
+    fn ensure_layer(&mut self) {
+        if self.layer().is_none() {
+            self.config.layout.layers.push(Layer { chord: self.chord, group_gap: None, groups: vec![] });
+        }
     }
 
-    /// Writes the config through `ConfigFile::save`, which refuses a config with issues.
-    pub(crate) fn save(&mut self) {
-        let Some(file) = &mut self.file else {
-            NO_HOME.clone_into(&mut self.status);
-            return;
-        };
-        self.status = match file.save(self.config.clone(), &self.theme) {
-            Ok(()) => format!("saved {}", file.path().display()),
-            Err(ConfigFileError::Invalid(issues)) => format!("not saved: {} issue(s)", issues.len()),
-            Err(e) => format!("not saved: {e}"),
-        };
+    pub(crate) fn add(&mut self, group: bool) {
+        self.ensure_layer();
+        let after = self.selected.clone();
+        let Some(layer) = self.layer_mut() else { return };
+        let id = if group { add_group(layer, after.as_ref()) } else { add_button(layer, after.as_ref()) };
+        self.select(Some(id));
+    }
+
+    pub(crate) fn add_to_group(&mut self, group: usize) {
+        let Some(layer) = self.layer_mut() else { return };
+        if let Some(id) = add_button_to_group(layer, group) {
+            self.select(Some(id));
+        }
+    }
+
+    pub(crate) fn remove(&mut self) {
+        let Some(id) = self.selected.take() else { return };
+        self.drafts.remove(&(self.chord, id.clone()));
+        self.fields = Fields::default();
+        if let Some(layer) = self.layer_mut() {
+            remove_button(layer, &id);
+        }
+        let originally_absent =
+            self.saving.baseline.as_ref().is_some_and(|b| b.layout.layer(self.chord).is_none());
+        if originally_absent && self.layer().is_some_and(|l| l.groups.is_empty()) {
+            self.config.layout.layers.retain(|l| l.chord != self.chord);
+        }
     }
 }
 
-const NO_HOME: &str = "HOME is not set: the config cannot be saved";
+pub(crate) const NO_HOME: &str = "HOME is not set: the config cannot be saved";
 
-/// Alt+Left / Alt+Right move the selected button one step toward the bar's left / right edge.
-/// Other keys, other modifiers, or no selection: not consumed.
-pub fn on_key(s: &mut State, ev: &KeyEvent, _: &mut Tx) -> bool {
+/// The same save shortcut is captured at the root before focused text-input handling.
+pub(crate) fn save_key(s: &mut State, ev: &KeyEvent, _: &mut Tx) -> bool {
+    let save = ev.is_command('s') || matches!(&ev.key, Key::Text(t) if t.eq_ignore_ascii_case("s"));
+    if save && (ev.mods.ctrl || ev.mods.cmd) && !ev.mods.alt && !ev.mods.shift {
+        s.save();
+        return true;
+    }
+    false
+}
+
+/// Alt+arrows reorder the selected button; all physical modifiers leave editing selection alone.
+pub fn on_key(s: &mut State, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if save_key(s, ev, tx) {
+        return true;
+    }
     let m = ev.mods;
     if !m.alt || m.ctrl || m.cmd || m.logo {
         return false;
@@ -177,7 +227,7 @@ pub fn spec() -> AppSpec<State> {
                     b.label.clear();
                     b.style.fill = Some("nope".to_owned());
                 }
-                s.select(Some(f3));
+                s.fields = Fields::of(s.selected_button());
             }),
         ],
         on_key: Some(on_key),
@@ -212,100 +262,9 @@ pub(crate) fn pressable(t: &BarTheme, key: &str, label: &str, active: bool) -> E
         .child(text(label).font(body()).color(color(if active { t.pressed_text } else { t.button_text })))
 }
 
-pub fn view(s: &State, _: &mut Cx<State>) -> El {
-    let t = &s.theme;
-    let tabs = row().gap(8.0).children(s.config.layout.chords().into_iter().map(|chord| {
-        let key = format!("tab-{chord:?}").to_lowercase();
-        pressable(t, &key, chord.label(), chord == s.chord).on_press(move |s: &mut State| s.show_layer(chord))
-    }));
-    // The whole window is one scroll viewport: a long layer or many issues make the content
-    // taller than the window, and the wheel reaches any of it from anywhere in the window.
-    col()
-        .key("editor")
-        .w_full()
-        .h_full()
-        .fill(color(t.background))
-        .scroll(ScrollSpec { stick_bottom: false })
-        .child(
-            col()
-                .w_full()
-                .padding(24.0)
-                .gap(16.0)
-                .child(tabs)
-                .child(preview(s))
-                .child(toolbar(s))
-                .child(row().gap(32.0).children(button_list(s)).child(panel(s)))
-                .child(issues(s))
-                .child(
-                    text(s.status.clone())
-                        .key("status")
-                        .w_full()
-                        .wrap()
-                        .font(body())
-                        .color(color(t.button_text)),
-                ),
-        )
-}
-
-/// Width of the button list; the edit panel sits right of it.
-const LIST_WIDTH: f32 = 300.0;
-
-/// One row per button of the shown layer; pressing a row selects its button.
-fn button_list(s: &State) -> Option<El> {
-    let t = &s.theme;
-    let layer = s.layer()?;
-    Some(col().key("button-list").w(LIST_WIDTH).gap(2.0).children(layer.buttons().map(|b| {
-        let selected = s.selected.as_ref() == Some(&b.id);
-        let ink = color(if selected { t.pressed_text } else { t.button_text });
-        // Ids and labels can be any length: each column is cut with "…" to its width.
-        let cell = |words: String, width: f32| text(words).w(width).truncate().font(body()).color(ink);
-        let id = b.id.clone();
-        row()
-            .key(format!("row-{}", b.id))
-            .role("button")
-            .w(LIST_WIDTH)
-            .gap(8.0)
-            .padding(2.0)
-            .fill(color(if selected { t.accent } else { t.background }))
-            .on_press_tx(move |s: &mut State, tx: &mut Tx| {
-                s.select(Some(id.clone()));
-                tx.blur();
-            })
-            .child(cell(b.id.to_string(), 96.0))
-            .child(cell(b.label.clone(), 96.0))
-            .child(cell(b.width.to_string(), 80.0))
-    })))
+pub fn view(s: &State, cx: &mut Cx<State>) -> El {
+    crate::shell::view(s, cx)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use rune::{Env, Runtime};
-
-    #[test]
-    fn tapping_a_layer_tab_switches_the_previewed_layer_and_clears_the_selection() {
-        let mut state = State::open(None, BarTheme::omarchy_fallback());
-        state.select(Some(ButtonId::new("f1")));
-        let mut rt = Runtime::new(state, view, WINDOW, Env::new(true, 1.0));
-        rt.frame(0.0);
-        assert!(rt.presented("preview-f1").is_some(), "starts on the F-key layer");
-        let (x, y) = rt.find("tab-fnctrl").unwrap();
-        rt.pointer_down(x, y);
-        rt.pointer_up(x, y);
-        for _ in 0..30 {
-            rt.frame(1.0 / 60.0);
-        }
-        assert_eq!(rt.state.chord, Chord::FnCtrl);
-        assert_eq!(rt.state.selected, None);
-        assert!(rt.find("preview-lock").is_some(), "Fn + Ctrl buttons are previewed");
-        assert!(rt.find("preview-f1").is_none(), "F-keys are gone (lookups skip exiting elements)");
-    }
-
-    #[test]
-    fn without_home_the_default_config_is_edited_and_saving_is_refused() {
-        let mut s = State::open(None, BarTheme::omarchy_fallback());
-        assert_eq!(s.config, Config::default());
-        s.save();
-        assert_eq!(s.status, NO_HOME);
-    }
-}
+mod tests;
