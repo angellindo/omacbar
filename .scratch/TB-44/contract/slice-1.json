@@ -1,0 +1,713 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "A simulator-window press runs its action only when released over its landing button; leaving the bar, Escape and focus loss cancel it; the pressed highlight follows the landing button and never sticks.",
+  "files": [
+    "crates/tb-daemon/tests/window_press_release.rs",
+    "crates/tb-daemon/tests/cancelled_touch.rs",
+    "crates/tb-daemon/tests/sim_window_touches.rs",
+    "crates/tb-daemon/tests/touch_press.rs",
+    "crates/tb-daemon/tests/tap_actions.rs",
+    "crates/tb-daemon/tests/touch_sources.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "a_click_on_f5_presses_and_releases_f5_once_at_half_and_full_scale",
+      "red": "preserve",
+      "reason": "Acceptance 1 (a normal click emits exactly one action) already holds; the change must keep it"
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "a_click_on_the_command_button_runs_its_command_once",
+      "red": "preserve",
+      "reason": "Acceptance 1 for a command button; already holds"
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "small_moves_within_the_button_before_the_release_still_run_it_once",
+      "red": "preserve",
+      "reason": "Moves now slide the touch; staying on the landing button must still be one action"
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "a_click_on_a_button_with_no_action_runs_nothing_and_leaves_nothing_pressed",
+      "red": "preserve",
+      "reason": "A button with no action stays inert and leaves no highlight"
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "releasing_over_another_button_after_moving_there_runs_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "releasing_over_another_button_with_no_move_runs_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-07",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "leaving_the_window_below_the_bar_and_releasing_there_runs_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-08",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "leaving_the_window_beside_the_bar_and_releasing_there_runs_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-09",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "coming_back_over_the_button_after_leaving_the_window_runs_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-10",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "escape_while_pressing_runs_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-11",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "losing_window_focus_while_pressing_runs_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-12",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "sliding_off_and_back_shows_the_button_released_while_away_and_runs_it_once",
+      "red": "required"
+    },
+    {
+      "id": "QA-13",
+      "package": "tb-daemon",
+      "target": "test:window_press_release",
+      "test": "a_cancelled_press_then_a_click_runs_the_command_once",
+      "red": "required"
+    },
+    {
+      "id": "QA-14",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "moving_a_pressed_pointer_out_of_the_window_cancels_the_touch",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-15",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "a_release_outside_the_window_with_no_move_cancels_the_touch",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-16",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "moving_a_pressed_pointer_left_of_the_bar_cancels_the_touch",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-17",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "moving_a_pressed_pointer_below_the_sim_screen_of_a_taller_window_cancels_the_touch",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-18",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "coming_back_over_the_bar_after_leaving_it_does_not_revive_the_touch",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-19",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "escape_during_a_press_cancels_the_touch",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-20",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "losing_window_focus_during_a_press_cancels_the_touch",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-21",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "escape_after_sliding_cancels_the_slid_touch_once",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-22",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "a_cancelled_press_does_not_spoil_the_next_click",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-23",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "a_cancelled_touch_on_f5_runs_nothing_and_shows_f5_released",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-24",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "a_lift_after_a_cancel_runs_nothing",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-25",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "a_cancelled_touch_on_lock_starts_no_command",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-26",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "a_cancel_after_sliding_back_onto_f5_runs_nothing",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-27",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "a_cancel_with_no_touch_presents_and_runs_nothing",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-28",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "after_a_cancel_the_next_tap_on_f5_presses_f5_once",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-29",
+      "package": "tb-daemon",
+      "target": "test:cancelled_touch",
+      "test": "forwarding_passes_a_cancel_through_in_order",
+      "red": "required",
+      "symbol": "Cancel"
+    },
+    {
+      "id": "QA-30",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_click_at_half_scale_is_a_touch_down_at_twice_the_window_x_then_up",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-31",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_click_on_a_full_size_window_lands_on_the_bar_pixel_under_it",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-32",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_click_at_the_far_left_is_bar_x_zero",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-33",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_click_at_the_far_right_is_the_last_bar_pixel",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-34",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "the_vertical_position_of_a_click_does_not_change_its_bar_x",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-35",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "moving_a_pressed_pointer_slides_the_touch_to_each_new_bar_x",
+      "red": "required"
+    },
+    {
+      "id": "QA-36",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "moves_within_one_bar_column_send_no_new_touch",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-37",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_release_at_another_bar_x_with_no_move_slides_there_before_the_lift",
+      "red": "required"
+    },
+    {
+      "id": "QA-38",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "escape_or_focus_loss_with_nothing_pressed_sends_no_touch",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-39",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "two_clicks_are_two_touches_in_order",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-40",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_window_that_nobody_clicked_closes_its_touches_without_any",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-41",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_press_beside_the_sim_screen_in_a_taller_window_lands_no_touch",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-42",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_click_on_the_sim_screen_of_a_taller_window_maps_by_its_width",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-43",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_click_over_f5_in_the_window_presses_and_releases_f5_on_the_daemon",
+      "red": "preserve",
+      "reason": "Window click mapping and no-press behaviour must not change"
+    },
+    {
+      "id": "QA-44",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "a_touch_down_at_f5_centre_presents_only_f5_pressed",
+      "red": "preserve",
+      "reason": "Press highlight and damage for a touch that stays on its button must not change"
+    },
+    {
+      "id": "QA-45",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "touch_up_presents_f5_released_with_damage_f5",
+      "red": "preserve",
+      "reason": "Press highlight and damage for a touch that stays on its button must not change"
+    },
+    {
+      "id": "QA-46",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "a_touch_in_a_dead_zone_presents_nothing",
+      "red": "preserve",
+      "reason": "Press highlight and damage for a touch that stays on its button must not change"
+    },
+    {
+      "id": "QA-47",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "a_touch_in_the_gap_within_slop_of_f4_presses_f4",
+      "red": "preserve",
+      "reason": "Press highlight and damage for a touch that stays on its button must not change"
+    },
+    {
+      "id": "QA-48",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "sliding_the_press_from_f5_onto_f6_releases_f5_and_presses_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-49",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "sliding_back_onto_f5_presses_f5_again",
+      "red": "required"
+    },
+    {
+      "id": "QA-50",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "sliding_the_press_from_f5_onto_a_dead_zone_releases_f5",
+      "red": "required"
+    },
+    {
+      "id": "QA-51",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "a_touch_that_lands_in_a_dead_zone_presses_nothing_when_it_slides_onto_f5",
+      "red": "required"
+    },
+    {
+      "id": "QA-52",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "touching_the_button_already_pressed_presents_nothing",
+      "red": "preserve",
+      "reason": "Press highlight and damage for a touch that stays on its button must not change"
+    },
+    {
+      "id": "QA-53",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "touch_up_with_nothing_pressed_presents_nothing",
+      "red": "preserve",
+      "reason": "Press highlight and damage for a touch that stays on its button must not change"
+    },
+    {
+      "id": "QA-54",
+      "package": "tb-daemon",
+      "target": "test:touch_press",
+      "test": "on_the_simulator_a_press_changes_the_screen_only_inside_f5",
+      "red": "preserve",
+      "reason": "Press highlight and damage for a touch that stays on its button must not change"
+    },
+    {
+      "id": "QA-55",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_tap_on_f5_presses_f5_once",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-56",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "two_taps_press_their_keys_in_tap_order",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-57",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_tap_presses_every_key_of_the_action_in_one_press",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-58",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_tap_on_the_fn_layer_presses_its_key",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-59",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_tap_on_lock_with_fn_ctrl_held_runs_its_command_and_presses_nothing",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-60",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_tap_on_a_command_on_the_default_layer_runs_it",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-61",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_tap_on_a_button_with_no_action_does_nothing",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-62",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_key_on_a_modifier_layer_is_not_pressed_and_is_reported_naming_the_button",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-63",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "the_modifier_layer_rule_is_checked_before_the_key_names",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-64",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "holding_fn_ctrl_without_a_fn_ctrl_layer_presses_the_keys_of_the_fn_layer_shown",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-65",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "unknown_or_missing_key_names_are_reported_as_bad_keys_and_nothing_is_pressed",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-66",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "without_a_virtual_keyboard_a_key_tap_is_reported_and_the_run_goes_on",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-67",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_command_that_cannot_start_is_reported_and_later_taps_still_run",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-68",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "moving_from_f5_to_f6_before_the_lift_runs_nothing",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-69",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "sliding_off_f5_and_back_before_the_lift_is_a_tap_on_f5",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-70",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_touch_that_never_lifts_runs_nothing",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-71",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_lift_with_no_touch_runs_nothing",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-72",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_touch_that_lands_on_no_button_runs_nothing_even_if_it_slides_onto_f5",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-73",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_modifier_change_during_a_touch_runs_the_action_of_the_layer_it_landed_on",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-74",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_layout_change_during_a_touch_runs_the_button_it_landed_on",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-75",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_config_change_keeps_held_fn_selection_and_falls_back_when_its_layer_is_removed",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-76",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "a_tap_still_presents_the_press_and_the_release",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-77",
+      "package": "tb-daemon",
+      "target": "test:tap_actions",
+      "test": "actions_can_be_moved_to_the_daemon_thread",
+      "red": "preserve",
+      "reason": "The daemon's tap contract (action on release over the landing button) must not change"
+    },
+    {
+      "id": "QA-78",
+      "package": "tb-daemon",
+      "target": "test:touchbard_sim_window",
+      "test": "a_headless_run_without_a_display_still_presses_f5_from_stdin",
+      "red": "preserve",
+      "reason": "Headless stdin runs beside the window keep working (stdin protocol unchanged)"
+    },
+    {
+      "id": "QA-79",
+      "package": "tb-daemon",
+      "target": "test:touchbard_sim_window",
+      "test": "a_headless_run_ends_when_stdin_closes",
+      "red": "preserve",
+      "reason": "Headless stdin runs beside the window keep working (stdin protocol unchanged)"
+    },
+    {
+      "id": "QA-80",
+      "package": "tb-daemon",
+      "target": "test:touchbard_emit",
+      "test": "a_tap_on_f5_writes_f5_pressed_and_released_to_the_emit_file",
+      "red": "preserve",
+      "reason": "--emit PATH still writes one key per stdin tap and nothing for a non-tap"
+    },
+    {
+      "id": "QA-81",
+      "package": "tb-daemon",
+      "target": "test:touchbard_emit",
+      "test": "the_emit_file_starts_empty_and_a_touch_that_is_no_tap_writes_nothing",
+      "red": "preserve",
+      "reason": "--emit PATH still writes one key per stdin tap and nothing for a non-tap"
+    },
+    {
+      "id": "QA-82",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "line_touches_read_down_and_up_and_skip_empty_lines",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    },
+    {
+      "id": "QA-83",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "line_touches_read_the_bar_edges",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    },
+    {
+      "id": "QA-84",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "an_unknown_line_is_a_bad_line_error_naming_it",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    },
+    {
+      "id": "QA-85",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "a_down_without_a_valid_x_is_a_bad_line",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    },
+    {
+      "id": "QA-86",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "scripted_touches_yield_each_touch_then_close",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    },
+    {
+      "id": "QA-87",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "forwarded_touches_arrive_as_touch_events_in_order",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    },
+    {
+      "id": "QA-88",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "forwarding_stops_with_the_source_error",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    },
+    {
+      "id": "QA-89",
+      "package": "tb-daemon",
+      "target": "test:touch_sources",
+      "test": "forwarding_to_a_dropped_receiver_ends_with_ok",
+      "red": "preserve",
+      "reason": "Touch sources and forwarding stay as they are; the helper prints any new touch kind instead of matching Touch exhaustively"
+    }
+  ],
+  "checks": []
+}
