@@ -115,13 +115,12 @@ impl<R: SceneRenderer, D: Display> Daemon<R, D> {
             }
             Event::Touch(Touch::Down { x }) => {
                 let layer = shown_layer(&self.layout, self.modifiers)?;
-                match &mut self.touch {
-                    Some(landing) => landing.slide(x),
-                    None => {
-                        let placed = place(layer, SIZE, &RULES)?;
-                        let id = hit(&placed, x, &RULES).cloned();
-                        self.touch = Some(Landing::new(layer, placed, id.as_ref()));
-                    }
+                if let Some(landing) = &mut self.touch {
+                    landing.slide(x);
+                } else {
+                    let placed = place(layer, SIZE, &RULES)?;
+                    let id = hit(&placed, x, &RULES).cloned();
+                    self.touch = Some(Landing::new(layer, placed, id.as_ref()));
                 }
                 // Pressed: the landing button while the touch is over it, else nothing.
                 let id = self.touch.as_ref().and_then(Landing::pressed).cloned();
