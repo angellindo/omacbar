@@ -244,7 +244,8 @@ fn save_time_failure_then_retry(test: &str, break_it: impl Fn(&Path), cause: imp
     let status = words(&rt, "status");
     assert!(status.starts_with("saved"), "a retry after the repair saves: {status:?}");
     let mut expected = config;
-    expected.layout.layer_mut(Chord::Default).unwrap().groups[0].buttons[0].label = "kept edit".to_owned();
+    "kept edit"
+        .clone_into(&mut expected.layout.layer_mut(Chord::Default).unwrap().groups[0].buttons[0].label);
     assert_eq!(on_disk(&home), expected);
 }
 
@@ -263,7 +264,7 @@ fn a_selected_theme_malformed_after_opening_refuses_the_save_keeps_edits_and_sav
         "malformed_after_open",
         |theme| {
             fs::write(theme, "background = \"#000000\"\nforeground = \"#ffffff\"\naccent = \"#zz\"\n")
-                .unwrap()
+                .unwrap();
         },
         |theme| vec![theme.to_string_lossy().into_owned(), "accent".to_owned()],
     );
