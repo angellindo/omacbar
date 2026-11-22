@@ -49,6 +49,25 @@ impl Default for Config {
     }
 }
 
+impl Config {
+    /// The shipped default with every style override `theme` cannot resolve cleared. No colour is
+    /// guessed: the button keeps its role colour. Under a theme with every token the default
+    /// uses (every shipped Omarchy theme) this equals `Config::default()`.
+    pub fn default_for(theme: &BarTheme) -> Self {
+        let mut config = Self::default();
+        let buttons =
+            config.layout.layers.iter_mut().flat_map(|l| &mut l.groups).flat_map(|g| &mut g.buttons);
+        for b in buttons {
+            for color in [&mut b.style.fill, &mut b.style.text, &mut b.style.border] {
+                if color.as_deref().is_some_and(|c| theme.resolve(c).is_none()) {
+                    *color = None;
+                }
+            }
+        }
+        config
+    }
+}
+
 /// One problem found by [`validate`]. Validation reports all problems, not just the first.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ConfigIssue {

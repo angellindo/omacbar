@@ -56,7 +56,11 @@ The configurator uses system monospace, square panels, flat fills and no shadows
 Selection and validation rings have separate geometry, keys and colours, so both remain visible.
 They decorate only cards and the configurator preview: they never modify `SceneButton`, physical
 pressed state, daemon rendering, or shared `bar_button`. The active Omarchy theme is loaded at
-startup. Token colour overrides follow the theme; valid hex overrides show their frozen-theme
+startup and the config's theme source is resolved against it as the daemon does
+([theming](theming.md#the-saved-theme-source)): a selected theme file that is missing or malformed
+is named in the status and blocks saving, so the file on disk is never replaced; each save resolves
+that file again and refuses (keeping edits, allowing a retry) when it no longer resolves the
+layout's tokens. Token colour overrides follow the theme; valid hex overrides show their frozen-theme
 notice. There is no added live theme watcher.
 
 The preview calls `build_scene` and `bar_button` at 0.5, preserving 88 px device edges, 12 px in-group

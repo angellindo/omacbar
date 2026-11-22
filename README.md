@@ -136,7 +136,10 @@ when absent; doctor validates in-memory defaults without creating files. Active 
 are `~/.local/state/omarchy/current/theme/colors.toml`; absent/malformed active colors use bundled
 Tokyo Night with a warning. An explicitly selected invalid/missing theme file rejects the config.
 The daemon follows valid config saves and theme switches; invalid saves retain the last accepted
-config. The configurator preview currently follows Omarchy regardless of the saved theme source.
+config. The configurator opens, previews and saves against the theme the saved source resolves to,
+as the daemon does, and resolves a selected theme file again on every save: if that file is missing
+or malformed it names the file and leaves the config on disk unchanged. First-run defaults drop
+colour overrides the active theme cannot resolve (e.g. the lock's `red` under a theme without it).
 `contrib/omarchy/` contains the optional theme hook a human installs. Standalone diagnostic output
 uses stdout/stderr; only the launcher redirects its current-run logs to the scratch paths above.
 

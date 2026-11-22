@@ -52,6 +52,23 @@ exist when `touchbard` starts, it logs that it is not following switches and kee
 The configurator reads the active theme when it starts; following switches while it is open is a
 follow-up.
 
+## The saved theme source
+
+A config's `theme` is `{ source = "omarchy" }` (the active theme) or `{ source = "file", path }`.
+The daemon, the doctor and the configurator resolve it the same way
+(`tb_config::ConfigFile::load_resolved`) and validate colour tokens against the resolved theme, so
+a token only the selected file defines is accepted, previewed and saved. A selected file that is
+missing or malformed is an error naming the file and the reason, never a fallback: the daemon keeps
+its last valid config, the doctor fails `runtime.theme`, and the configurator blocks saving so the
+layout on disk is kept. Every configurator save resolves the source again
+(`ConfigFile::save_resolved`); if the file broke or lost a token the layout uses since opening, the
+save is refused with the cause, the edits stay, and a later save after the repair succeeds.
+
+The first-run default is `Config::default_for(theme)`: the shipped default with every colour
+override the theme cannot resolve cleared (the button keeps its role colour; no colour is guessed).
+Under every shipped Omarchy theme it is the shipped default byte for byte; under a theme with only
+the required tokens the Fn + Ctrl `lock` loses its optional `red` fill.
+
 ## Label font
 
 Labels are set in Rune's `Family::SystemMono` (`tb_render::view::label_style`): fontconfig's

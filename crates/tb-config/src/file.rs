@@ -65,7 +65,8 @@ impl ConfigFile {
     }
 
     /// Reads a candidate, resolves its saved theme source, then validates and accepts both.
-    /// Rejection leaves the current config untouched. Missing files get the existing default.
+    /// Rejection leaves the current config untouched. A missing file gets the default for the
+    /// active theme (`Config::default_for`), written atomically.
     pub fn load_resolved(&mut self, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
         self.read_resolved(active, true)
     }
@@ -84,7 +85,7 @@ impl ConfigFile {
         let text = match fs::read_to_string(&self.path) {
             Ok(text) => text,
             Err(e) if create_default && e.kind() == io::ErrorKind::NotFound => {
-                let default = Config::default();
+                let default = Config::default_for(active);
                 write_atomically(&self.path, &to_toml(&default)?)?;
                 self.config = default;
                 return Ok(active.clone());
@@ -105,13 +106,14 @@ impl ConfigFile {
         check(&self.config, active)
     }
 
-    /// Reads and checks the file. A missing file gets the default config written atomically.
+    /// Reads and checks the file. A missing file gets the default for `theme`
+    /// (`Config::default_for`) written atomically.
     /// On an error the current config is unchanged.
     pub fn load(&mut self, theme: &BarTheme) -> Result<Loaded, ConfigFileError> {
         let text = match fs::read_to_string(&self.path) {
             Ok(text) => text,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                let default = Config::default();
+                let default = Config::default_for(theme);
                 write_atomically(&self.path, &to_toml(&default)?)?;
                 self.config = default;
                 return Ok(Loaded::WroteDefault);
@@ -137,6 +139,17 @@ impl ConfigFile {
         write_atomically(&self.path, &to_toml(&config)?)?;
         self.config = config;
         Ok(())
+    }
+
+    /// Like `save`, but first resolves the candidate's own theme source again (the selected file
+    /// is re-read; Omarchy is `active`) and validates against it, as `load_resolved` does.
+    /// Returns the resolved theme. On any error nothing is written and the current config stays.
+    pub fn save_resolved(&mut self, config: Config, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
+        let theme = resolve_theme(&config.theme, active)?;
+        check(&config, &theme)?;
+        write_atomically(&self.path, &to_toml(&config)?)?;
+        self.config = config;
+        Ok(theme)
     }
 
     fn io(&self, source: io::Error) -> ConfigFileError {

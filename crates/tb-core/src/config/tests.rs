@@ -96,3 +96,26 @@ fn a_label_padding_wider_than_half_a_button_leaves_no_room_instead_of_underflowi
         "{found:?}"
     );
 }
+
+#[test]
+fn the_default_for_a_theme_without_red_drops_only_the_red_override() {
+    let minimal = BarTheme::from_omarchy_colors(
+        "background = \"#101418\"\nforeground = \"#d0d4d8\"\naccent = \"#4c8cf0\"\n",
+    )
+    .unwrap();
+    let adapted = Config::default_for(&minimal);
+    let mut expected = Config::default();
+    for b in expected.layout.layers.iter_mut().flat_map(|l| &mut l.groups).flat_map(|g| &mut g.buttons) {
+        if b.style.fill.as_deref() == Some("red") {
+            b.style.fill = None;
+        }
+    }
+    assert_ne!(expected, Config::default(), "the shipped default uses red");
+    assert_eq!(adapted, expected);
+    assert_eq!(validate(&adapted, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD, &minimal), vec![]);
+}
+
+#[test]
+fn the_default_for_a_full_theme_is_the_shipped_default() {
+    assert_eq!(Config::default_for(&BarTheme::omarchy_fallback()), Config::default());
+}

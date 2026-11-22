@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use serde::Serialize;
 use tb_config::{ActiveTheme, ConfigFile, ConfigFileError, default_path};
-use tb_core::config::ThemeSource;
+use tb_core::config::{Config, ThemeSource, validate};
 use tb_core::{BarSize, BarTheme, SpacingRules};
 
 #[derive(Serialize)]
@@ -82,7 +82,10 @@ fn config_checks(home: &Path) -> Vec<Check> {
         Err(e) => e.kind() == io::ErrorKind::NotFound,
     };
     let result = if missing {
-        file.check_active_theme(&active.theme).map(|()| active.theme.clone())
+        // What a first run would write under this theme (`ConfigFile` writes the same default).
+        let default = Config::default_for(&active.theme);
+        let issues = validate(&default, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD, &active.theme);
+        if issues.is_empty() { Ok(active.theme.clone()) } else { Err(ConfigFileError::Invalid(issues)) }
     } else {
         file.reload_resolved(&active.theme)
     };

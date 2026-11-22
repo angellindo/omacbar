@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use rune::tok::TextStyle;
 use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, Tx, el, text};
-use tb_config::{ActiveTheme, ConfigFile, Loaded, default_path};
+use tb_config::{ActiveTheme, ConfigFile, ConfigFileError, default_path};
 use tb_core::config::Config;
 use tb_core::edit::{add_button, add_button_to_group, add_group, remove_button};
 use tb_core::reorder::{Toward, step_button};
@@ -33,11 +33,13 @@ pub struct State {
 }
 
 impl State {
-    /// Loads the given file or edits defaults with an explicit replacement/unavailable notice.
-    /// Missing files are created by `ConfigFile`; rejected files remain untouched until a save.
+    /// Loads the given file against the theme its source resolves to (`theme` is the active
+    /// Omarchy theme), as the daemon does, or edits defaults with an explicit notice. Missing files
+    /// are created by `ConfigFile`; rejected files remain untouched until a save. A selected theme
+    /// file that is missing or malformed blocks saving, so the user's layout is never replaced.
     pub fn open(path: Option<PathBuf>, theme: BarTheme) -> Self {
         let mut s = Self {
-            config: Config::default(),
+            config: Config::default_for(&theme),
             theme,
             chord: Chord::Default,
             selected: None,
@@ -54,13 +56,18 @@ impl State {
         };
         let mut file = ConfigFile::new(path);
         let shown = file.path().display().to_string();
-        s.status = match file.load(&s.theme) {
-            Ok(Loaded::Read | Loaded::WroteDefault) => {
+        s.status = match file.load_resolved(&s.theme) {
+            Ok(resolved) => {
+                s.theme = resolved;
                 s.config = file.config().clone();
                 s.saving.baseline = Some(s.config.clone());
                 format!("editing {shown}")
             }
-            Ok(Loaded::Rejected(issues)) => {
+            Err(ConfigFileError::Theme(e)) => {
+                s.saving.blocked = Some(format!("not saved: {e}; fix the selected theme file and reopen"));
+                format!("{e}: {shown} is kept unchanged; showing the default, saving is blocked")
+            }
+            Err(ConfigFileError::Invalid(issues)) => {
                 format!("{shown} has {} issue(s): editing the default; saving replaces it", issues.len())
             }
             Err(e) => format!("{e}: editing the default; saving replaces it"),

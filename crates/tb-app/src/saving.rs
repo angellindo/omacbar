@@ -1,11 +1,14 @@
 //! A baseline tracks actual config differences, and only successful explicit saves update time.
 
 use crate::app::{NO_HOME, State};
+use tb_config::ConfigFileError;
 use tb_core::config::Config;
 use tb_core::{ButtonId, Chord};
 
 pub(crate) struct Saving {
     pub(crate) baseline: Option<Config>,
+    /// Why no save may replace the file for this session (the selected theme failed at open).
+    pub(crate) blocked: Option<String>,
     pub(crate) last_saved: Option<u64>,
     pub(crate) saved_this_session: bool,
     clock: fn() -> Option<u64>,
@@ -13,7 +16,7 @@ pub(crate) struct Saving {
 
 impl Default for Saving {
     fn default() -> Self {
-        Self { baseline: None, last_saved: None, saved_this_session: false, clock: || None }
+        Self { baseline: None, blocked: None, last_saved: None, saved_this_session: false, clock: || None }
     }
 }
 
@@ -72,6 +75,9 @@ impl State {
         if self.file.is_none() {
             return Some(NO_HOME.to_owned());
         }
+        if let Some(reason) = &self.saving.blocked {
+            return Some(reason.clone());
+        }
         let issues = self.effective_issues();
         if issues.is_empty() {
             return None;
@@ -90,12 +96,20 @@ impl State {
             return;
         }
         let Some(file) = &mut self.file else { return };
-        match file.save(self.config.clone(), &self.theme) {
-            Ok(()) => {
+        // The selected theme file may have changed since open: resolve it again. `self.theme` is
+        // the active theme whenever the config follows Omarchy, so it is the right fallback.
+        match file.save_resolved(self.config.clone(), &self.theme) {
+            Ok(theme) => {
+                self.theme = theme;
                 self.status = format!("saved config {}", file.path().display());
                 self.saving.baseline = Some(self.config.clone());
                 self.saving.last_saved = (self.saving.clock)();
                 self.saving.saved_this_session = true;
+            }
+            Err(ConfigFileError::Invalid(issues)) => {
+                let fix = issues.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ");
+                self.status =
+                    format!("not saved {}: {} issue(s); fix {fix}", file.path().display(), issues.len());
             }
             Err(e) => self.status = format!("not saved {}: {e}", file.path().display()),
         }
