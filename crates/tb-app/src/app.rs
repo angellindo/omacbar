@@ -21,7 +21,11 @@ pub const WINDOW: (f32, f32) = (1200.0, 760.0);
 
 pub struct State {
     pub config: Config,
+    /// The theme the shown config resolves to (preview and validation).
     pub theme: BarTheme,
+    /// The active Omarchy theme this editor was opened with: what an Omarchy source resolves to,
+    /// whatever theme file the shown config selects.
+    pub(crate) active: BarTheme,
     pub chord: Chord,
     pub selected: Option<ButtonId>,
     pub(crate) file: Option<ConfigFile>,
@@ -40,6 +44,7 @@ impl State {
     pub fn open(path: Option<PathBuf>, theme: BarTheme) -> Self {
         let mut s = Self {
             config: Config::default_for(&theme),
+            active: theme.clone(),
             theme,
             chord: Chord::Default,
             selected: None,

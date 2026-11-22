@@ -111,9 +111,9 @@ impl State {
             return;
         }
         let Some(file) = &mut self.file else { return };
-        // The selected theme file may have changed since open: resolve it again. `self.theme` is
-        // the active theme whenever the config follows Omarchy, so it is the right fallback.
-        match file.save_resolved(self.config.clone(), &self.theme) {
+        // The selected theme file may have changed since open: resolve it again; Omarchy is the
+        // active theme, never the theme a previously shown config selected.
+        match file.save_resolved(self.config.clone(), &self.active) {
             Ok(theme) => {
                 self.theme = theme;
                 self.saved(None);
@@ -131,8 +131,10 @@ impl State {
             return;
         }
         let (Some(file), Some(version)) = (&mut self.file, self.saving.conflict.clone()) else { return };
-        match file.save_over(self.config.clone(), &self.theme, &version) {
-            Ok(()) => {
+        match file.save_over_resolved(self.config.clone(), &self.active, &version) {
+            Ok(theme) => {
+                // Exactly the theme this overwrite was validated against: no second read.
+                self.theme = theme;
                 let backup = file.backup().map(|b| b.display().to_string());
                 self.saved(backup);
             }
@@ -202,7 +204,7 @@ impl State {
         let Some(file) = &self.file else { return Err(NO_HOME.to_owned()) };
         let name = self.file_name();
         let mut fresh = ConfigFile::new(file.path());
-        let theme = match fresh.reload_resolved(&self.theme) {
+        let theme = match fresh.reload_resolved(&self.active) {
             Ok(theme) => theme,
             Err(ConfigFileError::Io { source, .. }) if source.kind() == io::ErrorKind::NotFound => {
                 return Err(format!("{name} was removed"));
