@@ -205,11 +205,22 @@ impl ConfigFile {
         active: &BarTheme,
         acknowledged: &DiskVersion,
     ) -> Result<(), ConfigFileError> {
+        self.save_over_resolved(config, active, acknowledged).map(drop)
+    }
+
+    /// `save_over`, returning the theme the config was validated against (the selected file as
+    /// read for this save, or `active`), so the caller shows exactly what was checked.
+    pub fn save_over_resolved(
+        &mut self,
+        config: Config,
+        active: &BarTheme,
+        acknowledged: &DiskVersion,
+    ) -> Result<BarTheme, ConfigFileError> {
         let theme = resolve_theme(&config.theme, active)?;
         check(&config, &theme)?;
         self.swap(acknowledged, &to_toml(&config)?, true)?;
         self.config = config;
-        Ok(())
+        Ok(theme)
     }
 
     /// Writes `text` only if the file is `expected`; records it as seen. With `backup`, the
