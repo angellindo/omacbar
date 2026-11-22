@@ -14,6 +14,8 @@ pub enum Touch {
     Down { x: u16 },
     /// No finger on the bar.
     Up,
+    /// The touch ended without lifting over anything (a cancelled touch): no tap, nothing pressed.
+    Cancel,
 }
 
 /// Where touches come from: a device, stdin, or a script in tests.

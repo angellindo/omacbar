@@ -48,7 +48,7 @@ pub struct Daemon<R: SceneRenderer, D: Display> {
     theme: BarTheme,
     modifiers: Modifiers,
     pressed: Option<ButtonId>,
-    /// The touch now down, from its first `Down` to its `Up`.
+    /// The touch now down, from its first `Down` to its `Up` or `Cancel`.
     touch: Option<Landing>,
     actions: Actions,
     /// The scene on the display now; `None` until the first present.
@@ -115,25 +115,27 @@ impl<R: SceneRenderer, D: Display> Daemon<R, D> {
             }
             Event::Touch(Touch::Down { x }) => {
                 let layer = shown_layer(&self.layout, self.modifiers)?;
-                let placed = place(layer, SIZE, &RULES)?;
-                let id = hit(&placed, x, &RULES).cloned();
                 match &mut self.touch {
                     Some(landing) => landing.slide(x),
-                    None => self.touch = Some(Landing::new(layer, placed, id.as_ref())),
+                    None => {
+                        let placed = place(layer, SIZE, &RULES)?;
+                        let id = hit(&placed, x, &RULES).cloned();
+                        self.touch = Some(Landing::new(layer, placed, id.as_ref()));
+                    }
                 }
-                // A miss (bar edge, group gap) changes nothing.
-                let Some(id) = id else { return Ok(()) };
-                let scene = scene(&self.layout, &self.theme, self.modifiers, Some(&id))?;
-                self.present(scene)?;
-                self.pressed = Some(id);
+                // Pressed: the landing button while the touch is over it, else nothing.
+                let id = self.touch.as_ref().and_then(Landing::pressed).cloned();
+                self.show_pressed(id)?;
             }
             Event::Touch(Touch::Up) => {
                 if let Some((button, chord)) = self.touch.take().and_then(Landing::tapped) {
                     self.actions.run(&button, chord);
                 }
-                let scene = scene(&self.layout, &self.theme, self.modifiers, None)?;
-                self.present(scene)?;
-                self.pressed = None;
+                self.show_pressed(None)?;
+            }
+            Event::Touch(Touch::Cancel) => {
+                self.touch = None;
+                self.show_pressed(None)?;
             }
         }
         Ok(())
@@ -145,6 +147,17 @@ impl<R: SceneRenderer, D: Display> Daemon<R, D> {
         let start = scene(&self.layout, &self.theme, self.modifiers, self.pressed.as_ref())?;
         self.present(start)?;
         events.into_iter().try_for_each(|event| self.handle(event))
+    }
+
+    /// Shows `id` pressed (or nothing) on the shown layer; presents only if the pressed button changed.
+    fn show_pressed(&mut self, id: Option<ButtonId>) -> Result<(), DaemonError> {
+        if id == self.pressed {
+            return Ok(());
+        }
+        let scene = scene(&self.layout, &self.theme, self.modifiers, id.as_ref())?;
+        self.present(scene)?;
+        self.pressed = id;
+        Ok(())
     }
 
     /// Renders and presents `scene` with its damage, unless it equals the scene shown.
@@ -179,6 +192,11 @@ impl Landing {
     fn slide(&mut self, x: u16) {
         let id = self.button.as_ref().map(|b| &b.id);
         self.over = id.is_some() && hit(&self.placed, x, &RULES) == id;
+    }
+
+    /// The landing button, while the touch is over it.
+    fn pressed(&self) -> Option<&ButtonId> {
+        self.button.as_ref().filter(|_| self.over).map(|b| &b.id)
     }
 
     /// The button and its layer, if the touch landed on a button and lifted over it.
