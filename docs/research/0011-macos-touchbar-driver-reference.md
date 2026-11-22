@@ -14,7 +14,7 @@ display ownership and input, and what remains unknown when comparing macOS, the 
 The requested collection's `drivers/README.md` describes samples from macOS **13.7.8** and marks
 Apple binaries as private interoperability references. This is a different collection from the
 macOS 13.7 material described in [research 0006](0006-macos-reference-stack.md). Its
-`samples/sensors/com.apple.driver.usb.AppleUSBiBridge/SOURCE.txt` identifies the original bundle as
+`drivers/samples/sensors/com.apple.driver.usb.AppleUSBiBridge/SOURCE.txt` identifies the original bundle as
 `/System/Library/Extensions/AppleUSBiBridge.kext` and extraction from
 `/System/Library/KernelCollections/BootKernelExtensions.kc`. The source locator, rather than an
 assumed equivalence with older files, governs the observations below. Confidence: **high for
@@ -51,7 +51,7 @@ All confidence ratings are **high for declared matching/property values**, not p
 | `iBridge1,1 Driver`: `IOClass`, `IOProviderClass`, `idVendor`, `idProduct`, `bcdDevice` | AppleUSBiBridge binds IOUSBHostDevice for vendor 0x05ac, product 0x8600, revision 0x0101 | This is a T1 device match, not a panel renderer declaration |
 | Same: `kUSBPreferredConfiguration`, `kUSBPreferredRecoveryConfiguration` | Preferred 2; recovery 3 | Corroborates the T1 config-2 path in research 0001; does not show the machine's current configuration |
 | `iBridge1,1 Display IOUSBInterface`: `bConfigurationValue`, `bInterfaceNumber`, `IOProviderMergeProperties/UsbUserClientEntitlementRequired` | Configuration 2, interface 3; `com.apple.appledfr.client` entitlement | The display interface is distinct from the device configuration selector and access is gated |
-| `iBridge2,1 Display IOUSBHostDevice`: product/revision and merged preferred configuration properties | Product 0x8302, revision 0x0201; preferred 2, recovery 1 | The same plist has a different display-device personality; recovery behavior is not interchangeable with T1 |
+| `iBridge2,1 Display IOUSBHostDevice`: product/revision and merged preferred configuration properties | IOClass AppleUSBHostMergeProperties, product 0x8302, revision 0x0201; preferred 2, recovery 1 | The same plist has a different display-device personality; recovery behavior is not interchangeable with T1 |
 | `iBridge2,1 Display IOUSBInterface`: configuration/interface/merged entitlement | Configuration 2, interface 1; same DFR client entitlement | Interface numbers differ across these personalities despite both using config 2 |
 | `iBridge1,1 Digitizer IOUSBHostHIDDevice`: `DeviceUsagePairs`, merged `kUSBHIDDeviceIdlePolicy` | Vendor usage page 0xFF00, usage 0x16; idle policy 1000 | Identifies HID matching and an idle policy, not a decoded touch report format or screen-off timer |
 | `iBridge1,1 ALS IOUSBHostHIDDevice`: same fields | Sensor page 0x20, usage 0x41; idle policy 150 | Ambient-light HID is separate from display pixels; the value is not an OLED brightness scale |
@@ -105,7 +105,7 @@ not Apple's implementation and not the T1 patch's equivalence.
   proprietary symbol names are corroborating architecture hints, not an implementation spec.
 - Treat damage rectangles as a backend capability to evaluate, not a macOS-derived requirement
   that all transports must support. The old 0006 recommendation to use only damaged rectangles
-  needs that qualification. Correct orientation, format, ownership and a whole-frame baseline
+  needs that qualification. [ADR-0006](../adr/0006-daemon-crate-presents-damage.md) already passes both the full frame and damage rectangles to the backend. Correct orientation, format, ownership and a whole-frame baseline
   still need to be established on the selected T1 backend.
 - Do not equate the T2 plugin's working report with T1 support. Both macOS personalities select
   config 2 but use different display interfaces; Linux v6.18's cited stock driver matches the T2

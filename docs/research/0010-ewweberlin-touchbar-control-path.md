@@ -15,7 +15,7 @@ The [marketplace catalog](https://plugins.omarchy.org/catalog.json), entry `ewwe
 resolves to **ewweberlin/Omarchy-Touchbar**, version **0.1.4**. A fresh
 [GitHub API request](https://api.github.com/repos/ewweberlin/Omarchy-Touchbar/commits/main)
 returned **`d790c71b9fbefe436808c32de4c3547375fa9efc`**, matching the catalog's observed commit.
-The pinned [manifest](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/manifest.json#L1-L19)
+The pinned [manifest](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/manifest.json)
 confirms id, version, MIT license and service entry point. This is not a similarly named T1 plugin.
 Confidence: **high** for identity at observation time.
 
@@ -23,7 +23,7 @@ The catalog's listing verification baseline is **`e4fb34c76dded1e9648aef22086a0b
 not the current commit. It says `verificationCoverage: update-unverified`,
 `verificationStatus: unverified`, and `installAvailable: false` / manual setup. A separately recorded
 `upstreamValidatedCommit` does not make the baseline equal to HEAD. These are catalog metadata,
-not an independent hardware or security certification. Snapshot: `.scratch/TB-41/catalog-entry.json`.
+not an independent hardware or security certification. Catalog upstream check: 2026-11-21 12:36:54 UTC.
 Confidence: **high**, time-dependent.
 
 The author reports a **MacBookPro15,2 (2018, T2), Omarchy/Hyprland, arch-mact2**. Other T2 support is
@@ -48,8 +48,8 @@ Touch digitizer → evdev → Python hit-test → commands / Hyprland / audio / 
 |---|---|---|
 | Quickshell | `Service.qml` launches `python3 -B … --managed`, forwards logs, stops the child and restarts failures with backoff. It does not paint the panel. [Service.qml:21–75](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/Service.qml#L21-L75) | high |
 | Python | Builds one SVG; atomically replaces `/etc/tiny-dfr/omarchy-touchbar.svg`, then `/etc/tiny-dfr/config.toml`. Each replacement is atomic; the pair is not a transaction. Identical SVGs are skipped and redraws capped at the configured rate (default 12 fps). [daemon.py:313–345](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/daemon.py#L313-L345), [config.py:63–79](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/config.py#L63-L79) | high |
-| tiny-dfr | Opens DRM, acquires master, allocates an XRGB8888 dumb buffer, commits the mode, maps memory and calls `dirty_framebuffer`. Cairo rotates drawing 90°. [display.rs:69–181](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/display.rs#L69-L181), [main.rs:580–605](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L580-L605), [main.rs:958–974](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L958-L974) | high for pinned upstream |
-| Kernel | Linux v6.18 `appletbdrm` converts emulated XRGB8888 to BGR888, packages damage rectangles and uses USB bulk messages. Its device table matches `05ac:8302`, not T1 `05ac:8600`. [appletbdrm.c:150–190](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/tiny/appletbdrm.c#L150-L190), [372–456](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/tiny/appletbdrm.c#L372-L456), [817–834](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/tiny/appletbdrm.c#L817-L834) | high for this kernel reference; author's installed build unverified |
+| tiny-dfr | Opens DRM, acquires master, allocates an XRGB8888 dumb buffer, commits the mode, maps memory and calls `dirty_framebuffer`. Cairo rotates drawing 90°. [display.rs:68–212](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/display.rs#L68-L212), [main.rs:580–605](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L580-L605), [main.rs:958–974](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L958-L974) | high for pinned upstream |
+| Kernel | Linux v6.18 `appletbdrm` converts emulated XRGB8888 to BGR888, packages damage rectangles and uses USB bulk messages. Its device table matches `05ac:8302`, not T1 `05ac:8600`. [appletbdrm.c:150–221](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/tiny/appletbdrm.c#L150-L221), [313–468](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/tiny/appletbdrm.c#L313-L468), [817–834](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/tiny/appletbdrm.c#L817-L834) | high for this kernel reference; author's installed build unverified |
 
 The 2170×60 panel is not one freely owned Python framebuffer. Python's canvas is **2079×60 at
 x=91**. Its generated config has one `Stretch=23` media button, `IconWidth=2079`, `IconHeight=60`,
@@ -58,7 +58,7 @@ The 91-pixel offset includes tiny-dfr's spacing; it is not a universal hardware 
 [Plugin geometry/config](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/config.py#L15-L21),
 [generated config](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/config.py#L99-L142),
 [tiny-dfr Escape insertion](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/config.rs#L119-L146),
-[width calculation](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L602-L635).
+[width calculation](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L602-L701).
 Confidence: **high** for code, not independently measured dimensions.
 
 ### Reloads, Fn and actions
@@ -68,8 +68,8 @@ path with `IN_MOVED_TO | IN_CLOSE | IN_ONESHOT`, reloads and rearms after an eve
 specific than the plugin comment saying only `IN_MOVED_TO`: do not infer that every in-place write
 is universally ignored. On reload, tiny-dfr replaces both layers, clears its touch map and resets
 `active_layer=0`. It does not release each old touch's action in that reset branch. Hence the
-plugin's actionless stretched button avoids a key press whose release would be forgotten.
-Sources: [config.rs:158–218](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/config.rs#L158-L217),
+plugin's actionless stretched button avoids a key press whose release would be forgotten. The inserted Escape key still carries an action. The watcher targets the file inode and processes events without filtering their mask, so replacement can invalidate the old watch.
+Sources: [config.rs:158–217](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/config.rs#L158-L217),
 [main.rs:918–922](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L918-L922).
 Confidence: **high** for reset; safety under every event ordering remains **unverified**.
 
@@ -78,11 +78,11 @@ Fn to suppress publishing **and its own touch actions** during Fn; Fn release ma
 Startup forces an initial publication before discovery, so this is not a synchronization guarantee
 for startup with Fn already held. tiny-dfr independently receives Fn from libinput on both
 `seat0` and `seat-touchbar`; its Touch Bar name check selects the digitizer, not the only Fn source.
-This updates the narrower tiny-dfr description in [research 0002](0002-input-fn-modifiers.md).
+This also qualifies the Fn discovery rationale in [ADR-0003](../adr/0003-own-daemon-not-tiny-dfr-config.md) and updates [research 0002](0002-input-fn-modifiers.md).
 Sources: [daemon.py:161–186](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/daemon.py#L161-L186),
 [313–357](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/daemon.py#L313-L357),
 [tiny-dfr input loop](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L865-L873),
-[990–1070](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L990-L1059).
+[990–1059](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L990-L1059).
 Confidence: **high** for code; cross-process race behavior **unverified**.
 
 Python opens evdev read-only/nonblocking, without an `EVIOCGRAB` call. Digitizer selection uses a
@@ -91,7 +91,7 @@ keyboard name fallback. It tracks one contact, accepts single-touch and MT axes,
 is absent, subtracts the canvas offset, and supports scale/inversion/offset calibration. Its T2
 single-row comments are not proof that T1 emits identical events.
 Sources: [input.py:151–237](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/input.py#L151-L237),
-[267–401](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/input.py#L267-L401).
+[267–401](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/input.py#L258-L401).
 Confidence: **high** for implementation; T1 calibration **unverified**.
 
 Custom actions launch commands, not Python-generated uinput keys: `omarchy`, `brightnessctl`,
@@ -99,7 +99,7 @@ Custom actions launch commands, not Python-generated uinput keys: `omarchy`, `br
 polling fallback. tiny-dfr still creates the virtual keyboard and emits Escape/F-keys.
 [actions.py:55–124](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/actions.py#L55-L124),
 [audio](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/actions.py#L202-L216),
-[hypr.py:54–133](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/hypr.py#L54-L133),
+[hypr.py:54–133](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/hypr.py#L54-L142),
 [tiny-dfr uinput](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L840-L919).
 Confidence: **high**. This does not resolve held-modifier key semantics: [research 0008](0008-modifier-leak-hyprland.md) still applies.
 
@@ -109,9 +109,11 @@ Confidence: **high**. This does not resolve held-modifier key semantics: [resear
 |---|---|---|
 | Python ≥3.11, Quickshell/Omarchy, tiny-dfr, rsvg-convert, brightnessctl, pactl, hyprctl | Installer checks Python, warns for missing helpers/package. These are requirements, not all hard preflight gates. [install:79–100](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/bin/install#L79-L100) | high |
 | User-owned `/etc/tiny-dfr` directory; 0644 published files; udev OWNER/user, GROUP/input, MODE/0660 for exact T2 digitizer/internal keyboard names; service enable/start | [install:308–343](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/bin/install#L308-L343), [rules:1–11](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/udev/90-omarchy-touchbar.rules#L1-L11). These names do not grant access to the T1 SPI keyboard by themselves. | high |
-| Separate seat and system privileges | tiny-dfr udev assigns DRM/input to `seat-touchbar`; its startup opens DRM/uinput/backlight then drops to nobody with input/video groups. [seat rules](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/etc/udev/rules.d/99-touchbar-seat.rules#L1-L5), [startup:840–873](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L840-L873) | high |
+| Separate seat and system privileges | tiny-dfr udev assigns DRM/input to `seat-touchbar`; its startup opens DRM/uinput/backlight then drops to nobody with input/video groups. [seat rules](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/etc/udev/rules.d/99-touchbar-seat.rules#L1-L5), [startup:815–873](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L815-L873) | high |
 | Theme integration | Reads Omarchy current `colors.toml`; hook touches a runtime refresh file. `SIGUSR1` is an optional Python theme-refresh signal, not tiny-dfr reload. [paths](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/config.py#L46-L58), [theme loop](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/daemon.py#L243-L259), [hook](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/hooks/10-omarchy-touchbar#L1-L11) | high |
-| Power policy | Every 5 seconds Python attempts to restore `appletb_backlight` to maximum while lid appears open; missing lid state defaults to open. This competes with tiny-dfr's 30/60-second dim/off policy, and stopping statistics after 300 seconds is not panel sleep. [keepalive](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/daemon.py#L269-L309), [backlight](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/backlight.rs#L119-L145) | high for attempts; runtime success unverified |
+| Power policy | Every 5 seconds Python attempts to restore `appletb_backlight` to maximum while lid appears open; missing lid state defaults to open. A sysfs write can override adaptive brightness while leaving tiny-dfr’s cached brightness and touch filtering unchanged. This competes with tiny-dfr's 30/60-second dim/off policy, and stopping statistics after 300 seconds is not panel sleep. [keepalive](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/daemon.py#L269-L309), [backlight](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/backlight.rs#L119-L145) | high for attempts; runtime success unverified |
+
+The [upstream udev rules](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/etc/udev/rules.d/99-touchbar-tiny-dfr.rules) select USB configuration 2 via 0 only for 05ac:8302. Service activation matches named input devices. At startup, [backlight discovery](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/backlight.rs#L30-L79) panics if it finds no supported backlight. T1 needs separate verification of binding, digitizer naming and backlight discovery. [T1 hardware research](0001-t1-touch-bar-hardware.md) records configuration reversion and a distinct 16-byte response with deferred acknowledgement.
 
 The README links `WhatAmISupposedToPutHere/tiny-dfr`; the
 [GitHub repository API](https://api.github.com/repos/WhatAmISupposedToPutHere/tiny-dfr)
@@ -119,10 +121,10 @@ redirects that historical owner to **AsahiLinux/tiny-dfr** (same reviewed HEAD a
 a distinct plugin-specific fork. Confidence: **high**, observed redirect and code revision.
 
 The plugin does not pin a tiny-dfr build. A relevant current Arch T2
-[packaging recipe](https://github.com/NoaHimesaka1873/tiny-dfr-arch/blob/95e8a3a7f030f22da21e49e3287fd4aee8b6261e/PKGBUILD#L1-L51)
+[packaging recipe](https://github.com/NoaHimesaka1873/tiny-dfr-arch/blob/95e8a3a7f030f22da21e49e3287fd4aee8b6261e/PKGBUILD)
 fetches **AsahiLinux/tiny-dfr** without a source revision, depends on `linux-t2`, installs config,
 udev and a T2 systemd drop-in, and declares a conflict with `touchbard`. It does not patch the Rust
-source. The drop-in clears BindsTo and adds graphical-target ordering. This is packaging evidence,
+source. The [drop-in](https://github.com/NoaHimesaka1873/tiny-dfr-arch/blob/95e8a3a7f030f22da21e49e3287fd4aee8b6261e/t2-intel.conf) clears BindsTo and adds graphical-target ordering and WantedBy. This is packaging evidence,
 not proof of which binary the author installed. The
 [archiso pacman configuration](https://github.com/t2linux/archiso-t2/blob/f20577d5a432616b15ee7acc9618ae3226719cb4/archiso/pacman.conf#L102-L104)
 identifies the arch-mact2 mirror; its database fetch failed during research. Exact installed package
@@ -139,7 +141,7 @@ above is explicitly pinned reference behavior, not an assertion of byte-identica
    [scope](../scope.md), [macOS comparison](0011-macos-touchbar-driver-reference.md).
 2. **A file-based Rune bridge is plausible, not implemented.** Pinned tiny-dfr loads PNG as well
    as SVG and accepts image dimensions. Rune RGBA could be encoded as PNG and published as a
-   stretched icon; remove any higher-priority same-name SVG. This still pays encoding/reload cost,
+   stretched icon for a hardware smoke test; remove any higher-priority same-name SVG. This still pays encoding/reload cost,
    reserves Escape, resets tiny-dfr's layers/touches, and is not a raw-frame or shared-memory API.
    Confidence **high for PNG support; feasibility/performance unverified**,
    [image loading](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/src/main.rs#L109-L194).
@@ -152,27 +154,22 @@ above is explicitly pinned reference behavior, not an assertion of byte-identica
 4. **Reuse ideas, retain our product scope.** Shared render/hit geometry, render-on-change,
    capability-based Fn discovery, theme notification and command actions are useful patterns.
    Drawers/sliders/vitals, the inverse default layer and always-lit policy are outside or conflict
-   with our MVP. Confidence **high**, [strip geometry](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/strip.py#L1-L16)
+   with our MVP. Confidence **high**, [strip geometry](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/daemon/layout.py)
    and [scope](../scope.md).
 5. **License boundaries differ by component.** Plugin and tiny-dfr source are MIT (preserve their
    copyright/permission notices for copied substantial portions); tiny-dfr's embedded Material
-   icons carry Apache-2.0 notices. Linux `appletbdrm` declares GPL. Calling a separate daemon and
+   icons carry Apache-2.0 notices. Linux `appletbdrm` declares SPDX identifier `GPL-2.0` on line 1. The plugin LICENSE includes the third-party MIT notice for niraj-envision/touch-bar. Calling a separate daemon and
    copying driver code are different reuse choices; this research grants no blanket relicensing.
    Apple references remain proprietary and are not reusable assets. Confidence **high for declared
-   licenses**, [plugin LICENSE](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/LICENSE#L1-L21),
-   [tiny-dfr LICENSE](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/LICENSE#L1-L21),
-   [Material license](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/LICENSE.material#L1-L15), kernel license cited above.
+   licenses**, [plugin LICENSE](https://github.com/ewweberlin/Omarchy-Touchbar/blob/d790c71b9fbefe436808c32de4c3547375fa9efc/LICENSE),
+   [tiny-dfr LICENSE](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/LICENSE),
+   [Material license](https://github.com/AsahiLinux/tiny-dfr/blob/a79f2f43e6c6a9b855968e54eb243c20642ebc89/LICENSE.material), kernel license cited above.
 
-Proposed follow-ups: (a) after TB-9's human hardware gates, compare PNG/tiny-dfr and direct DRM
-presentation on T1, including Fn held during startup/reload and touch release; blocks a backend
-choice, not simulator work; (b) before physical-daemon rollout, specify exclusive display/input/
-backlight ownership and restoration, preserving current layer and idle semantics; blocks safe
-coexistence claims. Neither is an instruction to install this plugin.
+[ADR-0003](../adr/0003-own-daemon-not-tiny-dfr-config.md) selects our own daemon and reserves tiny-dfr for hardware verification. After TB-9, validate direct DRM presentation from Rune’s CPU readback on the patched T1 driver. The upstream reference exposes native BGR888 and emulated XRGB8888 in portrait orientation. tiny-dfr uses a 64-pixel-wide buffer for a 60×2170 visible mode and rotates damage clips. Read the actual pitch and verify orientation and color with a full frame before testing partial updates. Define display, input and backlight ownership before physical rollout. [Rune rendering](../adr/0001-rune-renders-the-bar-offscreen.md), [damage contract](../adr/0006-daemon-crate-presents-damage.md).
 
 ## Sources
 
-All code links pin the reviewed revisions. Local public-source copies are under
-`.scratch/TB-41/upstream/`; no upstream scripts were run. Reviewed project base:
+All code links pin the reviewed revisions. Upstream code was inspected statically. Reviewed project base:
 `7bbc4dd0e62c46916dc9056ba0f744a6ebcd1d34`. No app changes, builds, tests, device opens or system
 configuration changes were needed. Installed-package equivalence, timing, suspend/resume and T1
 operation remain unverified.
