@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Editor, daemon and doctor resolve the config's selected theme the same way: external tokens open, preview and save; a missing or malformed selected theme (at open or at save) never replaces the user's layout bytes; the first-run default is accepted under any valid Omarchy theme while shipped themes keep the unchanged default.",
+  "files": [
+    "crates/tb-app/tests/configurator_selected_theme.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs",
+    "crates/tb-daemon/tests/selected_theme_agreement.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_external_theme_token_opens_for_editing_and_previews_its_resolved_colour",
+      "red": "required"
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_external_theme_layout_survives_edit_save_and_reopen_with_the_same_token_and_colour",
+      "red": "required"
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_missing_selected_theme_names_the_file_and_never_replaces_the_layout",
+      "red": "required"
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_malformed_selected_theme_names_the_file_and_the_missing_token_and_never_replaces_the_layout",
+      "red": "required"
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_selected_theme_removed_after_opening_refuses_the_save_keeps_edits_and_saves_after_repair",
+      "red": "required"
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_selected_theme_malformed_after_opening_refuses_the_save_keeps_edits_and_saves_after_repair",
+      "red": "required"
+    },
+    {
+      "id": "QA-07",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_selected_theme_that_loses_a_used_token_after_opening_refuses_the_save_and_names_the_token",
+      "red": "required"
+    },
+    {
+      "id": "QA-08",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_first_run_under_a_theme_without_red_writes_a_default_every_process_accepts",
+      "red": "required"
+    },
+    {
+      "id": "QA-09",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_first_run_under_shipped_omarchy_themes_writes_the_unchanged_default",
+      "red": "preserve",
+      "reason": "Existing Omarchy defaults are retained byte for byte under shipped themes (Acceptance 3)."
+    },
+    {
+      "id": "QA-10",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_invalid_config_following_the_active_theme_still_offers_the_default_and_saving_replaces_it",
+      "red": "preserve",
+      "reason": "Legacy fallback for an invalid config following the active theme stays as today (plan: preserve)."
+    },
+    {
+      "id": "QA-11",
+      "package": "tb-daemon",
+      "target": "test:selected_theme_agreement",
+      "test": "the_doctor_accepts_the_first_run_default_under_a_theme_without_red",
+      "red": "required"
+    },
+    {
+      "id": "QA-12",
+      "package": "tb-daemon",
+      "target": "test:selected_theme_agreement",
+      "test": "the_daemon_first_run_under_a_theme_without_red_writes_a_default_it_accepts_on_reload",
+      "red": "required"
+    },
+    {
+      "id": "QA-13",
+      "package": "tb-daemon",
+      "target": "test:selected_theme_agreement",
+      "test": "the_daemon_draws_an_external_theme_token_from_the_same_home_the_doctor_accepts",
+      "red": "preserve",
+      "reason": "Daemon and doctor already resolve the selected theme; the editor must converge on them, not change them."
+    }
+  ],
+  "checks": []
+}
