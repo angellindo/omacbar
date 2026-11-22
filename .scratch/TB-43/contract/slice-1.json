@@ -1,0 +1,552 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Config saves are compare-and-swap on every save path (save, save_resolved, missing-file defaults, acknowledged overwrite): a stale editor (another configurator, an external editor, a removal, a never-read path) never replaces a newer file. Clean, it adopts the newer file only if it resolves, and writes nothing; dirty, it reports the conflict, keeps its draft and offers reload (never writing defaults over a removed file, never accepting a newer file whose selected theme fails) or an acknowledged overwrite that keeps the exact replaced bytes in a backup no more readable than the source, never replacing or writing through an existing backup or symlink. Simultaneous saves of one version have one winner; conflict-free saves still reach the daemon's watch exactly once; TB-42's theme save block is preserved.",
+  "files": [
+    "crates/tb-config/tests/config_stale_save.rs",
+    "crates/tb-config/tests/config_conflict_overwrite.rs",
+    "crates/tb-config/tests/config_save.rs",
+    "crates/tb-config/tests/config_watch.rs",
+    "crates/tb-app/tests/configurator_conflict.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs",
+    "crates/tb-config/tests/config_save_resolved.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_stale_save_after_another_config_files_save_is_refused_and_keeps_the_newer_bytes",
+      "red": "required"
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_refused_stale_save_stays_refused_until_the_file_is_read_again",
+      "red": "required"
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_stale_save_that_resolves_the_selected_theme_is_refused_too",
+      "red": "required"
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_stale_save_over_an_external_rename_keeps_the_hand_written_bytes_mode_and_inode",
+      "red": "required"
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "an_in_place_edit_of_equal_length_and_restored_mtime_is_still_a_newer_version",
+      "red": "required"
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_config_file_that_never_read_the_path_cannot_replace_an_existing_file",
+      "red": "required"
+    },
+    {
+      "id": "QA-07",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_stale_save_after_the_file_was_removed_is_refused_and_creates_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-08",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_stale_save_through_a_symlink_leaves_the_link_and_its_target_untouched",
+      "red": "required"
+    },
+    {
+      "id": "QA-09",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_stale_save_through_a_symlink_whose_target_was_removed_writes_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-10",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "simultaneous_saves_from_editors_that_read_the_same_version_have_exactly_one_winner",
+      "red": "required"
+    },
+    {
+      "id": "QA-11",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_conflict_free_save_is_one_change_the_daemon_reads_and_a_refused_stale_save_is_none",
+      "red": "required"
+    },
+    {
+      "id": "QA-12",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "rewriting_identical_bytes_is_not_a_newer_version",
+      "red": "preserve",
+      "reason": "The version is the content: an identical rewrite (new inode, same bytes) must not become a false conflict"
+    },
+    {
+      "id": "QA-13",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_save_after_a_rejected_or_invalid_read_replaces_the_file_that_was_read",
+      "red": "preserve",
+      "reason": "'editing the default; saving replaces it' after an invalid file keeps working: invalid reads record the version shown"
+    },
+    {
+      "id": "QA-14",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "saving_again_through_one_config_file_is_never_a_conflict_with_itself",
+      "red": "preserve",
+      "reason": "A config file's own successful writes (default write included) are the version it saw; ordinary saves make no backup"
+    },
+    {
+      "id": "QA-15",
+      "package": "tb-config",
+      "target": "test:config_stale_save",
+      "test": "a_missing_file_default_never_replaces_a_config_another_writer_created",
+      "red": "preserve",
+      "reason": "Default-write race (daemon and configurator starting together). Nondeterministic before the fix, so it cannot be a required red; it must be green after"
+    },
+    {
+      "id": "QA-16",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "a_stale_save_is_refused_as_changed_naming_the_version_now_on_disk",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-17",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "a_removed_file_is_named_as_the_absent_version",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-18",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_acknowledged_overwrite_keeps_the_exact_replaced_bytes_and_mode_as_bak",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-19",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_overwrite_acknowledging_an_older_version_is_refused_again_and_writes_nothing",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-20",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_acknowledged_overwrite_of_a_removed_file_creates_it_without_a_backup",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-21",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_overwrite_acknowledging_a_removal_is_refused_when_the_file_came_back",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-22",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_overwrite_never_silently_discards_a_backup_that_was_already_there",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-23",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_invalid_overwrite_is_refused_before_anything_is_written",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-24",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "simultaneous_overwrites_acknowledging_one_version_have_exactly_one_winner",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-25",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_acknowledged_overwrite_is_exactly_one_change_the_daemon_reads",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-26",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "a_clean_stale_editor_pressing_save_keeps_the_newer_file_and_shows_it",
+      "red": "required"
+    },
+    {
+      "id": "QA-27",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "a_clean_stale_editor_keeps_a_hand_written_newer_file_byte_for_byte",
+      "red": "required"
+    },
+    {
+      "id": "QA-28",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "a_dirty_stale_editor_reports_the_conflict_and_keeps_its_draft_through_save_and_ctrl_s",
+      "red": "required"
+    },
+    {
+      "id": "QA-29",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "reloading_after_a_conflict_shows_the_newer_file_and_drops_the_draft",
+      "red": "required"
+    },
+    {
+      "id": "QA-30",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "overwriting_after_a_conflict_saves_the_draft_and_keeps_the_replaced_bytes_as_bak",
+      "red": "required"
+    },
+    {
+      "id": "QA-31",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "an_overwrite_after_a_further_change_is_refused_again_and_a_second_overwrite_wins",
+      "red": "required"
+    },
+    {
+      "id": "QA-32",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "a_clean_stale_editor_whose_file_was_removed_writes_nothing_and_says_so",
+      "red": "required"
+    },
+    {
+      "id": "QA-33",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "a_dirty_stale_editor_whose_file_was_removed_keeps_its_draft_and_overwrite_creates_it_without_bak",
+      "red": "required"
+    },
+    {
+      "id": "QA-34",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "a_clean_stale_editor_facing_an_invalid_newer_file_writes_nothing_and_names_the_issues",
+      "red": "required"
+    },
+    {
+      "id": "QA-35",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "stale_editors_through_a_symlink_leave_the_link_and_its_target_untouched",
+      "red": "required"
+    },
+    {
+      "id": "QA-36",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "conflict_free_saves_reach_the_daemon_once_and_a_refused_save_does_not",
+      "red": "required"
+    },
+    {
+      "id": "QA-37",
+      "package": "tb-config",
+      "target": "test:config_save",
+      "test": "saving_a_valid_config_renames_a_new_file_over_the_old_and_makes_it_current",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-38",
+      "package": "tb-config",
+      "target": "test:config_save",
+      "test": "a_saved_config_is_what_the_next_load_reads",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-39",
+      "package": "tb-config",
+      "target": "test:config_save",
+      "test": "saving_an_invalid_config_writes_nothing_and_keeps_the_current_config",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-40",
+      "package": "tb-config",
+      "target": "test:config_save",
+      "test": "saving_into_a_missing_directory_creates_it",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-41",
+      "package": "tb-config",
+      "target": "test:config_save",
+      "test": "a_save_that_cannot_rename_is_an_io_error_and_leaves_no_temp_file",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-42",
+      "package": "tb-config",
+      "target": "test:config_watch",
+      "test": "a_save_through_another_config_file_is_exactly_one_change",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-43",
+      "package": "tb-config",
+      "target": "test:config_load",
+      "test": "loading_a_missing_file_writes_the_default_config_and_its_directory",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-44",
+      "package": "tb-config",
+      "target": "test:config_load",
+      "test": "a_file_that_cannot_be_read_is_an_io_error_naming_it_and_keeps_the_current_config",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-45",
+      "package": "tb-config",
+      "target": "test:config_unknown_key",
+      "test": "saving_a_config_with_an_unknown_key_is_refused_and_writes_nothing",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-46",
+      "package": "tb-app",
+      "target": "test:save_in_configurator",
+      "test": "opening_a_missing_config_edits_the_default_and_writes_it",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-47",
+      "package": "tb-app",
+      "target": "test:save_in_configurator",
+      "test": "dragging_f3_before_f1_and_pressing_save_writes_that_config_and_says_saved",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-48",
+      "package": "tb-app",
+      "target": "test:save_in_configurator",
+      "test": "an_invalid_config_file_is_left_untouched_and_the_editor_shows_the_default",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-49",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "deterministic_write_failure_preserves_edits_baseline_and_previous_file_bytes",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-50",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "save_shortcut_works_from_each_field_without_swallowing_ordinary_text_or_select_all",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-51",
+      "package": "tb-app",
+      "target": "test:configurator_save",
+      "test": "successful_save_updates_the_baseline_and_reports_only_file_state_and_no_acknowledgement",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-52",
+      "package": "tb-app",
+      "target": "test:configurator_save_clock",
+      "test": "only_successful_explicit_saves_sample_the_injected_clock_and_update_the_displayed_utc_time",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-53",
+      "package": "tb-app",
+      "target": "test:configurator_drafts",
+      "test": "two_buttons_and_two_layers_keep_independent_invalid_width_buffers_until_each_is_repaired",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-54",
+      "package": "tb-app",
+      "target": "test:configurator_command_file",
+      "test": "empty_command_save_rejection_preserves_the_accepted_config_and_exact_file_bytes",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-55",
+      "package": "tb-daemon",
+      "target": "test:touchbard_config",
+      "test": "missing_config_is_created_as_the_existing_default",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-56",
+      "package": "tb-daemon",
+      "target": "test:touchbard_config",
+      "test": "atomic_and_in_place_saves_reload_and_invalid_saves_keep_the_last_action",
+      "red": "preserve",
+      "reason": "Existing save/load/reload behaviour the compare-and-swap save must not break"
+    },
+    {
+      "id": "QA-57",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_overwrite_never_writes_through_a_backup_symlink",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-58",
+      "package": "tb-config",
+      "target": "test:config_conflict_overwrite",
+      "test": "an_overwrite_at_a_symlink_keeps_the_link_and_the_replaced_bytes_recoverable_or_writes_nothing",
+      "red": "required",
+      "symbol": "DiskVersion"
+    },
+    {
+      "id": "QA-59",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "an_overwrite_never_replaces_a_backup_that_was_already_there",
+      "red": "required"
+    },
+    {
+      "id": "QA-60",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "reloading_after_a_conflict_when_the_file_was_removed_writes_no_default_and_keeps_the_draft",
+      "red": "required"
+    },
+    {
+      "id": "QA-61",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "a_clean_stale_editor_never_adopts_a_newer_file_whose_selected_theme_fails",
+      "red": "required"
+    },
+    {
+      "id": "QA-62",
+      "package": "tb-app",
+      "target": "test:configurator_conflict",
+      "test": "reloading_after_a_conflict_never_accepts_a_newer_file_whose_selected_theme_fails",
+      "red": "required"
+    },
+    {
+      "id": "QA-63",
+      "package": "tb-config",
+      "target": "test:config_save_resolved",
+      "test": "a_save_resolves_the_selected_theme_file_and_refuses_when_it_is_gone",
+      "red": "preserve",
+      "reason": "TB-42 save_resolved behaviour; now reads before saving (a save replaces only a version it read)"
+    },
+    {
+      "id": "QA-64",
+      "package": "tb-config",
+      "target": "test:config_selected_theme",
+      "test": "a_missing_reload_keeps_the_accepted_config_without_creating_a_default",
+      "red": "preserve",
+      "reason": "A missing reload never writes a default"
+    },
+    {
+      "id": "QA-65",
+      "package": "tb-config",
+      "target": "test:config_selected_theme",
+      "test": "an_invalid_selected_theme_rejects_the_candidate_without_committing_its_layout",
+      "red": "preserve",
+      "reason": "A theme failure never accepts the candidate layout"
+    },
+    {
+      "id": "QA-66",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_missing_selected_theme_names_the_file_and_never_replaces_the_layout",
+      "red": "preserve",
+      "reason": "TB-42 save block after a theme failure at open must hold"
+    },
+    {
+      "id": "QA-67",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_malformed_selected_theme_names_the_file_and_the_missing_token_and_never_replaces_the_layout",
+      "red": "preserve",
+      "reason": "TB-42 save block after a theme failure at open must hold"
+    },
+    {
+      "id": "QA-68",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_selected_theme_removed_after_opening_refuses_the_save_keeps_edits_and_saves_after_repair",
+      "red": "preserve",
+      "reason": "A save-time theme failure is refused and a retry after repair saves (no false conflict)"
+    },
+    {
+      "id": "QA-69",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_external_theme_layout_survives_edit_save_and_reopen_with_the_same_token_and_colour",
+      "red": "preserve",
+      "reason": "Ordinary save_resolved round trip"
+    },
+    {
+      "id": "QA-70",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_invalid_config_following_the_active_theme_still_offers_the_default_and_saving_replaces_it",
+      "red": "preserve",
+      "reason": "An invalid read records the version shown, so saving still replaces it"
+    }
+  ],
+  "checks": []
+}

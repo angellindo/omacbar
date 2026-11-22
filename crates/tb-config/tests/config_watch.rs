@@ -113,6 +113,7 @@ fn a_save_through_another_config_file_is_exactly_one_change() {
     let dir = fresh_dir("save_is_one_change");
     let (_file, changes) = watched(&dir);
     let mut other = ConfigFile::new(dir.join("config.toml"));
+    assert_eq!(other.load(&theme()).unwrap(), Loaded::Read, "a save replaces only a version it read");
 
     other.save(relabelled("f5", "bright"), &theme()).unwrap();
 

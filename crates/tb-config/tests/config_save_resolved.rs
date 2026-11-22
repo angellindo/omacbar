@@ -31,6 +31,7 @@ fn a_save_resolves_the_selected_theme_file_and_refuses_when_it_is_gone() {
     let path = dir.join("config.toml");
     fs::write(&path, "# mine\n").unwrap();
     let mut file = ConfigFile::new(&path);
+    file.load(&BarTheme::omarchy_fallback()).unwrap(); // a save replaces only a version it read
     let error = file.save_resolved(selecting(&theme), &BarTheme::omarchy_fallback()).unwrap_err();
     assert!(matches!(error, ConfigFileError::Theme(_)), "{error}");
     assert_eq!(fs::read_to_string(&path).unwrap(), "# mine\n", "nothing is written");
