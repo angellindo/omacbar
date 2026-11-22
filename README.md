@@ -90,7 +90,10 @@ readable/saveable with warnings; ESC does not promise modifier isolation. Empty 
 commands now fail shared validation even in existing version 1 files: choose `none` for a no-op.
 
 Pending changes compare with the loaded or last successfully saved config, so reverting edits
-clears them. Save/Ctrl+S validates every layer and draft, then writes atomically. A failed write
+clears them. Save/Ctrl+S validates every layer and draft, then writes atomically. A save never
+replaces a file that changed on disk since it was opened: an unedited window shows the newer file,
+an edited one keeps its changes and offers reload or overwrite (the replaced file is kept as
+`config.toml.bak`, or `config.toml.bak.<n>` when that exists). A failed write
 keeps edits and the previous successful save time. Startup shows “not saved this session”; only a
 successful explicit save records a timestamp. “Saved config/file” describes the file the daemon
 watches; simulator acknowledgement is unavailable and the configurator does not claim the

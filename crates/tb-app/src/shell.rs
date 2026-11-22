@@ -85,6 +85,7 @@ fn sidebar(s: &State, height: f32) -> El {
                     s.save_blocked_reason().map(|reason| words(s, "save-blocked-reason", &reason).mb(8.0)),
                 ))
                 .child(save_control(s))
+                .children(conflict_controls(s))
                 .child(words(s, "dirty-summary", &s.dirty_summary()).mt(4.0))
                 .child(words(s, "last-saved", &s.last_saved_text()))
                 .child(
@@ -141,6 +142,20 @@ fn save_control(s: &State) -> El {
     } else {
         button.on_press(State::save)
     }
+}
+
+/// Offered only while a save is refused over a newer file: drop the draft and show the file, or
+/// replace the file and keep its bytes in a backup (the status explains which is which).
+fn conflict_controls(s: &State) -> Option<El> {
+    s.saving.conflict.as_ref()?;
+    let reload = pressable(&s.theme, "conflict-reload", "reload · discard", false).size(168.0, 34.0);
+    let overwrite = pressable(&s.theme, "conflict-overwrite", "overwrite · .bak", false).size(168.0, 34.0);
+    Some(
+        col()
+            .key("conflict")
+            .child(reload.mt(4.0).on_press(State::reload))
+            .child(overwrite.mt(4.0).on_press(State::overwrite)),
+    )
 }
 
 pub(crate) fn layer_header(s: &State) -> El {

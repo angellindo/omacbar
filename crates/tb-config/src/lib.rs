@@ -6,6 +6,6 @@ mod file;
 mod theme;
 mod watch;
 
-pub use file::{ConfigFile, ConfigFileError, Loaded, default_path};
+pub use file::{ConfigFile, ConfigFileError, DiskVersion, Loaded, default_path};
 pub use theme::{ActiveTheme, LoadedTheme, ThemeFileError, ThemeWatch};
 pub use watch::ConfigWatch;

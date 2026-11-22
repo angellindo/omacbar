@@ -141,6 +141,12 @@ The user's file of layers and theme source, `~/.config/touchbar-customizer/confi
 uses the last valid config read; an invalid file never replaces it.
 _Avoid_: settings, preferences, profile
 
+**Conflict**:
+A save refused because the config file changed on disk (another save, an editor, a removal) since
+the configurator read it. Nothing is written; the user reloads the file or overwrites it, which
+keeps the replaced file as a backup (ADR-0013).
+_Avoid_: merge, collision, race (for the user-facing refusal)
+
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
 _Avoid_: error (for config problems), warning
