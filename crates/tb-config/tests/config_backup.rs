@@ -22,7 +22,7 @@ fn fresh_dir(test: &str) -> PathBuf {
 fn relabelled(label: &str) -> Config {
     let mut config = Config::default();
     let layer = config.layout.layer_mut(Chord::Default).unwrap();
-    layer.groups[1].buttons[0].label = label.to_owned();
+    label.clone_into(&mut layer.groups[1].buttons[0].label);
     config
 }
 

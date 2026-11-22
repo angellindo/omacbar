@@ -151,10 +151,8 @@ impl State {
 
     fn saved(&mut self, backup: Option<String>) {
         let Some(file) = &self.file else { return };
-        self.status = format!("saved config {}", file.path().display());
-        if let Some(backup) = backup {
-            self.status.push_str(&format!("; the replaced version is kept in {backup}"));
-        }
+        let kept = backup.map(|b| format!("; the replaced version is kept in {b}")).unwrap_or_default();
+        self.status = format!("saved config {}{kept}", file.path().display());
         self.saving.baseline = Some(self.config.clone());
         self.saving.last_saved = (self.saving.clock)();
         self.saving.saved_this_session = true;
@@ -181,9 +179,8 @@ impl State {
             return;
         }
         match self.adopt() {
-            Ok(_) => {
-                self.status = "config changed on disk; showing the newer version (nothing saved)".to_owned()
-            }
+            Ok(_) => "config changed on disk; showing the newer version (nothing saved)"
+                .clone_into(&mut self.status),
             Err(why) => {
                 self.saving.conflict = Some(version);
                 self.status = format!("config changed on disk: {why}; nothing saved");

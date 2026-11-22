@@ -141,23 +141,31 @@ impl ConfigFile {
     /// shown). A missing file is created as the default for `theme`, which is then current
     /// (`None`); if another writer created the file first, its text is returned instead.
     fn read_or_default(&mut self, theme: &BarTheme) -> Result<Option<String>, ConfigFileError> {
-        let bytes = match version_at(&self.path).map_err(|e| self.io(e))?.0 {
+        let found = version_at(&self.path).map_err(|e| self.io(e))?.0;
+        let bytes = match found {
             Some(bytes) => bytes,
-            None => {
-                let default = Config::default_for(theme);
-                match self.swap(&DiskVersion::ABSENT, &to_toml(&default)?, false) {
-                    Ok(()) => {
-                        self.config = default;
-                        return Ok(None);
-                    }
-                    Err(ConfigFileError::Changed(DiskVersion(Some(bytes)))) => bytes,
-                    Err(e) => return Err(e),
-                }
-            }
+            None => match self.write_default(theme)? {
+                Some(theirs) => theirs,
+                None => return Ok(None),
+            },
         };
         let text = self.text(bytes.clone())?;
         self.seen = DiskVersion(Some(bytes));
         Ok(Some(text))
+    }
+
+    /// Creates the missing file as the default for `theme` (`Ok(None)`, now current), or returns
+    /// the bytes of the file another writer created first.
+    fn write_default(&mut self, theme: &BarTheme) -> Result<Option<Vec<u8>>, ConfigFileError> {
+        let default = Config::default_for(theme);
+        match self.swap(&DiskVersion::ABSENT, &to_toml(&default)?, false) {
+            Ok(()) => {
+                self.config = default;
+                Ok(None)
+            }
+            Err(ConfigFileError::Changed(DiskVersion(Some(bytes)))) => Ok(Some(bytes)),
+            Err(e) => Err(e),
+        }
     }
 
     fn text(&self, bytes: Vec<u8>) -> Result<String, ConfigFileError> {
