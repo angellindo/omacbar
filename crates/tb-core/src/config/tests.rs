@@ -98,7 +98,7 @@ fn a_label_padding_wider_than_half_a_button_leaves_no_room_instead_of_underflowi
 }
 
 #[test]
-fn the_default_for_a_theme_without_red_drops_only_the_red_override() {
+fn the_default_for_a_theme_without_red_drops_the_red_fill_and_its_paired_text() {
     let minimal = BarTheme::from_omarchy_colors(
         "background = \"#101418\"\nforeground = \"#d0d4d8\"\naccent = \"#4c8cf0\"\n",
     )
@@ -108,6 +108,7 @@ fn the_default_for_a_theme_without_red_drops_only_the_red_override() {
     for b in expected.layout.layers.iter_mut().flat_map(|l| &mut l.groups).flat_map(|g| &mut g.buttons) {
         if b.style.fill.as_deref() == Some("red") {
             b.style.fill = None;
+            b.style.text = None;
         }
     }
     assert_ne!(expected, Config::default(), "the shipped default uses red");

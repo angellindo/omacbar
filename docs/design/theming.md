@@ -67,7 +67,9 @@ save is refused with the cause, the edits stay, and a later save after the repai
 The first-run default is `Config::default_for(theme)`: the shipped default with every colour
 override the theme cannot resolve cleared (the button keeps its role colour; no colour is guessed).
 Under every shipped Omarchy theme it is the shipped default byte for byte; under a theme with only
-the required tokens the Fn + Ctrl `lock` loses its optional `red` fill.
+the required tokens the Fn + Ctrl `lock` loses its optional `red` fill and the `background` text
+paired with it, so it is drawn in the idle roles (button text on button fill). A `text` override
+is cleared whenever its button's `fill` is. Files already saved are never changed by this.
 
 ## Label font
 
