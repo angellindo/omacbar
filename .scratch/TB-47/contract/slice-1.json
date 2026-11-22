@@ -1,0 +1,380 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Protects the opt-in KMS display adapter: sysfs-first target identity bound to the opened character node, inactive-only takeover, rotated format/stride/damage conversion, exact unwinding and one-time restore with no visible change on a failed start, through RecordingKms and the real CardKms on ordinary files. A successful SETCRTC/DIRTYFB proves submission only.",
+  "files": [
+    "crates/tb-daemon/tests/drm_display.rs",
+    "crates/tb-daemon/tests/drm_target.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-101",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_card_whose_driver_is_not_appletbdrm_is_closed_without_taking_master",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-102",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_card_another_client_holds_as_master_is_busy_and_closed_untouched",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-103",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "not_exactly_one_connected_usb_connector_is_refused",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-104",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_connector_not_marked_non_desktop_is_refused",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-105",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_connector_without_the_portrait_bar_mode_is_refused",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-106",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_panel_orientation_other_than_right_side_up_is_refused",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-107",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_primary_plane_without_xrgb8888_or_bgr888_is_refused",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-108",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "any_active_or_foreign_prior_presentation_is_refused_before_any_allocation",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-109",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "xrgb8888_is_preferred_and_bgr888_is_the_fallback",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-110",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "the_framebuffer_is_added_with_the_kernel_pitch_not_a_computed_one",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-111",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "an_impossible_pitch_or_mapping_size_is_refused_and_unwound",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-112",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_failure_at_each_startup_step_releases_exactly_the_completed_steps_in_reverse",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-113",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "starting_validates_and_allocates_but_shows_nothing",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-114",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "four_corner_colours_land_rotated_in_xrgb8888",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-115",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "four_corner_colours_land_rotated_in_bgr888",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-116",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "row_padding_beyond_the_visible_width_is_never_written",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-117",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "the_first_present_writes_the_whole_frame_then_modesets_the_bar_connector",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-118",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "later_presents_write_only_damaged_pixels_and_send_rotated_dirty_clips",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-119",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "more_than_256_damage_rects_collapse_to_one_whole_framebuffer_clip",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-120",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "empty_damage_makes_no_call_before_or_after_the_modeset",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-121",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_frame_of_the_wrong_size_or_damage_off_the_bar_writes_nothing_and_calls_nothing",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-122",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_refused_first_present_does_not_modeset",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-123",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_device_gone_while_presenting_is_reported_as_gone_and_restore_reports_gone",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-124",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "an_ordinary_device_error_while_presenting_is_not_gone",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-125",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_failed_modeset_leaves_nothing_to_disable_on_restore",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-126",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "restore_after_a_modeset_disables_the_crtc_then_releases_in_order",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-127",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "restore_before_any_present_only_releases",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-128",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_second_restore_does_nothing",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-129",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "dropping_without_restore_restores_exactly_once",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-130",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "a_failing_restore_step_still_attempts_every_later_step_and_reports_it",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-131",
+      "package": "tb-daemon",
+      "target": "test:drm_display",
+      "test": "the_real_card_adapter_never_creates_a_node_and_an_ordinary_file_fails_at_the_version_query",
+      "red": "required",
+      "symbol": "DrmDisplay"
+    },
+    {
+      "id": "QA-132",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "auto_finds_the_one_touch_bar_card_among_desktop_gpus_connectors_and_render_nodes",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-133",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "auto_with_two_touch_bar_cards_is_ambiguous_and_lists_both",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-134",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "auto_never_falls_back_to_a_desktop_gpu_a_t2_bar_or_an_unbound_card",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-135",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "auto_with_no_drm_class_finds_nothing",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-136",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "an_explicit_touch_bar_card_path_is_accepted",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-137",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "an_explicit_desktop_gpu_is_refused_as_the_wrong_driver",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-138",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "an_explicit_t2_bar_is_refused_as_the_wrong_device",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-139",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "an_explicit_card_that_is_unbound_or_absent_from_sysfs_is_refused",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-140",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "paths_that_are_not_a_dev_dri_card_node_are_refused_before_any_sysfs_read",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-141",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "the_opened_node_must_be_the_character_device_sysfs_names_for_the_card",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-142",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "a_card_renumbered_after_discovery_is_refused_at_confirmation",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-143",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "a_second_touch_bar_appearing_after_discovery_does_not_change_the_confirmed_card",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-144",
+      "package": "tb-daemon",
+      "target": "test:drm_target",
+      "test": "an_ordinary_file_opened_by_the_real_adapter_never_confirms_as_the_card",
+      "red": "required",
+      "symbol": "find_touch_bar_card"
+    },
+    {
+      "id": "QA-145",
+      "package": "tb-daemon",
+      "target": "test:sim_display",
+      "test": "the_simulated_screen_starts_opaque_black",
+      "red": "preserve",
+      "reason": "Simulator display behaviour must not change when DisplayError gains a Device variant"
+    },
+    {
+      "id": "QA-146",
+      "package": "tb-daemon",
+      "target": "test:sim_display",
+      "test": "a_present_shows_the_new_frame_only_inside_its_damage_rects",
+      "red": "preserve",
+      "reason": "Simulator display behaviour must not change when DisplayError gains a Device variant"
+    }
+  ],
+  "checks": []
+}
