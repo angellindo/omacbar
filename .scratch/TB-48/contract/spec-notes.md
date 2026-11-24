@@ -307,3 +307,104 @@ the workspace sharing the target (slice 2's contamination) cannot be told apart 
   last valid design"); QA-13 GREEN (preserve); `recover-graph` GREEN; never_red empty. Clippy
   `-D warnings` clean on both targets; provenance proven (both executables built in this run from
   this checkout after `cargo clean -p`). Peak 80 °C, 16 thermal pauses (temperature only).
+
+# TB-48 slice 4: spec notes (QA)
+
+Base: `t3/tb48-slice1-qa-contract` @ fd7bc50 (slices 1-3 final PASS). Seals 1-3, their manifests,
+history and frozen files are unchanged. Slice 4 freezes one new suite, one check script and,
+read-only, `tb-app/tests/support/{configurator,ui}.rs` (already sealed by slice 3, unchanged).
+The new suite names no `CARGO_BIN_EXE_`, so slice 1's `spawn-isolation` check does not pick it up.
+
+## UI evidence: `crates/tb-app/tests/configurator_recovery.rs` (QA-01..14)
+
+Real configurator, headless `rune::Runtime`, opened as startup opens it
+(`State::open_protected(path, Backups::at(store), theme)`) in a temp profile under
+`CARGO_TARGET_TMPDIR/configurator_history/<case>` (no path word is `restore`, `recover` or
+`pending`, so text matches cannot come from a path). History is made by the real protected library:
+each hand-written version (comments, mode 0640) is replaced by `ConfigFile::protected(..).save`,
+so generation n holds version n exactly. Keys pinned (plan Seams): `backups-location`,
+`recover-<id>` (`id` = `GenerationId` Display; tapping it restores), `recovery-more`,
+`key-row-return`, existing `reset-factory`, `reset-cancel`, `save`, `status`, `dirty-summary`,
+`row-*`, `field-label`; scene `recovery`.
+
+- Location: `backups-location` text holds the store path (as given or canonical), fully visible.
+- Listing: newest five of this config, newest first (top to bottom); the 6th+ and another config's
+  generations (same store) are not listed; `recovery-more` has the number of the rest and
+  `touchbar-recover list`; with exactly five, no `recovery-more`.
+- Restore: exact bytes of the chosen (not the newest) generation, mode 0640; one new newest
+  generation, `Reason::Recover`, file, verified, 0640, holding the replaced bytes; every earlier one
+  still listed and verified; the editor shows the restored config, clean; `status` says `restored`
+  (not `not restored`) and names `<store>/<new id>`; the new generation is listed at once.
+- Restart: a reopened editor lists the generations and restoring the `recover` one undoes it.
+- Factory reset: the generation kept by a UI reset+save is labelled `before factory reset`; a
+  restore's own generation is not; restoring it brings back the personal file and layout.
+- Refusals: with unsaved edits, and with a pending reset, a restore writes and keeps nothing,
+  keeps the draft (and `reset-cancel`), and some element text names the restore and why
+  (`restore`/`recover` + `save or cancel`/`unsaved`/`pending`). Hiding or disabling the control is
+  allowed as long as that text is shown.
+- Conflicts (TB-43): file replaced externally after open → file and store untouched, the clean
+  editor shows the newer config, status `changed on disk`; file removed after open → nothing
+  written or kept, status says `removed`.
+- Damaged (hash mismatch) and absence generations: listed with why (`damaged`; `no file` /
+  `absent` / `did not exist` / `no config`); tapping either changes nothing.
+- A restored file that does not validate: exact bytes, a `recover` generation, status `restored`
+  plus `issue` / `not valid` / `invalid`.
+- Three things: `reset-factory` (says default/factory, not restore), `recover-<id>` (says restore,
+  not "default buttons") and `key-row-return` (names `docs/hardware-runbook.md` and its section
+  `Physical return to key mode`, says the editor does not / never does it, and that the layout and
+  its backups/generations/copies stay/remain/are kept) never overlap; tapping `key-row-return`
+  changes nothing. The runbook heading must exist in the tree (it comes from TB-46).
+- Reach: at 1200x760, 1200x500, 900x600, 640x400 every new control is revealed by real wheel input
+  and fully visible, and a restore tapped there works.
+- Scene `recovery`: exists, writes nothing, the location, two rows and `key-row-return` reachable.
+
+Not pinned (free): where the region sits, row wording beyond the words above, whether a refused
+restore hides, disables or explains, what the editor shows after a removed-file conflict.
+
+## End-to-end check `round-trip` (`.scratch/TB-48/contract/round_trip_check.py`)
+
+Real binaries, built by the check (`cargo build --locked -p tb-app -p tb-daemon --bins`, paths
+from cargo's JSON artifacts), one temp profile: `HOME` and every `XDG_*` inside it, `DISPLAY` and
+`WAYLAND_DISPLAY` removed, `touchbard --sim <dir> --emit <file>` (no device). Seed: a hand-written
+config with comments, one red (`#e03040`) button, mode 0640. Four configurator sessions
+(`--script`, `--size 1200x1600` so script taps land on screen, `--tree` at `mark:end`, `--snap`):
+reset+cancel (bytes, mode, inode unchanged, store empty, clean), reset+save (generation `1`,
+`factory-reset`, exact seeded bytes; mode 0640 kept; status names `<store>/1`), reopen (factory
+layout, clean, `recover-1` says `before factory reset`, location shown), tap `recover-1` (seeded
+bytes and 0640 back, generation `2` `recover` holds the factory file, `1` untouched, status
+`restored`). The daemon shares HOME and XDG_STATE_HOME: frame 1 has the red pixel; frame 2 equals
+pixel for pixel (±2) the frame a second, fresh daemon draws for the exact saved bytes, and differs
+from frame 1 in > 1000 pixels; frame 3 equals frame 1; stdin close → exit 0 with exactly three
+frames; the store holds exactly `1` and `2`. `TB_ROUND_TRIP_DIR=<dir>` keeps everything locally.
+
+Left for functional QA with real binaries: the windowed configurator on a real display (`cargo run
+-p tb-app`, mouse and keyboard), `touchbard` on the physical bar (HIL, TB-9/TB-45), and the
+physical return to the key row (human runbook; never run by an agent).
+
+## Runs, isolation and provenance
+
+`.scratch/TB-48/slice4/launch.sh <label> <inner>`: slice 3's launcher with slice 4 names (same
+shared lock and thermal guard `slice2/thermal-command.py`: start ≤ 65 °C, pause ≥ 74 °C, resume
+≤ 64 °C, no duty cycle; one CPU, nice 19, one job, one test thread; private HOME/XDG_*;
+`CARGO_TARGET_DIR=/tmp/tb48t` → this checkout's `target/`). `inner-red.sh` checks HEAD fd7bc50 and
+the seal, `cargo clean -p tb-app -p tb-config -p tb-daemon`, clippy `-D warnings` on the new
+target, the gate, then `slice4/target_provenance.py` (slice 3's, plus the round trip's own build:
+binaries under `/tmp/tb48t`, built in this run, tb-app and tb-daemon compiled from this checkout).
+
+Probe before sealing (fd7bc50, `slice4/probe-20261124T210548Z`): 14 cases failed on missing
+recovery keys/scene after their setup; the round trip passed start, reset-cancel and reset-save
+(frame 2 equal to the reference daemon's frame) and failed at `reopen: generation 1 is not listed
+as recover-1`. A Clippy `assert_is_empty` was fixed before the seal (no assertion weakened).
+
+## Red evidence (gate-written `slice-4.evidence.json`)
+
+**Seal `4402224f…` run 1 (valid):** HEAD fd7bc50, run `.scratch/TB-48/slice4/red-20261124T210659Z`,
+log `.scratch/TB-48/gate/2026-11-24T211123Z-slice-4`. QA-01..14 RED_BEHAVIOR, each after its setup
+(protected history written, editor opened, edits / reset / external change done): missing
+`backups-location` / `recover-<id>` keys or their text, no `recovery` scene, no restore
+explanation while dirty. Check `round-trip` FAILED at `reopen: generation 1 is not listed as
+recover-1` after `start`, `reset-cancel` and `reset-save` passed (frame 2 equal to a fresh daemon's
+frame of the saved file). never_red empty. Clippy `-D warnings` clean on the new target;
+provenance proven after `cargo clean -p tb-app -p tb-config -p tb-daemon` (test executable, and
+both round-trip binaries, built in this run from this checkout). Peak 71 °C, no thermal pause
+(the run waited ~4 min for the shared lock held by another ticket's job).
