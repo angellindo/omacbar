@@ -1,8 +1,10 @@
 """Structure of `docs/hardware-runbook.md`: every stage names its owner, authorized target, entry
 state, expected changes, stop criterion, return and evidence; physical stages are human-only; the
 three different "returns" are kept apart; the driver compile evidence is pinned with its limits;
-nothing the repo has not verified is stated as done. This checks the document's content markers,
-not any hardware fact, and not the exact wording of column labels."""
+nothing the repo has not verified is stated as done; the service manifest preserved in 2.0 is part
+of the removal's expected changes and evidence and is put back, metadata included, on the way
+B → A. This checks the document's content markers, not any hardware fact, and not the exact
+wording of column labels."""
 
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ FIELDS = {
     "return": r"return|back|rollback",
     "evidence": r"evidence|compar",
 }
+MANIFEST = r"(?i)\bmanifest\b|installed\.json"
 STAGES = ["S0", "S1", "S2", "S3", "S4", "B → A"]
 PINNED = {
     "Seborider T1 stack commit": "3a00d8dceb2cfeb75c3e6b9f501ead095c1d9924",
@@ -86,6 +89,32 @@ class HardwareRunbook(unittest.TestCase):
                 for row in table[1:]:
                     self.assertRegex(row[owner].lower(), r"\bhuman\b")
                     self.assertNotRegex(row[owner].lower(), r"\bagent\b")
+
+    def row(self, stage, step):
+        """The first row of `stage`'s table whose first cell starts with `step`, by field."""
+        table = first_table(self.stage(stage))
+        cols = self.columns(table[0])
+        rows = [r for r in table[1:] if r[0].startswith(step)] if step else table[1:]
+        self.assertTrue(rows, f"no row {step!r} in {stage}")
+        return {field: rows[0][i] for field, i in cols.items()}
+
+    def test_the_removal_stage_lists_the_manifest_change_in_its_changes_and_evidence(self):
+        removal = self.row("S2", "2.4")
+        for field in ("changes", "evidence"):
+            self.assertRegex(removal[field], MANIFEST, f"2.4 {field} names the service manifest")
+
+    def test_b_to_a_puts_back_the_preserved_service_manifest_with_its_metadata(self):
+        back = self.row("B → A", "")
+        for field in ("changes", "evidence"):
+            self.assertRegex(back[field], MANIFEST, f"B → A {field} names the service manifest")
+        body = self.stage("B → A")
+        lines = body.splitlines()
+        self.assertTrue(any(re.search(r"\binstalled\.json\b", l) and re.search(r"\b(cp|install|rsync)\b", l)
+                            for l in lines), "a command puts installed.json back from the preserved copy")
+        self.assertTrue(any(re.search(r"\binstalled\.json\b", l) and re.search(r"\b(cmp|sha256sum|diff)\b", l)
+                            for l in lines), "a command compares it with the copy preserved in 2.0")
+        self.assertTrue(any(re.search(r"\bstat\b", l) and re.search(r"\binstalled\.json\b", l) for l in lines),
+                        "its metadata (stat) is compared with the copy preserved in 2.0")
 
     def test_baselines_a_and_b_are_separate_and_re_recorded(self):
         lower = self.text.lower()

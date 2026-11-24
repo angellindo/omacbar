@@ -1,6 +1,7 @@
 """Restore never loses a version: external and locked editors make it a conflict with both
 versions kept, swapped-in symlinks and parents are never followed, failures and interrupts keep a
-recoverable original, and cleanup removes only the test's own unchanged artifacts."""
+recoverable original, and cleanup removes only the test's own unchanged artifacts. Settle always
+carries the expectation of the test's own save."""
 
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ class Settled(Fixture):
         self.original = state(self.config)
         self.capture()
         replace_bytes(self.config, SAVED)
-        self.settle()
+        self.settle(sha256(SAVED))
 
     def lock_dir(self):
         """Hold the configurator's lock: exclusive flock on the config directory."""
@@ -142,7 +143,7 @@ class Cleanup(Fixture):
     def test_cleanup_refuses_while_a_recorded_process_is_alive(self):
         proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
-        self.settle("--pid", proc.pid, *self.own)
+        self.settle(sha256(SAVED), "--pid", proc.pid, *self.own)
         self.restore()
         self.assertNotEqual(self.tool("cleanup", "--manifest", self.manifest).returncode, 0)
         self.assertTrue(self.own_bak.exists() and self.mark.exists(), "nothing removed while running")
@@ -155,7 +156,7 @@ class Cleanup(Fixture):
     def test_cleanup_removes_only_unchanged_own_artifacts(self):
         early = self.config.parent / "config.toml.bak.1"  # app-like name, but nobody declared it
         early.write_bytes(b"appeared before settle\n")
-        self.settle(*self.own)
+        self.settle(sha256(SAVED), *self.own)
         self.mark.write_bytes(b"xx")  # changed after the test left it
         late = self.home / "late.txt"
         late.write_bytes(b"unknown to the test\n")
@@ -170,14 +171,15 @@ class Cleanup(Fixture):
         self.assertEqual(self.config.read_bytes(), ORIGINAL)
 
     def test_an_artifact_that_does_not_match_its_expected_hash_is_never_owned(self):
-        self.tool("settle", "--manifest", self.manifest, "--artifact", self.mark, sha256(b"y"))
+        self.tool("settle", "--manifest", self.manifest, "--expect-config", sha256(SAVED),
+                  "--artifact", self.mark, sha256(b"y"))
         self.tool("restore", "--manifest", self.manifest)
         self.tool("cleanup", "--manifest", self.manifest)
         self.assertTrue(self.own_bak.exists(), "an undeclared artifact is not removed either")
         self.assertEqual(self.mark.read_bytes(), b"x", "a mismatch keeps the file")
 
     def test_a_symlink_swapped_in_for_an_own_artifact_is_kept_with_its_target(self):
-        self.settle(*self.own)
+        self.settle(sha256(SAVED), *self.own)
         elsewhere = self.tmp / "elsewhere"
         elsewhere.mkdir()
         (elsewhere / "mark").write_bytes(b"x")  # same bytes behind the link
@@ -190,7 +192,7 @@ class Cleanup(Fixture):
         self.assertEqual((elsewhere / "mark").read_bytes(), b"x")
 
     def test_cleanup_after_a_conflict_keeps_the_store(self):
-        self.settle(*self.own)
+        self.settle(sha256(SAVED), *self.own)
         replace_bytes(self.config, EXTERNAL)
         self.restore(code=3)
         self.tool("cleanup", "--manifest", self.manifest)
