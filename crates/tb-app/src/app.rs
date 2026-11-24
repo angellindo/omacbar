@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use rune::tok::TextStyle;
 use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, Tx, el, text};
-use tb_config::{ActiveTheme, ConfigFile, ConfigFileError, default_path};
+use tb_config::{ActiveTheme, Backups, ConfigFile, ConfigFileError, default_path};
 use tb_core::config::Config;
 use tb_core::edit::{add_button, add_button_to_group, add_group, remove_button};
 use tb_core::reorder::{Toward, step_button};
@@ -42,6 +42,17 @@ impl State {
     /// are created by `ConfigFile`; rejected files remain untouched until a save. A selected theme
     /// file that is missing or malformed blocks saving, so the user's layout is never replaced.
     pub fn open(path: Option<PathBuf>, theme: BarTheme) -> Self {
+        Self::open_file(path.map(ConfigFile::new), theme)
+    }
+
+    /// `open`, but every write of the file (the default created on open included) first keeps a
+    /// verified generation in `backups` (ADR-0015). Without a store there is no file to write.
+    pub fn open_protected(path: Option<PathBuf>, backups: Option<Backups>, theme: BarTheme) -> Self {
+        let file = path.zip(backups).map(|(path, backups)| ConfigFile::protected(path, backups));
+        Self::open_file(file, theme)
+    }
+
+    fn open_file(file: Option<ConfigFile>, theme: BarTheme) -> Self {
         let mut s = Self {
             config: Config::default_for(&theme),
             active: theme.clone(),
@@ -55,11 +66,10 @@ impl State {
             saving: Saving::default(),
             status: String::new(),
         };
-        let Some(path) = path else {
+        let Some(mut file) = file else {
             NO_HOME.clone_into(&mut s.status);
             return s;
         };
-        let mut file = ConfigFile::new(path);
         let shown = file.path().display().to_string();
         s.status = match file.load_resolved(&s.theme) {
             Ok(resolved) => {
@@ -202,15 +212,18 @@ pub fn on_key(s: &mut State, ev: &KeyEvent, tx: &mut Tx) -> bool {
     s.step_selected(toward)
 }
 
-/// Startup: `$HOME` is read once, here. The config file is `default_path(home)`, drawn in the
+/// Startup: `$HOME` and `$XDG_STATE_HOME` are read once, here. The config file is
+/// `default_path(home)`, protected by the generation store `Backups::locate` names, drawn in the
 /// active Omarchy theme of that home (`ActiveTheme::load`); without `HOME`, the bundled Tokyo
 /// Night and no file.
 fn init() -> State {
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    let state_home = std::env::var_os("XDG_STATE_HOME");
     let theme = home
         .as_deref()
         .map_or_else(BarTheme::omarchy_fallback, |home| ActiveTheme::under_home(home).load().theme);
-    State::open(home.as_deref().map(default_path), theme)
+    let backups = Backups::locate(home.as_deref(), state_home.as_deref()).map(Backups::at);
+    State::open_protected(home.as_deref().map(default_path), backups, theme)
 }
 
 pub fn spec() -> AppSpec<State> {

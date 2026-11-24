@@ -87,6 +87,8 @@ impl Bar {
             .arg("--emit")
             .arg(&keys)
             .env("HOME", home)
+            // The generation store follows HOME, inside the temp home, never the caller's state.
+            .env_remove("XDG_STATE_HOME")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(File::create(&log).unwrap())

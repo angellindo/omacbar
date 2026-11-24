@@ -1,6 +1,8 @@
 //! Loading and saving the config file. The current config is always the last valid one. Every
 //! write is compare-and-swap (ADR-0013): it replaces only the version this `ConfigFile` last read
-//! or wrote, so a stale editor never replaces a newer file.
+//! or wrote, so a stale editor never replaces a newer file. A protected config file (ADR-0015)
+//! also keeps a verified generation of what each write replaces, and refuses paths it could not
+//! keep and restore exactly.
 
 mod disk;
 
@@ -13,8 +15,13 @@ use tb_core::{BarSize, BarTheme, SpacingRules};
 use thiserror::Error;
 
 use crate::ThemeFileError;
+use crate::backup::{BackupError, Backups, GenerationId, Kept, Reason};
+use crate::durable::{create_dir_all_durably, parent_of};
 pub use disk::DiskVersion;
-use disk::{DirLock, version_at, write_atomically, write_backup};
+use disk::{DirLock, Found, Refused, version_at, version_followed, write_atomically, write_backup};
+
+/// Permission bits of a config file a protected write creates: it is personal.
+const NEW_FILE_MODE: u32 = 0o600;
 
 /// `<home>/.config/touchbar-customizer/config.toml`.
 pub fn default_path(home: &Path) -> PathBuf {
@@ -48,10 +55,40 @@ pub enum ConfigFileError {
     /// it was removed, or it was never read): nothing was written. Holds the version now on disk.
     #[error("the config file changed on disk since it was read; nothing was written")]
     Changed(DiskVersion),
-    /// An acknowledged overwrite at a symlink is refused: replacing the link would lose it, and
-    /// writing through it would change a file outside the config directory.
-    #[error("config file `{}` is a symbolic link; overwriting it is refused, nothing was written", path.display())]
+    /// A write at a symlink is refused (every protected write, and an acknowledged overwrite):
+    /// replacing the link would lose it, and writing through it would change a file outside the
+    /// config directory. Reads still follow it.
+    #[error("config file `{}` is a symbolic link; writing it is refused, nothing was written", path.display())]
     Symlink { path: PathBuf },
+    /// A protected config file is something it cannot keep and restore exactly: a directory,
+    /// FIFO, socket, device, or a file with more than one name. Nothing was read or written.
+    #[error(
+        "config file `{}` is a {kind}; only a regular file with one name can be kept and replaced, nothing was written",
+        path.display()
+    )]
+    Unsupported { path: PathBuf, kind: String },
+    /// The generation of what a protected write would replace could not be kept and verified;
+    /// nothing was written.
+    #[error("the config was not saved: {0}")]
+    Backup(#[from] BackupError),
+}
+
+/// Which write replaces the file, and the reason its generation records.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WriteKind {
+    Default,
+    Save,
+    Overwrite,
+}
+
+impl WriteKind {
+    fn reason(self) -> Reason {
+        match self {
+            Self::Default => Reason::FirstWrite,
+            Self::Save => Reason::Save,
+            Self::Overwrite => Reason::Overwrite,
+        }
+    }
 }
 
 /// The config file at one path, the last valid config read from or saved to it, and the version
@@ -62,6 +99,8 @@ pub struct ConfigFile {
     config: Config,
     seen: DiskVersion,
     backup: Option<PathBuf>,
+    protection: Option<Backups>,
+    last_generation: Option<GenerationId>,
 }
 
 impl ConfigFile {
@@ -69,7 +108,34 @@ impl ConfigFile {
     /// current config is `Config::default()`, and a save may only create the file, never replace
     /// one this config file has not read.
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into(), config: Config::default(), seen: DiskVersion::ABSENT, backup: None }
+        Self {
+            path: path.into(),
+            config: Config::default(),
+            seen: DiskVersion::ABSENT,
+            backup: None,
+            protection: None,
+            last_generation: None,
+        }
+    }
+
+    /// Like `new`, but every write first keeps a verified generation of what it replaces in
+    /// `backups`, and paths that cannot be kept exactly are refused before anything changes:
+    /// a symlink (written through or replaced), a hard-linked file, anything but a regular file
+    /// (also on reads, which never block on a FIFO), and a store that cannot be trusted.
+    pub fn protected(path: impl Into<PathBuf>, backups: Backups) -> Self {
+        Self { protection: Some(backups), ..Self::new(path) }
+    }
+
+    /// The same file with the same protection, as freshly opened: nothing read or seen.
+    #[must_use]
+    pub fn reopened(&self) -> Self {
+        Self { protection: self.protection.clone(), ..Self::new(self.path.clone()) }
+    }
+
+    /// The generation that holds what the last protected write replaced (a reused one when the
+    /// write replaced the same thing again); `None` before any protected write.
+    pub fn last_generation(&self) -> Option<&GenerationId> {
+        self.last_generation.as_ref()
     }
 
     pub fn path(&self) -> &Path {
@@ -99,7 +165,7 @@ impl ConfigFile {
     /// Like `load_resolved`, but a missing file is a read failure, never a request to replace
     /// the accepted config with the default during a save.
     pub fn reload_resolved(&mut self, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
-        let seen = version_at(&self.path).map_err(|e| self.io(e))?;
+        let seen = self.version_now()?;
         self.seen = seen.clone();
         let Some(bytes) = seen.0 else {
             return Err(self.io(io::Error::new(io::ErrorKind::NotFound, "the config file was removed")));
@@ -141,7 +207,7 @@ impl ConfigFile {
     /// shown). A missing file is created as the default for `theme`, which is then current
     /// (`None`); if another writer created the file first, its text is returned instead.
     fn read_or_default(&mut self, theme: &BarTheme) -> Result<Option<String>, ConfigFileError> {
-        let found = version_at(&self.path).map_err(|e| self.io(e))?.0;
+        let found = self.version_now()?.0;
         let bytes = match found {
             Some(bytes) => bytes,
             None => match self.write_default(theme)? {
@@ -158,7 +224,7 @@ impl ConfigFile {
     /// the bytes of the file another writer created first.
     fn write_default(&mut self, theme: &BarTheme) -> Result<Option<Vec<u8>>, ConfigFileError> {
         let default = Config::default_for(theme);
-        match self.swap(&DiskVersion::ABSENT, &to_toml(&default)?, false) {
+        match self.swap(&DiskVersion::ABSENT, &to_toml(&default)?, WriteKind::Default) {
             Ok(()) => {
                 self.config = default;
                 Ok(None)
@@ -178,7 +244,7 @@ impl ConfigFile {
     pub fn save(&mut self, config: Config, theme: &BarTheme) -> Result<(), ConfigFileError> {
         check(&config, theme)?;
         let seen = self.seen.clone();
-        self.swap(&seen, &to_toml(&config)?, false)?;
+        self.swap(&seen, &to_toml(&config)?, WriteKind::Save)?;
         self.config = config;
         Ok(())
     }
@@ -190,7 +256,7 @@ impl ConfigFile {
         let theme = resolve_theme(&config.theme, active)?;
         check(&config, &theme)?;
         let seen = self.seen.clone();
-        self.swap(&seen, &to_toml(&config)?, false)?;
+        self.swap(&seen, &to_toml(&config)?, WriteKind::Save)?;
         self.config = config;
         Ok(theme)
     }
@@ -218,42 +284,59 @@ impl ConfigFile {
     ) -> Result<BarTheme, ConfigFileError> {
         let theme = resolve_theme(&config.theme, active)?;
         check(&config, &theme)?;
-        self.swap(acknowledged, &to_toml(&config)?, true)?;
+        self.swap(acknowledged, &to_toml(&config)?, WriteKind::Overwrite)?;
         self.config = config;
         Ok(theme)
     }
 
-    /// Writes `text` only if the file is `expected`; records it as seen. With `backup`, the
-    /// replaced bytes are kept first (a backup that exists while the rename did not happen still
-    /// holds the version on disk, so an interruption loses nothing).
-    fn swap(&mut self, expected: &DiskVersion, text: &str, backup: bool) -> Result<(), ConfigFileError> {
+    /// Writes `text` only if the file is `expected`; records it as seen. An overwrite first keeps
+    /// the replaced bytes in a `.bak` (a backup that exists while the rename did not happen still
+    /// holds the version on disk, so an interruption loses nothing). A protected file first keeps
+    /// a verified generation; any refusal comes before the file or its directory changes.
+    fn swap(&mut self, expected: &DiskVersion, text: &str, kind: WriteKind) -> Result<(), ConfigFileError> {
         let io_at = |at: &Path, source| ConfigFileError::Io { path: at.to_path_buf(), source };
         // Unlocked first look: a stale save must not even create a removed directory.
-        let current = version_at(&self.path).map_err(|e| self.io(e))?;
+        let current = self.version_now()?;
         if current != *expected {
             return Err(ConfigFileError::Changed(current));
+        }
+        if let Some(backups) = &self.protection {
+            backups.check_location(&self.path)?;
         }
         let dir = dir_of(&self.path);
-        fs::create_dir_all(dir).map_err(|e| io_at(dir, e))?;
+        let dir_existed = dir.is_dir();
+        create_dir_all_durably(dir, 0o777).map_err(|e| io_at(dir, e))?;
         let lock = DirLock::take(dir).map_err(|e| io_at(dir, e))?;
-        let current = version_at(&self.path).map_err(|e| self.io(e))?;
+        let current = self.version_now()?;
         if current != *expected {
             return Err(ConfigFileError::Changed(current));
         }
-        if backup && fs::symlink_metadata(&self.path).is_ok_and(|m| m.file_type().is_symlink()) {
-            return Err(ConfigFileError::Symlink { path: self.path.clone() });
-        }
-        let kept = match (&current.0, backup) {
-            (Some(bytes), true) => Some(write_backup(&self.path, bytes).map_err(|e| io_at(dir, e))?),
+        let (mode, generation) = match &self.protection {
+            Some(backups) => {
+                let (mode, id) = self.keep_generation(backups, expected, dir_existed, kind)?;
+                (Some(mode), Some(id))
+            }
+            None if kind == WriteKind::Overwrite
+                && fs::symlink_metadata(&self.path).is_ok_and(|m| m.file_type().is_symlink()) =>
+            {
+                return Err(ConfigFileError::Symlink { path: self.path.clone() });
+            }
+            None => (None, None),
+        };
+        let kept = match (&current.0, kind) {
+            (Some(bytes), WriteKind::Overwrite) => {
+                Some(write_backup(&self.path, bytes).map_err(|e| io_at(dir, e))?)
+            }
             _ => None,
         };
         // Last check right before the rename: narrows the window for editors that take no lock.
-        let recheck = || match version_at(&self.path) {
+        let protected = self.protection.is_some();
+        let recheck = || match version(&self.path, protected) {
             Ok(now) if now == *expected => Ok(()),
             Ok(now) => Err(ConfigFileError::Changed(now)),
-            Err(e) => Err(io_at(&self.path, e)),
+            Err(e) => Err(e),
         };
-        let written = write_atomically(&self.path, text, io_at, recheck);
+        let written = write_atomically(&self.path, text, mode, io_at, recheck);
         if written.is_err()
             && let Some(kept) = &kept
         {
@@ -264,10 +347,42 @@ impl ConfigFile {
         // Best effort: the rename is done; durability of the directory entry is a bonus.
         let _ = lock.sync();
         self.seen = DiskVersion(Some(text.as_bytes().to_vec()));
-        if backup {
+        if kind == WriteKind::Overwrite {
             self.backup = kept;
         }
+        if generation.is_some() {
+            self.last_generation = generation;
+        }
         Ok(())
+    }
+
+    /// Under the directory lock: looks at the path without following a symlink, and keeps a
+    /// verified generation of what is there (exact bytes and bits, or the absence). Returns the
+    /// bits the new file gets (the replaced file's, or private for a new one) and the generation.
+    fn keep_generation(
+        &self,
+        backups: &Backups,
+        expected: &DiskVersion,
+        dir_existed: bool,
+        kind: WriteKind,
+    ) -> Result<(u32, GenerationId), ConfigFileError> {
+        let found = disk::probe(&self.path).map_err(|r| refused(&self.path, r))?;
+        let (kept, now, mode) = match &found {
+            Found::Absent => (Kept::Absent { dir_existed }, DiskVersion::ABSENT, NEW_FILE_MODE),
+            Found::File { bytes, mode } => {
+                (Kept::File { bytes, mode: *mode }, DiskVersion(Some(bytes.clone())), *mode)
+            }
+        };
+        if now != *expected {
+            return Err(ConfigFileError::Changed(now));
+        }
+        let id = backups.keep(&self.path, &kept, kind.reason())?;
+        Ok((mode, id))
+    }
+
+    /// The version on disk now, read as this file reads (protected: regular files only).
+    fn version_now(&self) -> Result<DiskVersion, ConfigFileError> {
+        version(&self.path, self.protection.is_some())
     }
 
     fn io(&self, source: io::Error) -> ConfigFileError {
@@ -288,11 +403,25 @@ fn resolve_theme(source: &ThemeSource, active: &BarTheme) -> Result<BarTheme, Th
     BarTheme::from_omarchy_colors(&text).map_err(|source| ThemeFileError::Invalid { path, source })
 }
 
+fn version(path: &Path, protected: bool) -> Result<DiskVersion, ConfigFileError> {
+    if protected {
+        version_followed(path).map_err(|r| refused(path, r))
+    } else {
+        version_at(path).map_err(|source| ConfigFileError::Io { path: path.to_path_buf(), source })
+    }
+}
+
+fn refused(path: &Path, why: Refused) -> ConfigFileError {
+    let path = path.to_path_buf();
+    match why {
+        Refused::Symlink => ConfigFileError::Symlink { path },
+        Refused::Unsupported(kind) => ConfigFileError::Unsupported { path, kind },
+        Refused::Io(source) => ConfigFileError::Io { path, source },
+    }
+}
+
 /// The directory that holds `path`; a bare file name (`config.toml`) is in the current directory,
 /// named `.` because inotify and other syscalls reject an empty path.
 pub(crate) fn dir_of(path: &Path) -> &Path {
-    match path.parent() {
-        Some(dir) if !dir.as_os_str().is_empty() => dir,
-        _ => Path::new("."),
-    }
+    parent_of(path)
 }

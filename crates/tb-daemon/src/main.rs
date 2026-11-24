@@ -32,7 +32,7 @@ use std::sync::mpsc::{self, Sender};
 use std::thread;
 
 use std::sync::Arc;
-use tb_config::ActiveTheme;
+use tb_config::{ActiveTheme, Backups};
 use tb_core::{BarSize, BarTheme};
 
 use config::ConfigState;
@@ -130,17 +130,20 @@ impl From<Event> for Message {
     }
 }
 
-/// Startup config and theme under HOME, followed while running; both modes share the coordinator.
+/// Startup config and theme under `HOME` (generations in the store `Backups::locate` names from
+/// `HOME` and `XDG_STATE_HOME`), followed while running; both modes share the coordinator.
 fn run(args: Args) -> Result<(), String> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    let state_home = std::env::var_os("XDG_STATE_HOME");
+    let backups = Backups::locate(home.as_deref(), state_home.as_deref()).map(Backups::at);
     if args.window {
-        return run_with_window(args, home.as_deref());
+        return run_with_window(args, home.as_deref(), backups);
     }
     let renderer = GpuRenderer::new().map_err(|e| e.to_string())?;
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
     let theme = follow_keys_and_theme(args.keys, home.as_deref(), &tx);
-    let config = ConfigState::start(home.as_deref(), theme, &tx);
+    let config = ConfigState::start(home.as_deref(), backups, theme, &tx);
     let actions = actions(args.emit);
     let touches =
         thread::spawn(move || forward_until_ended(&mut LineTouches::new(std::io::stdin().lock()), &tx));
@@ -150,14 +153,14 @@ fn run(args: Args) -> Result<(), String> {
 
 /// `run` with the simulator window as the touch source. winit needs the main thread for the
 /// window and `GpuRenderer` is not `Send`, so the daemon is built and run on another thread.
-fn run_with_window(args: Args, home: Option<&Path>) -> Result<(), String> {
+fn run_with_window(args: Args, home: Option<&Path>, backups: Option<Backups>) -> Result<(), String> {
     let (window, mut touches) = SimWindow::new();
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir)
         .map_err(|e| e.to_string())?
         .on_present(window.show_screen());
     let (tx, rx) = mpsc::channel();
     let theme = follow_keys_and_theme(args.keys, home, &tx);
-    let config = ConfigState::start(home, theme, &tx);
+    let config = ConfigState::start(home, backups, theme, &tx);
     let actions = actions(args.emit);
     let app = sim_window_app(window);
     let handle = app.handle();

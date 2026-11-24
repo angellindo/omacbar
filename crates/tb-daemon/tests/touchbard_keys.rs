@@ -72,6 +72,8 @@ impl Touchbard {
         let child = Command::new(env!("CARGO_BIN_EXE_touchbard"))
             .args(args)
             .env("HOME", &home)
+            // The generation store follows HOME, inside the temp home, never the caller's state.
+            .env_remove("XDG_STATE_HOME")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(File::create(&stderr).unwrap())
@@ -325,6 +327,8 @@ fn a_keys_flag_without_a_path_or_given_twice_is_usage_naming_keys_and_exit_two()
         let out = Command::new(env!("CARGO_BIN_EXE_touchbard"))
             .args(&args)
             .env("HOME", &home)
+            // The generation store follows HOME, inside the temp home, never the caller's state.
+            .env_remove("XDG_STATE_HOME")
             .stdin(Stdio::null())
             .output()
             .unwrap();

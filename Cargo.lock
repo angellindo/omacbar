@@ -2361,9 +2361,12 @@ dependencies = [
 name = "tb-config"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "rustix 1.1.6",
+ "serde",
  "tb-core",
  "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]

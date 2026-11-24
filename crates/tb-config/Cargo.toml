@@ -10,7 +10,11 @@ publish.workspace = true
 [dependencies]
 tb-core.workspace = true
 thiserror.workspace = true
-rustix.workspace = true
+# `process` for the effective uid that must own the generation store (already locked).
+rustix = { workspace = true, features = ["process"] }
+serde.workspace = true
+toml.workspace = true
+blake3.workspace = true
 
 [lints]
 workspace = true

@@ -152,6 +152,13 @@ the configurator read it. Nothing is written; the user reloads the file or overw
 keeps the replaced file as a backup (ADR-0013).
 _Avoid_: merge, collision, race (for the user-facing refusal)
 
+**Generation**:
+A private, verified copy of what one write of the config replaced: the exact bytes and permission
+bits of the file, or the fact that no file (and whether no directory) was there. Kept before every
+write by the configurator or the daemon, in `$XDG_STATE_HOME/touchbar-customizer/backups/`
+(else `~/.local/state/...`), never deleted automatically (ADR-0015).
+_Avoid_: backup (the `.bak` next to the config from an overwrite), snapshot (a rendered image), version
+
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
 _Avoid_: error (for config problems), warning

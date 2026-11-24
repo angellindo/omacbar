@@ -42,6 +42,8 @@ fn snap(theme: &str) -> (PathBuf, String) {
         .arg("--tree")
         .arg(&tree)
         .env("HOME", &home)
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .output()
         .unwrap();
     assert!(run.status.success(), "exit {:?}, stderr: {}", run.status, String::from_utf8_lossy(&run.stderr));

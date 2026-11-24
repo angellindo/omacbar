@@ -58,9 +58,12 @@ for binary in "$configurator" "$daemon"; do
 done
 
 test_home="$session/home"
-mkdir -p -- "$test_home" "$session/frames" "$session/logs"
-printf '\nConfig de prueba: %s\nLogs: %s\nImágenes: %s\nTeclas registradas: %s\n\n' \
-  "$test_home/.config/touchbar-customizer/config.toml" "$session/logs" \
+# Both windows keep their config generations in the session, never in the caller's state.
+test_state="$session/state"
+mkdir -p -- "$test_home" "$test_state" "$session/frames" "$session/logs"
+printf '\nConfig de prueba: %s\nCopias del config: %s\nLogs: %s\nImágenes: %s\nTeclas registradas: %s\n\n' \
+  "$test_home/.config/touchbar-customizer/config.toml" \
+  "$test_state/touchbar-customizer/backups" "$session/logs" \
   "$session/frames" "$session/keys.bin"
 printf '%s\n' \
   'Edita o reordena botones y pulsa Save para actualizar el simulador.' \
@@ -74,9 +77,9 @@ printf '%s\n' \
   'Tras actualizar el lanzador, cierra esta sesión y vuelve a ejecutarlo.' \
   'Cierra cualquiera de las ventanas o pulsa Ctrl+C para terminar ambas.'
 
-HOME="$test_home" "$configurator" >"$session/logs/configurator.log" 2>&1 &
+HOME="$test_home" XDG_STATE_HOME="$test_state" "$configurator" >"$session/logs/configurator.log" 2>&1 &
 pids+=("$!")
-HOME="$test_home" "$daemon" --sim-window --sim "$session/frames" \
+HOME="$test_home" XDG_STATE_HOME="$test_state" "$daemon" --sim-window --sim "$session/frames" \
   --keys auto --emit "$session/keys.bin" >"$session/logs/simulator.log" 2>&1 &
 pids+=("$!")
 

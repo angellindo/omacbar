@@ -43,6 +43,8 @@ fn probe(home: &Path) -> String {
         .args(["--check", "config", "--home"])
         .arg(home)
         .env("HOME", home)
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
         .output()

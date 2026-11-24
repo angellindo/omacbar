@@ -7,7 +7,7 @@ use std::io;
 
 use crate::app::{NO_HOME, State};
 use crate::drafts::Fields;
-use tb_config::{ConfigFile, ConfigFileError, DiskVersion};
+use tb_config::{ConfigFileError, DiskVersion};
 use tb_core::config::Config;
 use tb_core::{ButtonId, Chord};
 
@@ -203,7 +203,7 @@ impl State {
     fn adopt(&mut self) -> Result<String, String> {
         let Some(file) = &self.file else { return Err(NO_HOME.to_owned()) };
         let name = self.file_name();
-        let mut fresh = ConfigFile::new(file.path());
+        let mut fresh = file.reopened();
         let theme = match fresh.reload_resolved(&self.active) {
             Ok(theme) => theme,
             Err(ConfigFileError::Io { source, .. }) if source.kind() == io::ErrorKind::NotFound => {
