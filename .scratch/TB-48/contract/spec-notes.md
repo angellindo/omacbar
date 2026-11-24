@@ -211,3 +211,99 @@ spawns' isolation. Re-run slice 1's gate after slice 2's implementation.
   `recover`, `Recover`), `recover-graph` FAILED (no bin), never_red empty
   (log `.scratch/TB-48/gate/2026-11-24T195942Z-slice-2`). Lesson: never point a scratch copy of
   the workspace at the shared target.
+
+# TB-48 slice 3: spec notes (QA)
+
+Base: `t3/tb48-slice1-qa-contract` @ 5889053 (slices 1 and 2 final PASS). Seals 1 and 2, their
+manifests, history and frozen files are unchanged. Slice 3 freezes two new suites and, read-only,
+the shared helpers they use (`tb-config/tests/support/{generations,recovery}.rs`, already sealed by
+slices 1-2; `tb-app/tests/support/{configurator,ui}.rs`, unchanged): the implementer has no need
+to edit them for this slice.
+
+## UI evidence: `crates/tb-app/tests/configurator_factory_reset.rs` (QA-01..08)
+
+Real configurator, headless `rune::Runtime`, opened as startup opens it
+(`State::open_protected(path, Backups::at(store), theme)`) on a hand-written config (comments,
+mode 0640) in a temp profile under `CARGO_TARGET_TMPDIR`, own store. Keys pinned (plan Seams):
+`reset-factory`, `reset-cancel`, `reset-notice`, existing `save`, Ctrl+S, `status`,
+`dirty-summary`, `save-blocked-reason`, `field-*`, `row-*`, `tab-*`, `preview-<id>`,
+`conflict-reload/overwrite`; scene `reset` in `tb_app::spec().scenes`.
+
+- Draft only: `config.layout == Config::default_for(&state.theme).layout`, `config.theme` kept,
+  preview draws the factory buttons, unsaved changes shown, `reset-cancel` offered; whole profile
+  tree (bytes, mode, inode, temps, store) unchanged; no generation.
+- `reset-notice`: says the source is kept (`kept|keep|keeps|retained|unchanged`) and names
+  `omarchy`, or the full path of the selected theme file.
+- Cancel: `config` equal to the pre-reset one (pending label edits included), shown layer `Fn`,
+  selection `other`, `field-label`, `dirty-summary` and `save-blocked-reason` (an invalid width
+  draft of another button) identical; that button's width text and another's label come back;
+  `reset-cancel` gone; disk unchanged.
+- Save and Ctrl+S: file parses to the factory layout with the same theme source and version, mode
+  0640 kept; exactly one new generation, newest, manifest `reason = "factory-reset"` (read from
+  disk, no Rust symbol pinned), kind file, verified, mode 0640, data = exact seeded bytes,
+  `Backups::verify` ok; `status` contains `<store>/<id>` (as given or canonical), not "not saved";
+  editor clean, no cancel left.
+- Conflict (file replaced externally after the reset): Save and Ctrl+S → status "not saved …
+  changed on disk", profile tree unchanged, no generation and nothing left in the store (an empty
+  store directory created to take its lock is allowed), draft kept, both resolutions and
+  `reset-cancel` offered; cancel then gives the original config, disk still the newer file.
+
+Not pinned (free): where the controls sit, what layer/selection shows while a reset is pending,
+whether a reset is offered while saving is blocked, the reason of an overwrite after a reset
+conflict, the notice after cancel.
+
+## CLI evidence: `crates/tb-config/tests/recover_terminal_validation.rs` (QA-09..13)
+
+Regression of plan §4 ("after a restore it reports whether the restored file validates and that
+the daemon keeps its last valid config otherwise"). Real `touchbar-recover` (slice 2 helpers:
+`HOME=<dir>/home`, `XDG_STATE_HOME=<dir>/state`, no display, bogus Vulkan ICD). Generations are
+seeded through the protected library (seed bytes, `load`, `save` over them). Every restore must
+exit 0 with exact bytes and mode, add exactly one generation (the `recover` one, holding what it
+replaced) and leave only `config.toml` in the config dir: the check never writes. Expected
+diagnostics are what the library reports for the restored file without writing
+(`ConfigFile::new(..).reload_resolved(ActiveTheme::under_home(home))`).
+
+- Valid, Omarchy source: a stdout/stderr line with the whole word `valid` and `omarchy`.
+- Valid, theme file: a line with the word `valid` and the theme file path; theme file untouched.
+- Not TOML: restore still exit 0; output contains the first line of the library's issue
+  (`the config is not valid: config is not valid TOML: TOML parse error at line …`) and names the
+  daemon (`touchbard` or `daemon`).
+- Missing selected theme file: restore still exit 0; output contains the library's theme error
+  (`theme file `<path>`: No such file or directory (os error 2)`), the path, the daemon; the theme
+  file and its directory are never created.
+- Absence + `--remove-file` (preserve; green on 5889053): exit 0, file gone, directory kept and
+  empty, only the `recover` generation added; a later `list` creates nothing.
+- No output may claim a daemon is running (`is running`, `has reloaded`, `reloaded the`,
+  `now draws`, `is drawing`). No hardware, no daemon started.
+
+Check `recover-graph` (slice 2's script) is re-run: the validation must not pull Rune/GPU into
+`touchbar-recover`.
+
+## Runs, isolation and provenance
+
+`.scratch/TB-48/slice3/launch.sh <label> <inner>`: slice 2's launcher with slice 3 names; same
+shared lock and thermal guard (`slice2/thermal-command.py`: start ≤ 65 °C, pause ≥ 74 °C,
+resume ≤ 64 °C, no periodic duty cycle), one CPU, nice 19, one job, one test thread; private
+HOME and XDG_* per run; `CARGO_TARGET_DIR=/tmp/tb48t` → this checkout's `target/`.
+`inner-red.sh` checks HEAD 5889053, the seal and the target link, runs `cargo clean -p tb-app
+-p tb-config`, clippy `-D warnings` on both new targets, the gate, then
+`target_provenance.py`: every executable the gate ran lies under `/tmp/tb48t`, was built during
+this run, and tb-app / tb-config were compiled from this checkout (`Compiling` lines). The
+clean is what makes this a proof: dep-info lists workspace sources by relative path, so a copy of
+the workspace sharing the target (slice 2's contamination) cannot be told apart by dep-info alone.
+
+## Red evidence (gate-written `slice-3.evidence.json`)
+
+- Seal `b14a13a0…` run 1: tb-app suite COMPILE_ERROR (`tb_core::config::Layout` is private;
+  now `tb_core::model::Layout`); CLI cases red as below. Not valid red for the UI part.
+- Seal `0644cc14…` run 1: all 12 required red, but clippy rejected `map_unwrap_or` in the tb-app
+  suite (fixed with `map_or_else`, no assertion changed).
+- **Seal `70e1d531…` run 1 (valid):** HEAD 5889053, run `.scratch/TB-48/slice3/red-20261124T203113Z`,
+  log `.scratch/TB-48/gate/2026-11-24T203119Z-slice-3`. QA-01..07 RED_BEHAVIOR at
+  "missing public Runtime key reset-factory" after their setup (open accepted, edits, preview);
+  QA-08 RED_BEHAVIOR "the configurator has a `reset` scene"; QA-09..12 RED_BEHAVIOR on the
+  diagnostic only (exit 0, exact bytes and mode, one `recover` generation already hold on
+  5889053; the output is the generic "touchbard reloads a valid config; an invalid one keeps the
+  last valid design"); QA-13 GREEN (preserve); `recover-graph` GREEN; never_red empty. Clippy
+  `-D warnings` clean on both targets; provenance proven (both executables built in this run from
+  this checkout after `cargo clean -p`). Peak 80 °C, 16 thermal pauses (temperature only).

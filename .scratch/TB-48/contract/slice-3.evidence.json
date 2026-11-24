@@ -1,0 +1,73 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-24T20:29:14Z",
+      "seal": "sha256:b14a13a09a61818cf469724f4a11bc70128938a226dd16e1b097feec813a1ab6",
+      "head": "5889053d45641939e656e40c5b5d1cdf62125d49",
+      "final": false,
+      "results": {
+        "QA-01": "COMPILE_ERROR",
+        "QA-02": "COMPILE_ERROR",
+        "QA-03": "COMPILE_ERROR",
+        "QA-04": "COMPILE_ERROR",
+        "QA-05": "COMPILE_ERROR",
+        "QA-06": "COMPILE_ERROR",
+        "QA-07": "COMPILE_ERROR",
+        "QA-08": "COMPILE_ERROR",
+        "QA-09": "RED_BEHAVIOR",
+        "QA-10": "RED_BEHAVIOR",
+        "QA-11": "RED_BEHAVIOR",
+        "QA-12": "RED_BEHAVIOR",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-24T202911Z-slice-3"
+    },
+    {
+      "at": "2026-11-24T20:30:59Z",
+      "seal": "sha256:0644cc14a5c13586b4a1e3f54c279d97b65f4ecafab44f1a37053a92a41ce8c0",
+      "head": "5889053d45641939e656e40c5b5d1cdf62125d49",
+      "final": false,
+      "results": {
+        "QA-01": "RED_BEHAVIOR",
+        "QA-02": "RED_BEHAVIOR",
+        "QA-03": "RED_BEHAVIOR",
+        "QA-04": "RED_BEHAVIOR",
+        "QA-05": "RED_BEHAVIOR",
+        "QA-06": "RED_BEHAVIOR",
+        "QA-07": "RED_BEHAVIOR",
+        "QA-08": "RED_BEHAVIOR",
+        "QA-09": "RED_BEHAVIOR",
+        "QA-10": "RED_BEHAVIOR",
+        "QA-11": "RED_BEHAVIOR",
+        "QA-12": "RED_BEHAVIOR",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-24T203006Z-slice-3"
+    },
+    {
+      "at": "2026-11-24T20:32:24Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "5889053d45641939e656e40c5b5d1cdf62125d49",
+      "final": false,
+      "results": {
+        "QA-01": "RED_BEHAVIOR",
+        "QA-02": "RED_BEHAVIOR",
+        "QA-03": "RED_BEHAVIOR",
+        "QA-04": "RED_BEHAVIOR",
+        "QA-05": "RED_BEHAVIOR",
+        "QA-06": "RED_BEHAVIOR",
+        "QA-07": "RED_BEHAVIOR",
+        "QA-08": "RED_BEHAVIOR",
+        "QA-09": "RED_BEHAVIOR",
+        "QA-10": "RED_BEHAVIOR",
+        "QA-11": "RED_BEHAVIOR",
+        "QA-12": "RED_BEHAVIOR",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-24T203119Z-slice-3"
+    }
+  ]
+}
