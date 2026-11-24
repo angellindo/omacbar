@@ -109,6 +109,17 @@
         "runbook": "FAILED"
       },
       "log": ".scratch/TB-46/gate/2026-11-24T210617Z-slice-1"
+    },
+    {
+      "at": "2026-11-24T23:09:06Z",
+      "seal": "sha256:c56950dc6a0108868f7e98b6b6d8cc593a04fdbc93f90805ceab2d3ef97b396a",
+      "head": "27643ff24dc7515fb42c131219a2b60e53f8e5bd",
+      "final": false,
+      "results": {
+        "tests": "FAILED",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T230841Z-slice-1"
     }
   ]
 }

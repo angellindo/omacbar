@@ -3,8 +3,11 @@ repo and the caller's HOME, a fixture theme, keys to a file inside the profile, 
 profile-local mark, and the persistent launcher session left alone. The fakes behave like the
 normal-flow binaries (defaults on open, temp + rename save, labels in the tree, F5 once, a frame,
 the mark), so a nominal run passes; the expectation each scenario settles with must match what the
-producing save wrote. An injected edit, failed save or failed reopen is never settled or restored:
-its bytes survive the run and the cleanup. No cargo, no GPU."""
+producing save wrote. The run learns those bytes from the save receipt, the interface the real
+configurator and the fake share (`TB_SAVE_RECEIPT`, below), never by reading the config after the
+configurator returns. An injected edit, failed save or failed reopen, or a save without a valid
+receipt of its own, is never settled or restored: its bytes survive the run and the cleanup. No
+cargo, no GPU."""
 
 from __future__ import annotations
 
@@ -20,12 +23,24 @@ FAKE = r'''#!/usr/bin/env python3
 # defaults when the config is absent, a `--script` run saves the edited label (temp + rename) and
 # the tree lists the status and every label; the daemon presses F5 once, writes one frame and runs
 # the profile-local mark. Every run is logged to FAKE_EVENTS, with the SHA-256 of what a save
-# wrote, which is the producer's own expectation. FAKE_INJECT names a one-shot token file whose
-# content picks one injected event (logged with the path and bytes it leaves):
+# wrote, which is the producer's own expectation.
+# Save receipt (the interface shared with the real configurator): when TB_SAVE_RECEIPT names a
+# path, each confirmed explicit save writes there, by temp + rename, the JSON object
+#   {"config": "<the config path it saved>", "sha256": "<64 lowercase hex>"}
+# hashed from the bytes that save wrote (in memory), never by reading the file back. A failed or
+# refused save writes no receipt.
+# FAKE_INJECT names a one-shot token file whose content picks one injected event (logged with the
+# path and bytes it leaves):
 #   external     the first reopen after a save finds the saved file replaced by another editor
 #   target       the first reopen after a save of a symlinked config finds the old target edited
 #   save-fails   the first save crashes half way, leaving a partial file, exit 1
 #   reopen-fails the first reopen after a save exits 1 before showing anything
+#   second-editor the save over the personal layout (label "Mine") completes with its receipt, then,
+#                before the configurator exits, a second ordinary editor saves another valid
+#                design that keeps the same "Rehearsal" label (span 2) by temp + rename; the
+#                personal layout is logged as `original`
+#   no-receipt   the second save completes but writes no receipt of its own
+#   bad-receipt  the first save completes but its receipt is not a valid one (short hash)
 import hashlib, json, os, re, struct, sys
 from pathlib import Path
 name = Path(sys.argv[0]).name
@@ -77,8 +92,24 @@ if name == "touchbar-customizer":
             token.write_text("target:" + os.path.realpath(config))
         base = text(config) or DEFAULT
         saved = (re.sub(r'label = "[^"]*"', 'label = "Rehearsal"', base, count=1) + MARK).encode()
+        events_log = Path(os.environ["FAKE_EVENTS"])
+        nth = 1 + (events_log.read_text().count('"saved_sha256"') if events_log.exists() else 0)
         replace(config, saved)
         event["saved_sha256"] = hashlib.sha256(saved).hexdigest()
+        receipt = {"config": str(config), "sha256": event["saved_sha256"]}
+        if inject == "bad-receipt":
+            receipt["sha256"] = receipt["sha256"][:63]
+            injected("bad-receipt", config, saved)
+        if inject == "no-receipt" and nth == 2:
+            injected("no-receipt", config, saved)
+        elif os.environ.get("TB_SAVE_RECEIPT"):
+            replace(Path(os.environ["TB_SAVE_RECEIPT"]), json.dumps(receipt).encode())
+        if inject == "second-editor" and 'label = "Mine"' in base:
+            other = saved.replace(b"width = { span = 1 }", b"width = { span = 2 }", 1)
+            other = other if other != saved else saved + b"# second editor\n"
+            replace(config, other)
+            injected("second-editor", config, other)
+            event["injected"]["original"] = base
         status = "saved config"
     elif (text(config) or "").endswith(MARK):
         if inject == "external":
@@ -290,3 +321,27 @@ class Expectations(RunFixture):
 
     def test_a_failed_reopen_is_never_settled_or_restored(self):
         self.assertInjectionSurvives("reopen-fails")
+
+
+class SaveReceipt(Expectations):
+    """The run recognises the bytes of its own confirmed save by that save's receipt, so another
+    editor's save that keeps the same label is never taken for the run's own."""
+
+    def test_a_second_editor_keeping_the_label_keeps_its_design_and_the_personal_copy(self):
+        self.assertInjectionSurvives("second-editor")
+        hit = next(e["injected"] for e in self.events() if "injected" in e)
+        second, original = hit["bytes"].encode(), hit["original"].encode()
+        self.assertIn(b'label = "Rehearsal"', second, "the second design keeps the same label")
+        self.assertIn(b"span = 2", second, "and differs from the run's save in another valid change")
+        self.assertIn(b'label = "Mine"', original, "the personal layout was the one saved over")
+        config = Path(hit["path"])
+        profile = Path(self.report_data()["profile"])
+        held = [p for p in profile.rglob("*") if p.is_file() and not p.is_symlink()
+                and p != config and p.read_bytes() == original]
+        self.assertTrue(held, "the personal layout is still held in the run's store after cleanup")
+
+    def test_a_save_without_a_receipt_of_its_own_is_never_settled_or_restored(self):
+        self.assertInjectionSurvives("no-receipt")
+
+    def test_a_save_with_an_invalid_receipt_is_never_settled_or_restored(self):
+        self.assertInjectionSurvives("bad-receipt")

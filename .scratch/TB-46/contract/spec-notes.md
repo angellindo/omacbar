@@ -1,4 +1,4 @@
-# TB-46 slice 1 · contract notes (QA spec) · re-spec 1 (review-1 correction cycle)
+# TB-46 slice 1 · contract notes (QA spec) · re-spec 2 (save receipt)
 
 Mode `tooling`. Checks: `tests` (`test_rehearsal*.py`) and `runbook` (`test_hardware_runbook.py`).
 `--final` runs `scripts/check.sh`, which already runs every `scripts/tests/test_*.py`.
@@ -7,6 +7,51 @@ The first seal (`sha256:d88da825…`, HEAD cce2d715), its evidence, its final re
 26ca079) and these notes as they were are archived byte for byte in
 `.scratch/TB-46/qa-respec-1/archive-cycle-0/` (`SHA256SUMS` there). The live
 `slice-1.evidence.json` keeps every earlier run; the gate appends, nothing was rewritten.
+
+## Re-spec 2: the run knows its own save by the save's receipt
+
+Seal `sha256:e7bb6f5a…` (re-spec 1), its evidence, these notes as they were, review-1's verdict and
+the correction cycle's verification are archived byte for byte in
+`.scratch/TB-46/qa-respec-2/archive-cycle-1/` (`SHA256SUMS`). Every re-spec 1 case is kept with its
+criteria; only the fake configurator gained the receipt and three injections, and `SaveReceipt`
+was added (`test_rehearsal_run.py`). Same files, same checks, one HOME per run, one save per
+scenario.
+
+Why: candidate 27643ff takes the producing save's expectation by reading the config (`lstat`)
+after the configurator exits. Another ordinary editor that saves in between (same `Rehearsal`
+label, valid TOML) is adopted as the run's own save, settled, and replaced by `restore`: the second
+design is lost. Seeing the label or reading the file afterwards does not identify the bytes the
+save wrote. A twin profile replaying the flow (the earlier `spec-notes` suggestion) is withdrawn: it
+contradicts the sealed single-HOME isolation case and one save per scenario.
+
+### Save receipt (interface shared by the configurator and the fake)
+
+- `run` sets `TB_SAVE_RECEIPT=<path>` for the configurator's save step, a path that is the run's own
+  and fresh for that save (a receipt left by an earlier save is not this save's).
+- On each confirmed explicit save (Save, Ctrl+S, the conflict overwrite) the configurator writes at
+  that path, by temp + rename, the JSON object
+  `{"config": "<the config path it saved>", "sha256": "<64 lowercase hex>"}`, hashed from the bytes
+  that save wrote (the bytes handed to the swap), never by reading the file back. A failed, refused
+  or blocked save writes none. The real configurator does not emit it at 27643ff (product work).
+- `run` settles a scenario with `--expect-config <receipt sha256>`, and a captured link's target
+  with the captured target state (the normal save replaces the link). A receipt that is absent,
+  not this save's, malformed, or for another config path → the run fails, nothing settled or
+  restored, the current bytes and the store kept (they survive `cleanup`). The report's scenario
+  record carries the receipt's hash.
+
+### New cases (`SaveReceipt`, fake injections)
+
+- `second-editor`: over the personal layout (`label = "Mine"`, 0640, comment), the save completes
+  with its receipt; before the configurator exits a second ordinary editor saves another valid
+  design that keeps `Rehearsal` and changes `span` 1 → 2 (temp + rename). The run fails; the second
+  design stays in place and the personal layout stays in the run's store, after the run and after
+  `cleanup`.
+- `no-receipt`: the second save (byte-identical to the first one's) writes no receipt. A stale
+  receipt from the first save must not pass for it.
+- `bad-receipt`: the first save's receipt has a 63-hex hash.
+
+Not covered by the Python contract: that the real configurator writes the receipt. The real-binary
+run (functional QA, thermal prefix) needs it: without it every scenario fails by the rules above.
 
 ## Re-spec 1: why the seal changed (review-1 BLOCKERs 1–4, all kept)
 
@@ -32,9 +77,8 @@ behaviour is now a contract violation, so the old fixture and the new seal canno
   `--expect-target` is required when the capture was a symlink. Missing, malformed, wrong-kind or
   different → exit 1 or 3 (never 2/usage for a well-formed call), nothing recorded that restore
   could act on, current bytes kept in place, original kept in the store; `cleanup` keeps both.
-- `run`: every scenario settles with an expectation from the producing save or an independent,
-  verifiable source (e.g. a deterministic replay of the same flow on a twin private copy). The
-  report's scenario record contains the SHA-256 the producing save wrote. A failed save, a failed
+- `run`: every scenario settles with an expectation from the producing save (re-spec 2: its
+  receipt). The report's scenario record contains the SHA-256 the producing save wrote. A failed save, a failed
   reopen, an external edit of the config or of the old link target after the save: the run fails,
   nothing is settled or restored over those bytes, and they survive `cleanup`.
 - `restore`: compares again right before each replacement, after the temp file is prepared (written,
@@ -70,11 +114,9 @@ behaviour is now a contract violation, so the old fixture and the new seal canno
 
 ### Normal-flow binaries
 
-The real configurator does not print a hash of what it saves (status `saved config <path>`); its
-save is `to_toml` of the edited config (`tb-app` saving, `tb-config` file), with the clock used
-only for the "last saved" text, so a replay on a twin copy is deterministic. The run-level contract
-therefore does not require a new configurator output. Running the real binaries stays functional QA
-(thermal prefix); physical stages are document-only (HIL).
+Superseded by re-spec 2: the configurator's status (`saved config <path>`) carries no hash, so the
+run needs the save receipt above (a new configurator output). Running the real binaries stays
+functional QA (thermal prefix); physical stages are document-only (HIL).
 
 ## Red proof under the new seal
 
