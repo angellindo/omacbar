@@ -1,0 +1,23 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 231ac17..ff8a15c 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -47,3 +47,18 @@ cast_precision_loss = "allow"
+ [profile.dev.package."*"]
+ debug = false
+ opt-level = 1
++
++# TB-51 prototype only (disposable copy): build against upstream Rune head 22ebd7e.
++[patch."https://github.com/anomalyco/rune"]
++rune = { path = "../../src/rune-head/crates/rune" }
++
++# Rune head asks apps that build it to repeat its crates-io patches (rune-head Cargo.toml:110-).
++[patch.crates-io]
++wgpu-hal = { path = "../../src/rune-head/vendor/wgpu-hal" }
++naga = { path = "../../src/rune-head/vendor/naga" }
++winit = { path = "../../src/rune-head/vendor/winit" }
++sctk-adwaita = { path = "../../src/rune-head/vendor/sctk-adwaita" }
++parley_engine = { path = "../../src/rune-head/vendor/parley_engine" }
++accesskit_windows = { path = "../../src/rune-head/vendor/accesskit_windows" }
++accesskit_atspi_common = { path = "../../src/rune-head/vendor/accesskit_atspi_common" }
++accesskit_macos = { path = "../../src/rune-head/vendor/accesskit_macos" }

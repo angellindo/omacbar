@@ -1,7 +1,9 @@
 # 0012 · Rune: the pointer leaving the window while a press is held
 
 Status: TB-51 · research lane · headless only (no window opened, no Hyprland run, no hardware) ·
-2026-11-24. Answers the block of TB-44 fix cycle 1 (simulator window, app at `905dad2`).
+2026-11-24, review fix cycle 1 the same day (inputs versioned in `0012-fixtures/`, clean
+reconstruction checked, B3 and adoption claims narrowed). Answers the block of TB-44 fix cycle 1
+(simulator window, app at `905dad2`).
 
 ## Question
 
@@ -23,8 +25,11 @@ Sources, by SHA (line numbers are at that SHA):
   (`gh api repos/anomalyco/rune/compare/f73f72c…22ebd7e`). `dev` is the default branch; it had
   moved on to `c931651436` (PR #2041, which touches `pointer.rs` and `hover.rs` again) by
   2026-11-24T23:08Z, so `H` is the revision tested here, not "latest".
-- `A` = TB-44 `905dad2`, `crates/tb-daemon/src/sim_window.rs`; `T` = the four regressions
-  `window_leave_in_capture.rs` from TB-44 fix cycle 1 (sha256 `479e9888…726b`, used unchanged).
+- `A` = TB-44 `905dad2b6364e0d913a3c60befa4cfe7395dfb72` (tip of the public branch
+  `tb-44-cancel-simulator-gestures` of this repo's `origin`), `crates/tb-daemon/src/sim_window.rs`;
+  `T` = the four regressions `window_leave_in_capture.rs` written in TB-44 fix cycle 1 (not in any
+  TB-44 commit), versioned verbatim here as `0012-fixtures/window_leave_in_capture.rs`, sha256
+  `479e9888d6e49b7c81b3fefe0aa9f0efee6af2fd5d80590b6769695e901c726b`.
 - `Y` = Hyprland `v0.56.2` (`efb50993…`, the build `hyprctl version` reports on this machine),
   `src/managers/input/InputManager.cpp`.
 
@@ -137,7 +142,9 @@ capture and does nothing, and the deferred leave lands then (`P` `pointer.rs:160
 ### 4. Results: the four TB-44 sequences, each candidate, with controls
 
 All runs headless (`rune::Runtime<SimWindow>` + `forward_touches` + `Daemon`, as `T` drives them),
-on disposable copies of `A`, run `.scratch/TB-51/proto/runs/20261124T210554Z` (§ Reproduce).
+on disposable copies of `A`, in one run on 2026-11-24 (`20261124T210554Z`); its inputs are rebuilt
+from `0012-fixtures/` and public revisions (§ Reproduce), its outcome is summarized in the receipts
+table below.
 Columns: **S1** highlight cleared at the leave (`T:202`) · **S2** leave then release runs nothing
 (`T:221`) · **S3** leave, back over the same button, release runs nothing (`T:234`) · **S4** the
 next click runs exactly once (`T:250`); each for F5 (key records) and a command button (marker).
@@ -166,12 +173,35 @@ next click runs exactly once (`T:250`); each for F5 (key records) and a command 
   resolve offline (`dioxus-devtools` missing from the cache). The Rune unit test the patch adds
   (`cancel_drag_on_leave_ends_a_held_drag_cancelled_at_the_leave`) is therefore unverified; its
   behaviour is covered by the public-API checks above.
-- `H` compiles TB-44 unchanged: `cargo check --workspace --all-targets` exit 0 (B3), no warning
-  in a `tb-*` crate. Not run at `H`: the rest of the test suite, clippy, `scripts/check.sh`,
-  render snapshots (unverified).
+- B3 is `cargo check --workspace --all-targets` (exit 0) in the **B2 tree**: `A` with the §2
+  opt-in applied, `T` added, and Rune `H` plus its 8 vendored crates as local path overrides. It
+  shows that this variant's whole workspace (every `tb-*` crate, tests included) type-checks
+  against `H`, with warnings only in Rune and vendored crates (`rune`, `rune-image`,
+  `rune-tiny-skia-path`, `parley_engine`, `sctk-adwaita`), none in a `tb-*` crate. It does not
+  show that `A` without the opt-in builds at `H` beyond B1's selected `tb-daemon` targets, and it
+  does not test Rune's git form (§ Decision). Not run at `H`: the rest of the test suite, clippy,
+  `scripts/check.sh`, render snapshots (unverified).
 - Limits: one run each, one CPU, thermal pauses 0-65 per step (logged with ns timestamps); the
   sequences use `T`'s waits (presents ≤5 s, quiet 1 s). Headless only: what the real host sends is
   § 5.
+
+Receipts of run `20261124T210554Z` (exit code of each step; test counts per target as cargo
+printed them; the four `T` tests of A1/B1 stop at their first failing F5 assertion, so they do not
+check the command button separately):
+
+| Step | Tree (§ Reproduce) | Command | Exit | `T` | Kept 57 | Public-API checks | Build | Thermal pauses |
+|---|---|---|---|---|---|---|---|---|
+| A1 | `app-A1` | `cargo test -p tb-daemon` (5 targets + `rune_cancel_drag_on_leave`) | 101 | 0/4 | 57/57 | 3/3 | 4m16s | 13 |
+| A2 | `app-A2` | same | 0 | 4/4 | 57/57 | 3/3 | 25s | 4 |
+| B1 | `app-B1` | `cargo test -p tb-daemon` (5 targets) | 101 | 0/4 | 57/57 | — | 21m09s | 65 |
+| B2 | `app-B2` | same | 0 | 4/4 | 57/57 | — | 13s | 1 |
+| B3 | `app-B2` | `cargo check --workspace --all-targets` | 0 | — | — | — | 2m21s | 0 |
+| C1 | `app-A2` | `cargo test -p rune --lib` (3 filters) | 101 | — | — | — | refused before building | 0 |
+
+Each step ran in place, in order: A2 is A1's directory after `sim-window-opt-in.patch`, B2 is B1's
+after `sim-window-head-hover-tracks-bounds.patch`, and B3 and C1 ran on those patched trees (C1's
+refusal does not depend on the tree). The raw logs stay local (they carry machine paths) and are
+not needed to reproduce.
 
 ### 5. What Hyprland actually sends mid-press (HIL, not run)
 
@@ -186,7 +216,7 @@ next click runs exactly once (`T:250`); each for F5 (key records) and a command 
 | | Option A: bump Rune to `H` + app-side opt-in (§2) | Option B: keep `P`, opt-in Rune patch (§3) | Option C: keep `P`, no change |
 |---|---|---|---|
 | Exists today | yes, public API on `dev` `22ebd7e` | prototype only (local copy) | — |
-| Consumable from a clean checkout today | yes, once `Cargo.toml` pins `22ebd7e` and repeats Rune's `[patch.crates-io]` (below) | no: needs a published rev (upstream PR or a fork) | — |
+| Consumable from a clean checkout today | public candidate available (`H` is a public rev); resolution from a clean checkout in git form not verified, left to the bump ticket (TB-52). Tested here only with Rune and its 8 vendored crates as local path overrides | no: needs a published rev (upstream PR or a fork) | — |
 | External authorization | none (reads a public rev; publishes nothing) | yes: publishing a fork or an upstream PR is the human's call | none |
 | TB-44 code change | ~10 lines in `sim_window.rs` | 1 line in `sim_window.rs` | none |
 | Meets the four sequences headless | yes (B2) | yes (A2) | no |
@@ -196,18 +226,21 @@ next click runs exactly once (`T:250`); each for F5 (key records) and a command 
 
 **Decision for TB-44: Option A, split in two.** TB-44 cannot meet the leave regressions on the
 current pin without a Rune change; upstream `dev` already solves it with a supported opt-in, and the
-whole TB-44 workspace compiles against it unchanged. Per `Cargo.toml` ("Bump in its own ticket")
-and ADR-0001, the bump is its own ticket; TB-44 then adds the §2 change on top. Until the bump
-lands, TB-44 is blocked on it (not on research). Option B is the fallback only if the bump fails
-its own gates; it needs the human's authorization to publish a fork or upstream PR.
+TB-44 workspace with that opt-in type-checks against it (B3, with local path overrides). Per
+`Cargo.toml` ("Bump in its own ticket") and ADR-0001, the bump is its own ticket (TB-52); TB-44
+then adds the §2 change on top. Until the bump lands, TB-44 is blocked on it (not on research).
+Option B is the fallback only if the bump fails its own gates; it needs the human's authorization
+to publish a fork or upstream PR.
 
-In the bump ticket, as Rune asks of apps, the `[patch.crates-io]` entries must point to the same
-rev. Untested here: the git form (`naga = { git = "https://github.com/anomalyco/rune", rev =
-"22ebd7e…" }`, Cargo finding the package in `vendor/`). The prototype used local paths.
+Belongs to TB-52, not shown here: as Rune asks of apps, the `[patch.crates-io]` entries must point
+to the same rev, in git form (`naga = { git = "https://github.com/anomalyco/rune", rev =
+"22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598" }`, Cargo finding the package in `vendor/`); that form,
+its resolution from a clean checkout, the `Cargo.lock` it yields, and the full gates
+(`scripts/check.sh`) at `H` are untested. The prototype used local paths only.
 
 ## Follow-ups (proposed tickets)
 
-1. **Rune bump to `dev` `22ebd7e`** (own ticket, blocks the TB-44 fix): `rev` +
+1. **Rune bump to `dev` `22ebd7e`** (TB-52, own ticket, blocks the TB-44 fix): `rev` +
    `[patch.crates-io]` (git form) + `Cargo.lock`; run `scripts/check.sh` (full suite, clippy,
    snapshots); keep the four `T` regressions red until 2.
 2. **TB-44 fix cycle**: apply the §2 change on top of 1; `T` turns green. Blocked by 1.
@@ -217,27 +250,79 @@ rev. Untested here: the git form (`naga = { git = "https://github.com/anomalyco/
 
 ## Reproduce
 
-Everything is in `.scratch/TB-51/proto/` (`README.md`, `patches/`, `runs/20261124T210554Z/`
-with `run.sh`, logs, return codes, `receipt.txt`, `thermal-events.log`). Without that directory:
+Needs only this repo's `docs/research/0012-fixtures/` and three public revisions: the app
+`905dad2b6364e0d913a3c60befa4cfe7395dfb72` (<https://github.com/angellindo/omacbar>) and Rune
+`P` `f73f72cdc563534e4f7de9f5a79bed007ac42384` and `H` `22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598`
+(<https://github.com/anomalyco/rune>). `SHA256SUMS` covers every fixture.
 
-1. Clone Rune; `git checkout f73f72cdc563534e4f7de9f5a79bed007ac42384`; apply the §3 diff (and the
-   Rune unit test in `runtime/tests/pointer_drag.rs`, in `patches/rune-cancel-drag-on-leave.patch`).
-2. `git archive 905dad2` of this repo into a fresh dir; append
-   `[patch."https://github.com/anomalyco/rune"] rune = { path = "<rune>/crates/rune" }` to its
-   `Cargo.toml`; copy `T` (TB-44 `.scratch/TB-44/fix-1/window_leave_in_capture.rs`) into
-   `crates/tb-daemon/tests/`.
-3. `cargo test -p tb-daemon --test window_leave_in_capture --test window_press_release --test
-   cancelled_touch --test sim_window_touches --test sim_window_screen` → 4 FAIL (control); add
-   `.cancel_drag_on_leave()` before `.on_drag(` in `sim_window_view` → all pass.
-4. For `H`: a second archive of `905dad2`; `[patch."https://github.com/anomalyco/rune"]` to a Rune
-   checkout at `22ebd7e`, plus `[patch.crates-io]` with the 8 crates above as paths into its
-   `vendor/`; `cargo fetch`; same tests (control 4 FAIL); apply the §2 diff → all pass;
-   `cargo check --workspace --all-targets`.
+| Fixture | What | Used in |
+|---|---|---|
+| `window_leave_in_capture.rs` | `T`, the four TB-44 regressions, verbatim (sha256 `479e9888d6e49b7c81b3fefe0aa9f0efee6af2fd5d80590b6769695e901c726b`) | A1, A2, B1, B2 |
+| `rune-cancel-drag-on-leave.patch` | §3 diff + its Rune unit test, `patch -p1` on `P`; sha256 `9a5fe2e8b40a01305b84e546d4782fee586e83e4dc0af1aedc421ab292d064d7` equals the run's `git diff` of its patched Rune copy | A1, A2, C1 |
+| `rune_cancel_drag_on_leave.rs` | public-API checks of the option and a control without it (3 tests) | A1, A2 |
+| `app-cargo-patch.toml` | appended to the app `Cargo.toml`: `rune` → `../rune-pin/crates/rune` | A1, A2 |
+| `sim-window-opt-in.patch` | `.cancel_drag_on_leave()` on `sim-screen` (Option B, 1 line) | A2 |
+| `app-head-cargo.patch` | app `Cargo.toml`: `rune` and the 8 `[patch.crates-io]` crates → `../../src/rune-head/…` | B1, B2 |
+| `app-head-Cargo.lock.patch` | the app `Cargo.lock` as resolved at `H` (+289/−34) | B1, B2 |
+| `sim-window-head-hover-tracks-bounds.patch` | §2 diff (Option A, app side) | B2 |
+| `reconstruct.sh` | rebuilds every input tree from the above; builds and runs nothing | — |
 
-Each heavy step ran through the shared thermal lock (`thermal-command.py` of TB-46
-`validate-thermal/20261124T173620Z`: start ≤65 °C, pause ≥74 °C, resume ≤64 °C, one CPU, nice 19,
-one job, one test thread, no duty cycle), with a private `HOME`, XDG dirs, `CARGO_HOME` (reflink
-copy) and target, offline after one `cargo fetch` for `H`.
+Rebuild the trees (any clones that hold the SHAs; `OUT` new or empty):
+
+```sh
+F=docs/research/0012-fixtures   # in a checkout of this repo at or after the fix commit
+"$F/reconstruct.sh" "$APP_GIT" "$RUNE_GIT" "$RUNE_GIT" "$OUT"
+```
+
+It checks `SHA256SUMS`, takes each revision with `git archive <full SHA>`, applies the fixtures and
+prints the git tree id of each result. Expected (equal to the run's input trees, § below):
+
+| Tree | Content | Tree id |
+|---|---|---|
+| `src/rune-head` | `H` | `4837fbe79f6c31dde23e79fb9eeba0148866fd57` (= `H^{tree}`) |
+| `proto/rune-pin` | `P` + `rune-cancel-drag-on-leave.patch` | `792de6a9e41400b2fa7628c5c18016710ee27420` |
+| `proto/app-A1` | app + `app-cargo-patch.toml` + `T` + public-API checks | `5fe557ee00d2f8b8a9a896317c46fb29f5ba6d61` |
+| `proto/app-A2` | A1 + `sim-window-opt-in.patch` | `e215b9264484d54373fb95ad2f2d54a7226afb15` |
+| `proto/app-B1` | app + `app-head-cargo.patch` + lock patch + `T` | `cae2e962c4b53ebc5e74258cb7894b7bb1524cc9` |
+| `proto/app-B2` | B1 + `sim-window-head-hover-tracks-bounds.patch` | `6176173fe211bf0a85e0ea2c0dca89a6f3e2cf11` |
+
+Then, per tree (toolchain from the app's `rust-toolchain.toml`; `TESTS="--test
+window_leave_in_capture --test window_press_release --test sim_window_touches --test
+cancelled_touch --test sim_window_screen"`; the run passed `--offline` with a pre-filled private
+`CARGO_HOME`, a fresh one needs network for the first fetch):
+
+| Step | In | Command | Run's result |
+|---|---|---|---|
+| A1 | `app-A1` | `cargo test -p tb-daemon --no-fail-fast $TESTS --test rune_cancel_drag_on_leave -- --test-threads 1` | 101, `T` 0/4 |
+| A2 | `app-A2` | same | 0 |
+| B1 | `app-B1` | `cargo test -p tb-daemon --no-fail-fast $TESTS -- --test-threads 1` | 101, `T` 0/4 |
+| B2 | `app-B2` | same | 0 |
+| B3 | `app-B2` | `cargo check --workspace --all-targets` | 0 |
+| C1 | `app-A2` | `cargo test -p rune --lib -- --test-threads 1 runtime::tests::pointer_drag runtime::tests::pointer_hit runtime::hover_tests` | 101, refused before building |
+
+Cargo rewrites the A trees' `Cargo.lock` on the first build: it drops the four `source = "git+…rune?rev=f73f72c…"`
+lines of the Rune packages now taken from the path (the run's lock after A2 equals the input lock
+without those lines); the B trees' lock did not change.
+
+### What was checked in this fix cycle, and what was not
+
+- **Run in the experiment** (2026-11-24, `20261124T210554Z`): A1, A2, B1, B2, B3, C1 above, each
+  through the project's thermal guard (shared lock; start ≤65 °C, pause ≥74 °C, resume ≤64 °C;
+  one CPU, nice 19, one job, one test thread) with a private `HOME`, XDG dirs, `CARGO_HOME` and
+  target, offline after one `cargo fetch` for `H`. The guard is a local convenience, not needed
+  to reproduce.
+- **Run in this fix cycle**: no build and no test. The fixtures were taken with `git archive` of
+  the staged tree (only versioned files) into an empty directory, and `reconstruct.sh` ran there
+  under `env -i` with a private `HOME`, given only git object stores holding `905dad2`, `P` and
+  `H`. All six tree ids above came out equal to the run's input trees, computed the same way:
+  `app-B1` equals the run's commit of its B tree; `app-B2`, `rune-pin` (without Cargo's
+  `.cargo-ok` marker) and `rune-head` equal the run's trees file for file (`diff -r`, none
+  differing); `app-A2` equals the run's A tree once its `Cargo.lock` is set back to `905dad2`'s
+  (the only file cargo rewrote); `app-A1` equals that minus the one opt-in line (the run counted 0
+  `cancel_drag_on_leave` in A1's `sim_window.rs` and 1 in A2's).
+- So the reconstruction reproduces the run's inputs byte for byte; the results are the run's, not
+  re-executed. Not shown by either: Rune's git form and clean-checkout resolution, the full suite,
+  clippy and snapshots at `H` (TB-52), and anything on Hyprland (§5).
 
 ## Sources
 
@@ -249,4 +334,7 @@ copy) and target, offline after one `cargo fetch` for `H`.
 - PR #1889 `feat(input): expose … Runtime::cancel_pointer, and Tx::cancel_pointer`:
   <https://github.com/anomalyco/rune/pull/1889>
 - Hyprland `v0.56.2`: <https://github.com/hyprwm/Hyprland/blob/efb50993780079460b0cbed1363e2166a2de1d9f/src/managers/input/InputManager.cpp>
-- TB-44 block and red run: TB-44 `.scratch/TB-44/fix-1/blocked.md`, `red-1.log` (app `905dad2`).
+- App: <https://github.com/angellindo/omacbar/tree/905dad2b6364e0d913a3c60befa4cfe7395dfb72>
+- Versioned inputs of the run: `docs/research/0012-fixtures/` (`SHA256SUMS`, `reconstruct.sh`).
+- TB-44 block and red run (context only, local TB-44 notes, not needed to reproduce):
+  `blocked.md`, `red-1.log` of TB-44 fix cycle 1 (app `905dad2`).
