@@ -8,7 +8,7 @@
 //! dir, never the real ones. The binary runs need a GPU adapter (lavapipe is fine).
 //!
 //! The size-limit cases cannot cap the binary: a GPU driver may need large files of its own to
-//! create a device (Mesa `anv` needs RLIMIT_FSIZE >= 1 GiB), so a capped binary stops before the
+//! create a device (Mesa `anv` needs `RLIMIT_FSIZE` >= 1 GiB), so a capped binary stops before the
 //! Save. They run the same configurator headless instead, through its production entry
 //! (`spec().init` reads `HOME` and `XDG_STATE_HOME`), inside a child process of this test that is
 //! capped from `exec` and ignores `SIGXFSZ`; no GPU, no timing. The child reports, and the parent
@@ -21,6 +21,7 @@
 
 use std::ffi::OsStr;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -39,6 +40,9 @@ const CHILD: &str = "CONFIGURATOR_GENERATIONS_SIZE_LIMITED_CHILD";
 const HELPER: &str = "size_limited_editor_saves_once";
 /// Prefix of the child's report lines on stdout.
 const REPORT: &str = "size-limited-editor:";
+/// The parent's copy of the child's stdout, kept in the case's profile dir: the parent never
+/// writes to its own stdout, so libtest's `test <name> ... ok|FAILED` lines stay whole.
+const CHILD_STDOUT: &str = "size-limited-editor.stdout";
 
 struct Profile {
     dir: PathBuf,
@@ -102,7 +106,8 @@ impl Profile {
 
     /// The size-limited editor run: this test binary again, capped by `prlimit` at `LIMIT` (soft
     /// and hard) from `exec` with `SIGXFSZ` ignored, so an oversized write fails with EFBIG,
-    /// running only `HELPER`. It must exit 0; its report lines are returned as `key=value`.
+    /// running only `HELPER`. It must exit 0; its report lines are returned as `key=value` and
+    /// its whole stdout is kept in the profile dir as `CHILD_STDOUT`.
     fn save_in_a_size_limited_editor(&self) -> Report {
         let me = std::env::current_exe().unwrap();
         let out = self
@@ -125,7 +130,7 @@ impl Profile {
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
             .collect();
         assert!(!lines.is_empty(), "the helper reported nothing (did it run?)\n{stdout}\n{stderr}");
-        println!("{stdout}");
+        fs::write(self.dir.join(CHILD_STDOUT), &stdout).unwrap();
         Report { lines, raw: stdout }
     }
 }
@@ -141,8 +146,7 @@ impl Report {
         self.lines
             .iter()
             .find(|(k, _)| k == key)
-            .map(|(_, v)| v.as_str())
-            .unwrap_or_else(|| panic!("no `{key}` in the report:\n{}", self.raw))
+            .map_or_else(|| panic!("no `{key}` in the report:\n{}", self.raw), |(_, v)| v.as_str())
     }
 
     /// The cap was in force in the process that saved, and an oversized write fails, not kills.
@@ -339,8 +343,10 @@ fn size_limited_editor_saves_once() {
     }
     // libtest has already printed `test <name> ... ` without a newline: end that line first, so
     // every report line starts with `REPORT`.
-    println!();
-    let say = |key: &str, value: &str| println!("{REPORT} {key}={}", value.replace('\n', " "));
+    let out = std::io::stdout();
+    writeln!(out.lock()).unwrap();
+    let say =
+        |key: &str, value: &str| writeln!(out.lock(), "{REPORT} {key}={}", value.replace('\n', " ")).unwrap();
     let limits = fs::read_to_string("/proc/self/limits").unwrap();
     let fsize = limits.lines().find(|l| l.starts_with("Max file size")).unwrap();
     let fields: Vec<&str> = fsize.split_whitespace().collect();

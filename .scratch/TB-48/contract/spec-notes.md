@@ -92,3 +92,21 @@ With `--nocapture` libtest prints `test size_limited_editor_saves_once ... ` wit
 so the helper's first report line (`fsize-soft`) did not start with the prefix and the parent
 failed with "no `fsize-soft` in the report" on both trees, before judging the save. The helper
 now prints one empty line before its first report line. No assertion, key or control changed.
+
+## Repair 3 (2026-11-24): lint only
+
+The `--final` run at 94f633f had all 43 cases and both checks green, but `scripts/check.sh` failed:
+Clippy (`-D warnings`) rejected five lints in `crates/tb-app/tests/configurator_generations.rs`
+(`doc_markdown` on `RLIMIT_FSIZE`, `print_stdout` three times, `map_unwrap_or` in `Report::get`).
+The source now backticks `RLIMIT_FSIZE`, writes with `writeln!` on a locked `std::io::stdout()`
+handle instead of `println!`, and reads a report field with `map_or_else`. The child's line protocol
+is unchanged (one empty line, then `size-limited-editor: key=value` lines).
+
+A first attempt also printed the parent's copy of the child's report with `writeln!` on
+`std::io::stdout()`. That handle bypasses libtest's capture, so the copy landed in the middle of
+`test <name> ... FAILED` and the gate classified QA-42 and QA-43 as NOT_RUN on the baseline (both
+had failed on the expected assertions). The parent now writes nothing to its own stdout or stderr:
+it keeps the child's whole stdout in the case's profile dir as `size-limited-editor.stdout`
+(`<CARGO_TARGET_TMPDIR>/configurator_generations/<case>/`), and every report assertion still
+carries the raw report in its captured failure message. No assertion, key, control or lint level
+changed; no `#[allow]` added.
