@@ -3,6 +3,7 @@
 //! version: a clean editor shows the newer file, a dirty one keeps its draft until the user
 //! reloads or overwrites.
 
+use std::fmt::Write as _;
 use std::io;
 use std::path::PathBuf;
 
@@ -166,7 +167,7 @@ impl State {
         if let Some(path) = &self.saving.receipt
             && let Err(e) = file.write_save_receipt(path)
         {
-            self.status.push_str(&format!(". Could not write the save receipt at {} ({e})", path.display()));
+            let _ = write!(self.status, ". Could not write the save receipt at {} ({e})", path.display());
         }
         self.saving.baseline = Some(self.config.clone());
         self.saving.last_saved = (self.saving.clock)();
