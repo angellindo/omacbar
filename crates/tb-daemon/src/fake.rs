@@ -13,6 +13,9 @@ use crate::render::SceneRenderer;
 use crate::touch::{Touch, TouchError, TouchSource};
 use crate::uinput::EmitError;
 
+mod kms;
+pub use kms::{DUMB_FILL, KmsCall, KmsLog, KmsStep, PriorCrtc, RecordingKms};
+
 /// One present as the daemon sent it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Presented {

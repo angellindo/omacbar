@@ -1,6 +1,7 @@
 //! Display backends: where a presented frame shows up (ADR-0006). A present carries the whole frame
 //! plus its damage; a backend shows only the damaged rects and keeps every other pixel as it was.
 
+use std::io;
 use std::path::PathBuf;
 
 use tb_core::{BarSize, Rect};
@@ -23,6 +24,10 @@ pub enum DisplayError {
     DamageOutsideBar { rect: Rect },
     #[error("cannot write the simulated screen: {0}")]
     Write(#[from] FrameError),
+    /// A device backend's call failed; `gone` when the device went away (ENODEV), after which
+    /// nothing can be shown or restored on it.
+    #[error("display device error (device gone: {gone}): {source}")]
+    Device { source: io::Error, gone: bool },
 }
 
 /// What `SimDisplay::on_present` calls with the screen.
@@ -85,7 +90,7 @@ impl SimDisplay {
 
 impl Display for SimDisplay {
     fn present(&mut self, frame: &Frame, damage: &[Rect]) -> Result<(), DisplayError> {
-        check(&self.screen, frame, damage)?;
+        check((self.screen.width, self.screen.height), frame, damage)?;
         if damage.is_empty() {
             return Ok(());
         }
@@ -104,14 +109,14 @@ impl Display for SimDisplay {
     }
 }
 
-/// Refuses a frame of another size, or a damage rect that does not fit on the screen.
-fn check(screen: &Frame, frame: &Frame, damage: &[Rect]) -> Result<(), DisplayError> {
-    if (frame.width, frame.height) != (screen.width, screen.height) {
+/// Refuses a frame that is not `width` × `height`, or a damage rect that does not fit in it.
+pub(crate) fn check(size: (u32, u32), frame: &Frame, damage: &[Rect]) -> Result<(), DisplayError> {
+    let (width, height) = size;
+    if (frame.width, frame.height) != (width, height) {
         return Err(DisplayError::FrameSize { width: frame.width, height: frame.height });
     }
     let fits = |r: &Rect| {
-        u32::from(r.x) + u32::from(r.width) <= screen.width
-            && u32::from(r.y) + u32::from(r.height) <= screen.height
+        u32::from(r.x) + u32::from(r.width) <= width && u32::from(r.y) + u32::from(r.height) <= height
     };
     match damage.iter().find(|r| !fits(r)) {
         Some(&rect) => Err(DisplayError::DamageOutsideBar { rect }),

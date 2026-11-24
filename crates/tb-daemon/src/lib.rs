@@ -6,6 +6,7 @@ mod action;
 mod daemon;
 mod damage;
 mod display;
+mod drm;
 pub mod fake;
 mod fn_keyboard;
 mod keys;
@@ -17,6 +18,11 @@ mod uinput;
 pub use action::{ActionError, Actions, KeyEmitter, Report, ShSpawner, Spawner};
 pub use daemon::{Daemon, DaemonError, Event};
 pub use display::{Display, DisplayError, SimDisplay};
+pub use drm::{
+    CardKms, ConnectorInfo, CrtcInfo, DirtyClip, DrmDisplay, DrmError, DumbBuffer, FbSpec, Kms, KmsMetadata,
+    ModeInfo, NodeId, PlaneInfo, StepFailure, TargetError, check_touch_bar_card, confirm_touch_bar_node,
+    find_touch_bar_card,
+};
 pub use fn_keyboard::{FnKeyboard, find_fn_keyboard};
 pub use keys::{EvdevModifiers, KeyError, ModifierSource, forward_modifiers};
 pub use render::{GpuRenderer, SceneRenderer};
