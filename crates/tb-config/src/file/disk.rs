@@ -183,20 +183,20 @@ pub(super) fn write_backup(path: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
     Err(io::Error::new(io::ErrorKind::AlreadyExists, "no free backup name"))
 }
 
-/// Writes `text` to a temp file next to `path`, syncs it, runs `before_rename` (the last version
+/// Writes `bytes` to a temp file next to `path`, syncs it, runs `before_rename` (the last version
 /// check) and renames it over `path`, so a reader sees the old file or the new one, never half of
 /// it. With `mode`, the new file gets exactly those permission bits (not the umask's). On any
 /// failure, including a refusal by `before_rename`, the temp file is removed.
 pub(super) fn write_atomically<E>(
     path: &Path,
-    text: &str,
+    bytes: &[u8],
     mode: Option<u32>,
     io_at: impl Fn(&Path, io::Error) -> E,
     before_rename: impl FnOnce() -> Result<(), E>,
 ) -> Result<(), E> {
     let dir = super::dir_of(path);
     let (temp, file) = create_temp(path, mode).map_err(|e| io_at(dir, e))?;
-    let written = write_synced(file, text)
+    let written = write_synced(file, bytes)
         .map_err(|e| io_at(&temp, e))
         .and_then(|()| before_rename())
         .and_then(|()| fs::rename(&temp, path).map_err(|e| io_at(path, e)));
@@ -207,8 +207,8 @@ pub(super) fn write_atomically<E>(
     written
 }
 
-fn write_synced(mut file: fs::File, text: &str) -> io::Result<()> {
-    file.write_all(text.as_bytes())?;
+fn write_synced(mut file: fs::File, bytes: &[u8]) -> io::Result<()> {
+    file.write_all(bytes)?;
     file.sync_all()
 }
 

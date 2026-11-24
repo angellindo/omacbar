@@ -113,6 +113,23 @@ impl StoreDir {
         Ok(ids)
     }
 
+    /// Names of temp directories an interrupted write left (`.tmp-*`), sorted. They are not
+    /// generations and are never removed by this library.
+    pub fn temps(&self) -> Result<Vec<String>, BackupError> {
+        let dir = Dir::read_from(&self.fd).map_err(|e| self.io(e.into()))?;
+        let mut temps = Vec::new();
+        for entry in dir {
+            let entry = entry.map_err(|e| self.io(e.into()))?;
+            if let Ok(name) = entry.file_name().to_str()
+                && name.starts_with(".tmp-")
+            {
+                temps.push(name.to_owned());
+            }
+        }
+        temps.sort_unstable();
+        Ok(temps)
+    }
+
     /// Reads one generation back and checks it: manifest shape, its id, the kept bytes (a
     /// regular file, not a symlink, with the recorded length and hash) or their absence.
     pub fn inspect(&self, id: GenerationId) -> Inspected {

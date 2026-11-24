@@ -30,8 +30,9 @@ pub struct Backups {
 pub struct GenerationId(u64);
 
 impl GenerationId {
-    /// The id a store directory name stands for: digits only, no leading zero.
-    fn parse(name: &str) -> Option<Self> {
+    /// The id a store directory name (or a user's argument) stands for: a positive number in
+    /// digits only, no sign, space or leading zero. Anything else names no generation.
+    pub fn parse(name: &str) -> Option<Self> {
         let n: u64 = name.parse().ok()?;
         (n > 0 && n.to_string() == name).then_some(Self(n))
     }
@@ -53,6 +54,8 @@ pub enum Reason {
     Save,
     /// An overwrite the user acknowledged after a conflict.
     Overwrite,
+    /// A restore of a chosen generation (`ConfigFile::recover`).
+    Recover,
 }
 
 /// What a generation holds.
@@ -96,6 +99,23 @@ pub enum BackupError {
     Damaged { store: PathBuf, id: GenerationId, why: String },
     #[error("there is no generation {id} in `{}`", store.display())]
     NotFound { store: PathBuf, id: GenerationId },
+    /// The generation is sound but was kept for another config file.
+    #[error(
+        "generation {id} belongs to `{}`, not to `{}`; it is never restored here",
+        belongs_to.display(),
+        config.display()
+    )]
+    Foreign { id: GenerationId, belongs_to: PathBuf, config: PathBuf },
+    /// The generation records that no config file existed; restoring it removes the file, which
+    /// only an explicit removal does.
+    #[error("generation {id} records that there was no config file; restoring it removes the file")]
+    Absence { id: GenerationId },
+}
+
+/// What a verified generation of one config holds, ready to be restored.
+pub(crate) enum Stored {
+    File { bytes: Vec<u8>, mode: u32 },
+    Absent,
 }
 
 /// The store opened for writing and exclusively locked, held across one whole protected write.
@@ -153,18 +173,61 @@ impl Backups {
         Ok(out)
     }
 
+    /// Temp directories an interrupted write left in the store: incomplete, never a generation,
+    /// kept for the user to inspect. None when there is no store.
+    pub fn incomplete(&self) -> Result<Vec<String>, BackupError> {
+        StoreDir::open(&self.dir)?.map_or_else(|| Ok(Vec::new()), |store| store.temps())
+    }
+
     /// Checks one generation; `Damaged` says why it cannot be trusted.
     pub fn verify(&self, id: &GenerationId) -> Result<Generation, BackupError> {
-        let store =
-            StoreDir::open(&self.dir)?.ok_or(BackupError::NotFound { store: self.dir.clone(), id: *id })?;
-        match store.inspect(*id) {
-            Inspected::Missing => Err(BackupError::NotFound { store: self.dir.clone(), id: *id }),
-            Inspected::Unreadable(why) => Err(BackupError::Damaged { store: self.dir.clone(), id: *id, why }),
-            Inspected::Read { health: Health::Damaged(why), .. } => {
-                Err(BackupError::Damaged { store: self.dir.clone(), id: *id, why })
-            }
-            Inspected::Read { manifest, kind, health, .. } => Ok(generation(*id, &manifest, kind, health)),
+        self.read(*id).map(|(generation, ..)| generation)
+    }
+
+    /// Checks that generation `id` verifies and was kept for `config`: whether
+    /// `ConfigFile::recover` can restore it there. Reads only; never creates the store.
+    pub fn verify_for(&self, id: &GenerationId, config: &Path) -> Result<Generation, BackupError> {
+        self.stored(*id, config).map(|(generation, _)| generation)
+    }
+
+    /// The verified generation `id` of `config` and what it holds.
+    pub(crate) fn stored(
+        &self,
+        id: GenerationId,
+        config: &Path,
+    ) -> Result<(Generation, Stored), BackupError> {
+        let (generation, manifest, data) = self.read(id)?;
+        let config = absolute(config);
+        if manifest.config != config {
+            return Err(BackupError::Foreign { id, belongs_to: manifest.config, config });
         }
+        let stored = match (generation.kind, data) {
+            (GenerationKind::Absent { .. }, _) => Stored::Absent,
+            (GenerationKind::File, Some(bytes)) => Stored::File { bytes, mode: manifest.mode },
+            (GenerationKind::File, None) => {
+                return Err(self.damaged(id, format!("it holds no {}", store::DATA)));
+            }
+        };
+        Ok((generation, stored))
+    }
+
+    /// Generation `id` read back and verified: as listed, its manifest and its kept bytes.
+    fn read(&self, id: GenerationId) -> Result<(Generation, Manifest, Option<Vec<u8>>), BackupError> {
+        let not_found = || BackupError::NotFound { store: self.dir.clone(), id };
+        let store = StoreDir::open(&self.dir)?.ok_or_else(not_found)?;
+        match store.inspect(id) {
+            Inspected::Missing => Err(not_found()),
+            Inspected::Unreadable(why) | Inspected::Read { health: Health::Damaged(why), .. } => {
+                Err(self.damaged(id, why))
+            }
+            Inspected::Read { manifest, kind, health, data } => {
+                Ok((generation(id, &manifest, kind, health), manifest, data))
+            }
+        }
+    }
+
+    fn damaged(&self, id: GenerationId, why: String) -> BackupError {
+        BackupError::Damaged { store: self.dir.clone(), id, why }
     }
 
     /// Refuses a store at or inside the directory of `config`: a restore replaces that

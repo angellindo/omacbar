@@ -20,7 +20,7 @@ the configurator or the daemon (the default written for a missing file, `save`, 
 - **Layout.** One directory per generation, `backups/<id>/` (id = 1, 2, ... allocated under an
   exclusive `flock` on `backups/`), holding `manifest.toml` and, for a kept file, `config.toml`
   (exact bytes). Manifest (`deny_unknown_fields`, kebab-case): `format = 1`, `id`, `config`
-  (absolute path, symlinks unresolved), `reason` (`first-write` | `save` | `overwrite`), `kind`
+  (absolute path, symlinks unresolved), `reason` (`first-write` | `save` | `overwrite` | `recover`), `kind`
   (`file` | `absent`), `mode` (permission bits), `len`, `blake3` (hex), `dir-existed` (absent
   only). BLAKE3 is already in the lock file through Rune; no new package.
 - **Private.** Store 0700, generation directories 0700, files 0600, owned by the effective uid,
@@ -50,9 +50,20 @@ the configurator or the daemon (the default written for a missing file, `save`, 
   drawn) but never open a non-regular file, so nothing blocks on a FIFO.
 - **Mode.** A protected save gives the new file the replaced file's permission bits; a new file
   is 0600.
+- **Recovery.** `ConfigFile::look` records the file on disk as seen without parsing it;
+  `ConfigFile::recover(id)` is one more protected write against that version: the generation must
+  verify and name this config (`Backups::verify_for`), a `recover` generation of what is replaced
+  is kept, and the kept bytes are written with the kept bits (a missing file or directory is
+  created). An absence is restored only by `recover_removing`, which removes the file, never its
+  directory. The terminal tool `touchbar-recover` (a `[[bin]]` of tb-config: no Rune, GPU or
+  display in its graph) wraps them: `list`, `verify <id>`, `restore <id> [--remove-file]`; exit
+  0 done, 1 refused or failed, 2 usage, 3 conflict. Its look is unlocked and comes before the
+  locks, so a file changed while it waits for another writer is a conflict, never replaced.
 
 ## Consequences
 
+- R1: `tb-config` has one binary, `touchbar-recover`, so recovery works when the GUI or the
+  daemon cannot start; no new crate arrow.
 - R1: `tb-config` also owns the generation store (it is still the only crate that touches the
   config's files); new `tb-config` dependencies `serde`, `toml`, `blake3` (workspace), and
   rustix's `process` feature (effective uid; already enabled in the graph).

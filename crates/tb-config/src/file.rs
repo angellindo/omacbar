@@ -5,6 +5,7 @@
 //! keep and restore exactly.
 
 mod disk;
+mod recover;
 
 use std::fs;
 use std::io;
@@ -71,6 +72,9 @@ pub enum ConfigFileError {
     /// nothing was written.
     #[error("the config was not saved: {0}")]
     Backup(#[from] BackupError),
+    /// Restoring needs the generation store, and this config file was opened without one.
+    #[error("config file `{}` has no generation store to restore from", path.display())]
+    Unprotected { path: PathBuf },
 }
 
 /// Which write replaces the file, and the reason its generation records.
@@ -79,6 +83,7 @@ enum WriteKind {
     Default,
     Save,
     Overwrite,
+    Recover,
 }
 
 impl WriteKind {
@@ -87,6 +92,27 @@ impl WriteKind {
             Self::Default => Reason::FirstWrite,
             Self::Save => Reason::Save,
             Self::Overwrite => Reason::Overwrite,
+            Self::Recover => Reason::Recover,
+        }
+    }
+}
+
+/// What a write puts at the path: serialized text (new files get private bits), the exact bytes
+/// and permission bits of a restored generation, or no file at all.
+#[derive(Clone, Copy)]
+enum Content<'a> {
+    Text(&'a str),
+    Exact { bytes: &'a [u8], mode: u32 },
+    Remove,
+}
+
+impl<'a> Content<'a> {
+    /// The bytes the path holds once the write is done (`None`: no file).
+    fn bytes(self) -> Option<&'a [u8]> {
+        match self {
+            Self::Text(text) => Some(text.as_bytes()),
+            Self::Exact { bytes, .. } => Some(bytes),
+            Self::Remove => None,
         }
     }
 }
@@ -224,7 +250,7 @@ impl ConfigFile {
     /// the bytes of the file another writer created first.
     fn write_default(&mut self, theme: &BarTheme) -> Result<Option<Vec<u8>>, ConfigFileError> {
         let default = Config::default_for(theme);
-        match self.swap(&DiskVersion::ABSENT, &to_toml(&default)?, WriteKind::Default) {
+        match self.swap(&DiskVersion::ABSENT, Content::Text(&to_toml(&default)?), WriteKind::Default) {
             Ok(()) => {
                 self.config = default;
                 Ok(None)
@@ -244,7 +270,7 @@ impl ConfigFile {
     pub fn save(&mut self, config: Config, theme: &BarTheme) -> Result<(), ConfigFileError> {
         check(&config, theme)?;
         let seen = self.seen.clone();
-        self.swap(&seen, &to_toml(&config)?, WriteKind::Save)?;
+        self.swap(&seen, Content::Text(&to_toml(&config)?), WriteKind::Save)?;
         self.config = config;
         Ok(())
     }
@@ -256,7 +282,7 @@ impl ConfigFile {
         let theme = resolve_theme(&config.theme, active)?;
         check(&config, &theme)?;
         let seen = self.seen.clone();
-        self.swap(&seen, &to_toml(&config)?, WriteKind::Save)?;
+        self.swap(&seen, Content::Text(&to_toml(&config)?), WriteKind::Save)?;
         self.config = config;
         Ok(theme)
     }
@@ -284,16 +310,21 @@ impl ConfigFile {
     ) -> Result<BarTheme, ConfigFileError> {
         let theme = resolve_theme(&config.theme, active)?;
         check(&config, &theme)?;
-        self.swap(acknowledged, &to_toml(&config)?, WriteKind::Overwrite)?;
+        self.swap(acknowledged, Content::Text(&to_toml(&config)?), WriteKind::Overwrite)?;
         self.config = config;
         Ok(theme)
     }
 
-    /// Writes `text` only if the file is `expected`; records it as seen. An overwrite first keeps
+    /// Writes `content` only if the file is `expected`; records it as seen. An overwrite first keeps
     /// the replaced bytes in a `.bak` (a backup that exists while the rename did not happen still
     /// holds the version on disk, so an interruption loses nothing). A protected file first keeps
     /// a verified generation; any refusal comes before the file or its directory changes.
-    fn swap(&mut self, expected: &DiskVersion, text: &str, kind: WriteKind) -> Result<(), ConfigFileError> {
+    fn swap(
+        &mut self,
+        expected: &DiskVersion,
+        content: Content<'_>,
+        kind: WriteKind,
+    ) -> Result<(), ConfigFileError> {
         let io_at = |at: &Path, source| ConfigFileError::Io { path: at.to_path_buf(), source };
         // Unlocked first look: a stale save must not even create a removed directory.
         let current = self.version_now()?;
@@ -338,14 +369,7 @@ impl ConfigFile {
             }
             _ => None,
         };
-        // Last check right before the rename: narrows the window for editors that take no lock.
-        let protected = self.protection.is_some();
-        let recheck = || match version(&self.path, protected) {
-            Ok(now) if now == *expected => Ok(()),
-            Ok(now) => Err(ConfigFileError::Changed(now)),
-            Err(e) => Err(e),
-        };
-        let written = write_atomically(&self.path, text, mode, io_at, recheck);
+        let written = self.put(expected, content, mode);
         if written.is_err()
             && let Some(kept) = &kept
         {
@@ -355,7 +379,7 @@ impl ConfigFile {
         written?;
         // Best effort: the rename is done; durability of the directory entry is a bonus.
         let _ = lock.sync();
-        self.seen = DiskVersion(Some(text.as_bytes().to_vec()));
+        self.seen = DiskVersion(content.bytes().map(<[u8]>::to_vec));
         if kind == WriteKind::Overwrite {
             self.backup = kept;
         }
@@ -363,6 +387,31 @@ impl ConfigFile {
             self.last_generation = generation;
         }
         Ok(())
+    }
+
+    /// Under the directory lock, after any generation is kept: puts `content` at the path (an
+    /// atomic write with `mode`, or a removal), right after a last re-compare that narrows the
+    /// window for editors that take no lock.
+    fn put(
+        &self,
+        expected: &DiskVersion,
+        content: Content<'_>,
+        mode: Option<u32>,
+    ) -> Result<(), ConfigFileError> {
+        let io_at = |at: &Path, source| ConfigFileError::Io { path: at.to_path_buf(), source };
+        let protected = self.protection.is_some();
+        let recheck = || match version(&self.path, protected) {
+            Ok(now) if now == *expected => Ok(()),
+            Ok(now) => Err(ConfigFileError::Changed(now)),
+            Err(e) => Err(e),
+        };
+        match content {
+            Content::Text(text) => write_atomically(&self.path, text.as_bytes(), mode, io_at, recheck),
+            Content::Exact { bytes, mode } => write_atomically(&self.path, bytes, Some(mode), io_at, recheck),
+            Content::Remove => {
+                recheck().and_then(|()| fs::remove_file(&self.path).map_err(|e| io_at(&self.path, e)))
+            }
+        }
     }
 
     /// Under the directory lock: looks at the path without following a symlink, and keeps a
