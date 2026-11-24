@@ -27,8 +27,12 @@ the configurator or the daemon (the default written for a missing file, `save`, 
   under a parent owned by it. A store that is a symlink (also one swapped in later), not a
   directory, open to others, owned by someone else, or at/inside the config directory is
   refused with a diagnostic naming its path and the fix; its mode is never changed for the user.
-- **Order (atomic, durable, verified).** Config-directory lock (TB-43), compare, look at the path
-  without following a final symlink, then the store lock (never the reverse order). Build in
+- **Order (atomic, durable, verified).** Refuse a path that cannot be kept, take the store lock,
+  only then look at (and create) the config directory, take its lock (TB-43), compare, look at
+  the path without following a final symlink (never the reverse lock order). The store lock comes
+  first so `dir-existed` is decided while no other protected writer can create the directory: two
+  first runs of one profile otherwise let the one that saw the other's fresh directory record
+  `true`. Build in
   `backups/.tmp-<pid>-<n>/`: data and manifest written exclusively and fsynced, temp directory
   fsynced, `renameat(NOREPLACE)` to `<id>`, store fsynced, then read back (manifest, id, length,
   hash, the same bytes). Only a generation that verifies lets the config write proceed; any error

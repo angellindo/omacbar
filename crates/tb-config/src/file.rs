@@ -15,7 +15,7 @@ use tb_core::{BarSize, BarTheme, SpacingRules};
 use thiserror::Error;
 
 use crate::ThemeFileError;
-use crate::backup::{BackupError, Backups, GenerationId, Kept, Reason};
+use crate::backup::{BackupError, Backups, GenerationId, Kept, Locked, Reason};
 use crate::durable::{create_dir_all_durably, parent_of};
 pub use disk::DiskVersion;
 use disk::{DirLock, Found, Refused, version_at, version_followed, write_atomically, write_backup};
@@ -300,9 +300,18 @@ impl ConfigFile {
         if current != *expected {
             return Err(ConfigFileError::Changed(current));
         }
-        if let Some(backups) = &self.protection {
-            backups.check_location(&self.path)?;
-        }
+        // A protected write locks the store before it looks at or creates the directory, so
+        // `dir_existed` is decided while no other protected writer can create it (ADR-0015).
+        // Order: store lock, then directory lock, for every protected write.
+        let store = match &self.protection {
+            Some(backups) => {
+                backups.check_location(&self.path)?;
+                // A path that cannot be kept is refused before the store is created.
+                disk::probe(&self.path).map_err(|r| refused(&self.path, r))?;
+                Some(backups.lock(&self.path)?)
+            }
+            None => None,
+        };
         let dir = dir_of(&self.path);
         let dir_existed = dir.is_dir();
         create_dir_all_durably(dir, 0o777).map_err(|e| io_at(dir, e))?;
@@ -311,17 +320,17 @@ impl ConfigFile {
         if current != *expected {
             return Err(ConfigFileError::Changed(current));
         }
-        let (mode, generation) = match &self.protection {
-            Some(backups) => {
-                let (mode, id) = self.keep_generation(backups, expected, dir_existed, kind)?;
+        let (mode, generation) = match (&self.protection, &store) {
+            (Some(backups), Some(locked)) => {
+                let (mode, id) = self.keep_generation(backups, locked, expected, dir_existed, kind)?;
                 (Some(mode), Some(id))
             }
-            None if kind == WriteKind::Overwrite
+            _ if kind == WriteKind::Overwrite
                 && fs::symlink_metadata(&self.path).is_ok_and(|m| m.file_type().is_symlink()) =>
             {
                 return Err(ConfigFileError::Symlink { path: self.path.clone() });
             }
-            None => (None, None),
+            _ => (None, None),
         };
         let kept = match (&current.0, kind) {
             (Some(bytes), WriteKind::Overwrite) => {
@@ -362,6 +371,7 @@ impl ConfigFile {
     fn keep_generation(
         &self,
         backups: &Backups,
+        locked: &Locked,
         expected: &DiskVersion,
         dir_existed: bool,
         kind: WriteKind,
@@ -376,7 +386,7 @@ impl ConfigFile {
         if now != *expected {
             return Err(ConfigFileError::Changed(now));
         }
-        let id = backups.keep(&self.path, &kept, kind.reason())?;
+        let id = backups.keep(locked, &self.path, &kept, kind.reason())?;
         Ok((mode, id))
     }
 

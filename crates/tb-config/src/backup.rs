@@ -8,6 +8,7 @@ mod store;
 
 use std::ffi::OsStr;
 use std::fmt;
+use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -97,6 +98,15 @@ pub enum BackupError {
     NotFound { store: PathBuf, id: GenerationId },
 }
 
+/// The store opened for writing and exclusively locked, held across one whole protected write.
+/// Every protected write takes it before looking at or creating the config directory (and before
+/// the directory lock), so two first writes of one profile never interleave: the one that keeps
+/// the absence records whether the directory existed before either of them created it.
+pub(crate) struct Locked {
+    store: StoreDir,
+    _lock: File,
+}
+
 /// What a protected write is about to replace.
 pub(crate) enum Kept<'a> {
     File { bytes: &'a [u8], mode: u32 },
@@ -174,22 +184,31 @@ impl Backups {
         })
     }
 
-    /// Keeps a verified generation of `kept` for `config`, or reuses the newest verified one
-    /// when it holds the same thing. Only an `Ok` lets the caller replace the file.
+    /// Creates the store if needed, refusing one that cannot be trusted (or that lies inside the
+    /// directory of `config`), and locks it until the returned guard drops.
+    pub(crate) fn lock(&self, config: &Path) -> Result<Locked, BackupError> {
+        self.check_location(config)?;
+        let store = StoreDir::open_for_write(&self.dir)?;
+        let lock = store.lock().map_err(|source| BackupError::Io { path: self.dir.clone(), source })?;
+        Ok(Locked { store, _lock: lock })
+    }
+
+    /// Keeps a verified generation of `kept` for `config` in the store `locked` holds, or reuses
+    /// the newest verified one when it holds the same thing. Only an `Ok` lets the caller replace
+    /// the file.
     pub(crate) fn keep(
         &self,
+        locked: &Locked,
         config: &Path,
         kept: &Kept<'_>,
         reason: Reason,
     ) -> Result<GenerationId, BackupError> {
-        self.check_location(config)?;
-        let store = StoreDir::open_for_write(&self.dir)?;
+        let store = &locked.store;
         let io_err = |source| BackupError::Io { path: self.dir.clone(), source };
-        let _lock = store.lock().map_err(io_err)?;
         let config = absolute(config);
         let manifest = describe(&config, kept, reason);
         let ids = store.ids()?;
-        if let Some(id) = newest_same(&store, &ids, &manifest) {
+        if let Some(id) = newest_same(store, &ids, &manifest) {
             return Ok(id);
         }
         let id = GenerationId(ids.last().map_or(1, |last| last.0.saturating_add(1)));

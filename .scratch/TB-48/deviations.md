@@ -15,3 +15,17 @@
   once (mtime touch, content and seal unchanged) so `CARGO_TARGET_TMPDIR` is `/tmp/tb48t/tmp`.
   QA should either keep the target dir under 24 bytes or shorten the test's socket path.
 - No `taken-at` clock yet: nothing in slice 1 shows or orders by time (ids are monotonic).
+- **Lock order: store first.** The plan and the first ADR-0015 text took the config-directory
+  lock, then the store lock. Two first runs of one profile then raced: the writer that saw the
+  other's fresh directory could win the directory lock and record `dir-existed = true`
+  (reproduced: 1 of 120 paired `touchbard --sim` starts on one CPU with ce1b946). Every protected
+  write now refuses an unkeepable path, takes the store lock, and only then looks at and creates
+  the directory and takes its lock; ADR-0015 says so.
+- **QA-size-limit harness and this host's GPU.** `run_limited` caps the whole configurator with
+  `prlimit --fsize=65536` from `exec`. Mesa `anv` (Kaby Lake, the only Vulkan ICD here; no
+  lavapipe installed) cannot create a device below RLIMIT_FSIZE = 1 GiB (measured: 1023 MiB
+  fails, 1024 MiB works, also with `MESA_SHADER_CACHE_DISABLE=true` or an empty
+  `XDG_CACHE_HOME`), so both size-limit cases stop at "no GPU device: Parent device is lost"
+  before the Save: the room case fails and the no-room case passes without reaching the Save.
+  With the same limit applied to the live process after GPU init, both cases reach the Save and
+  behave as the contract says. Needs a QA harness change; see the RESULT.
