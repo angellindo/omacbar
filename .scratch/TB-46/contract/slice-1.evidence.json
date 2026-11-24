@@ -1,0 +1,15 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-24T03:35:36Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "cce2d715146007d89e1ed1d9eae08ab25f2ca259",
+      "final": false,
+      "results": {
+        "tests": "FAILED",
+        "runbook": "FAILED"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T033535Z-slice-1"
+    }
+  ]
+}
