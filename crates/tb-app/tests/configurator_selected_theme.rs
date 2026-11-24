@@ -2,8 +2,8 @@
 //! resolves to, as the daemon does. Every case builds its own `HOME` under cargo's temp dir (never
 //! the real one) and opens the editor exactly as startup does: the active Omarchy theme of that
 //! home (`ActiveTheme::load`) and the config at `default_path(home)`. Observed through the public
-//! Runtime keys (`status`, `save-blocked-reason`, `save`, `preview-<id>`, `field-*`) and the
-//! bytes on disk.
+//! Runtime keys (`status`, `save-blocked-reason`, `save`, `preview-<id>`, `<id>-label`,
+//! `tab-fnctrl`, `field-*`) and the bytes on disk.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod support {
     pub mod configurator;
@@ -18,7 +18,7 @@ use support::configurator::*;
 use tb_app::State;
 use tb_config::{ActiveTheme, ConfigFile, default_path};
 use tb_core::config::{Config, ThemeSource, parse, to_toml};
-use tb_core::{BarTheme, Chord, Rgba};
+use tb_core::{BarTheme, Button, Chord, Rgba};
 use tb_render::view::color;
 
 /// A colour token only the external theme defines, and its colour.
@@ -87,6 +87,30 @@ fn external_home(test: &str) -> (PathBuf, Config, String, Vec<u8>) {
     let (config, id) = layout_on(&theme);
     let bytes = write_own(&home, &config);
     (home, config, id, bytes)
+}
+
+/// The Fn + Ctrl `lock` of `config`.
+fn lock_of(config: &mut Config) -> &mut Button {
+    config
+        .layout
+        .layer_mut(Chord::FnCtrl)
+        .unwrap()
+        .groups
+        .iter_mut()
+        .flat_map(|g| &mut g.buttons)
+        .find(|b| b.id.as_str() == "lock")
+        .unwrap()
+}
+
+/// Shows the Fn + Ctrl layer through its tab, as a user does.
+fn show_fn_ctrl(rt: &mut Runtime<State>) {
+    operate(rt, "tab-fnctrl");
+    assert_eq!(rt.state.chord, Chord::FnCtrl, "the Fn + Ctrl layer is previewed");
+}
+
+/// The lock as the preview draws it: the button's fill and its label's text colour.
+fn preview_lock(rt: &Runtime<State>) -> (rune::Color, Option<rune::Color>) {
+    (element(rt, "preview-lock").fill, element(rt, "lock-label").text_color)
 }
 
 fn on_disk(home: &Path) -> Config {
@@ -282,22 +306,25 @@ fn a_selected_theme_that_loses_a_used_token_after_opening_refuses_the_save_and_n
 #[test]
 fn a_first_run_under_a_theme_without_red_writes_a_default_every_process_accepts() {
     let home = home_with_active("minimal_first_run", MINIMAL);
-    let rt = startup(&home);
+    let mut rt = startup(&home);
     assert_editing_without_issues(&rt);
     let minimal = BarTheme::from_omarchy_colors(MINIMAL).unwrap();
+    show_fn_ctrl(&mut rt);
+    assert_eq!(
+        preview_lock(&rt),
+        (color(minimal.button_fill), Some(color(minimal.button_text))),
+        "without its red fill the lock is drawn in the idle roles: button text on the button fill"
+    );
+    assert_eq!(minimal.button_text, Rgba::opaque(0xd0, 0xd4, 0xd8), "button text is the foreground");
+
+    // The text paired with the dropped fill goes with it: background text on the idle fill is unreadable.
     let mut expected = Config::default();
-    let lock = expected
-        .layout
-        .layer_mut(Chord::FnCtrl)
-        .unwrap()
-        .groups
-        .iter_mut()
-        .flat_map(|g| &mut g.buttons)
-        .find(|b| b.id.as_str() == "lock")
-        .unwrap();
+    let lock = lock_of(&mut expected);
     assert_eq!(lock.style.fill.as_deref(), Some("red"), "the shipped default fills the lock red");
+    assert_eq!(lock.style.text.as_deref(), Some("background"), "with background text paired with it");
     lock.style.fill = None;
-    assert_eq!(on_disk(&home), expected, "only the override the theme cannot resolve is dropped");
+    lock.style.text = None;
+    assert_eq!(on_disk(&home), expected, "only the red fill and the text paired with it are dropped");
     assert_eq!(rt.state.config, expected);
 
     let reopened = startup(&home);
@@ -312,10 +339,57 @@ fn a_first_run_under_a_theme_without_red_writes_a_default_every_process_accepts(
 fn a_first_run_under_shipped_omarchy_themes_writes_the_unchanged_default() {
     for (n, colors) in [TOKYO_NIGHT, CATPPUCCIN_LATTE].into_iter().enumerate() {
         let home = home_with_active(&format!("shipped_first_run_{n}"), colors);
-        let rt = startup(&home);
+        let mut rt = startup(&home);
         assert_editing_without_issues(&rt);
         assert_eq!(fs::read_to_string(default_path(&home)).unwrap(), to_toml(&Config::default()).unwrap());
-        assert_eq!(button(&rt, Chord::FnCtrl, "lock").style.fill.as_deref(), Some("red"));
+        let style = button(&rt, Chord::FnCtrl, "lock").style;
+        assert_eq!(style.fill.as_deref(), Some("red"));
+        assert_eq!(style.text.as_deref(), Some("background"));
+        let theme = BarTheme::from_omarchy_colors(colors).unwrap();
+        show_fn_ctrl(&mut rt);
+        assert_eq!(
+            preview_lock(&rt),
+            (color(theme.resolve("red").unwrap()), Some(color(theme.resolve("background").unwrap()))),
+            "the lock keeps its red fill and background text"
+        );
+    }
+}
+
+#[test]
+fn a_saved_layout_keeps_its_own_lock_colours_and_bytes_on_open() {
+    // Colours a person chose, and the file an earlier build generated under a theme without red
+    // (red fill dropped, background text kept): both are the user's, and neither is rewritten.
+    let mut authored = Config::default();
+    let lock = lock_of(&mut authored);
+    lock.style.fill = Some("accent".to_owned());
+    lock.style.text = Some("foreground".to_owned());
+    let mut earlier = Config::default();
+    lock_of(&mut earlier).style.fill = None;
+    for (test, colors, config, fill, text) in [
+        ("authored_lock", TOKYO_NIGHT, authored, Some("accent"), "foreground"),
+        ("earlier_minimal_default", MINIMAL, earlier, None, "background"),
+    ] {
+        let home = home_with_active(test, colors);
+        let bytes = write_own(&home, &config);
+        let theme = BarTheme::from_omarchy_colors(colors).unwrap();
+        let want_fill = fill.map_or(theme.button_fill, |token| theme.resolve(token).unwrap());
+        let want_text = theme.resolve(text).unwrap();
+        for when in ["on open", "on reopen"] {
+            let mut rt = startup(&home);
+            assert_editing_without_issues(&rt);
+            assert_eq!(rt.state.config, config, "{test}: the saved layout is shown as written {when}");
+            show_fn_ctrl(&mut rt);
+            assert_eq!(
+                preview_lock(&rt),
+                (color(want_fill), Some(color(want_text))),
+                "{test}: the lock keeps its saved colours {when}"
+            );
+            assert_bytes_kept(&home, &bytes, &format!("{test} {when}"));
+        }
+        let mut daemon_view = ConfigFile::new(default_path(&home));
+        daemon_view.load_resolved(&theme).unwrap();
+        assert_eq!(daemon_view.config(), &config, "{test}: the daemon's path reads the same layout");
+        assert_bytes_kept(&home, &bytes, &format!("{test} after the daemon's read"));
     }
 }
 
