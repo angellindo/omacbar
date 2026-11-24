@@ -3,7 +3,9 @@
 
   run --bin-dir D --report R [--home H]     whole rehearsal with the real (or fake) binaries
   capture --home H --store S --manifest M   record the config path before a test changes it
-  settle --manifest M [--pid N]… [--artifact PATH SHA256]…   record what the test left
+  settle --manifest M --expect-config E [--expect-target E] [--pid N]… [--artifact PATH SHA256]…
+                                            record what the test left, if it is what the producing
+                                            step expects (E: absent | sha256 | symlink:<text>)
   restore --manifest M                      compare-and-swap the original back (TB-43 lock)
   verify --manifest M                       compare the profile with the capture
   cleanup --manifest M                      remove the test's own unchanged artifacts
@@ -31,6 +33,8 @@ def parser() -> argparse.ArgumentParser:
         c.add_argument(flag, type=Path, required=True)
     s = sub.add_parser("settle")
     s.add_argument("--manifest", type=Path, required=True)
+    s.add_argument("--expect-config")  # missing → a refusal (exit 1), not a usage error
+    s.add_argument("--expect-target")
     s.add_argument("--pid", type=int, action="append", default=[])
     s.add_argument("--artifact", nargs=2, action="append", default=[], metavar=("PATH", "SHA256"))
     for name in ("restore", "verify", "cleanup"):
@@ -58,7 +62,8 @@ def dispatch(args) -> int:
         return OK
     if args.cmd == "settle":
         import rehearsal_profile
-        problems = rehearsal_profile.settle(args.manifest, args.pid, args.artifact)
+        problems = rehearsal_profile.settle(args.manifest, args.pid, args.artifact,
+                                            args.expect_config, args.expect_target)
         return report_lines("settle", problems)
     if args.cmd == "restore":
         import rehearsal_restore

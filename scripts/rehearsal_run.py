@@ -3,8 +3,14 @@
 The profile comes from `tempfile.mkdtemp` (or a new `--home`) and is the only HOME any binary sees;
 the active theme is a copy of a repo fixture. Five config scenarios each go capture → edit+save
 (flow script) → reopen → settle → restore → verify → reopen (valid configs only, after verify so a
-default can never hide an absence). A simulator stage runs the daemon with keys to a file inside the
-profile on a rehearsal-built config whose only command writes a profile-local mark. The persistent
+default can never hide an absence). Settle carries the producing save's expectation, taken the
+moment the save exits successfully (before any other process of the run starts) and checked against
+what the save must leave (TOML with the edited label); a captured link's target is expected as
+captured unless the save wrote through the link. A failed save or reopen, or a config or target
+that is no longer what the save left, stops the run: nothing is settled or restored over those
+bytes, and the scenario's store and manifest are kept. A simulator stage runs the daemon with keys
+to a file inside the profile on a rehearsal-built config whose only command writes a profile-local
+mark. The persistent
 launcher session is compared by metadata only (never read) before and after. The report doubles as
 the manifest `cleanup` takes: it lists only outputs whose content was checked against what the
 producing step must leave."""
@@ -18,12 +24,24 @@ import shutil
 import subprocess
 import tempfile
 import time
+import tomllib
 from pathlib import Path
 
 import rehearsal_profile as profile
 import rehearsal_restore
 from rehearsal_fs import (CONFIG_REL, ROOT, SESSION, THEME_REL, FAILED, OK, Conflict, Refused,
                           lstat_state, process_identity, read_json, refuse_shared, sha256, write_json)
+
+
+def expectation(state: dict) -> str:
+    """The `settle` expectation for one lstat state."""
+    if state["type"] == "file":
+        return state["sha256"]
+    if state["type"] == "symlink":
+        return f"symlink:{state['link']}"
+    if state["type"] == "absent":
+        return "absent"
+    raise Refused(f"cannot expect a {state['type']}")
 
 FLOW = Path(__file__).resolve().parent / "rehearsal/edit-label-save.json"
 EDITED = "Rehearsal"  # the label the flow script types
@@ -103,8 +121,8 @@ class Rehearsal:
             self.report["artifacts"].append({"path": str(path), **state})
         return good
 
-    def snap(self, tag: str, extra: list) -> str:
-        """Headless configurator run; returns every text in its tree ('' if it did not run)."""
+    def snap(self, tag: str, extra: list) -> tuple[int, str]:
+        """Headless configurator run; returns its exit code and every text in its tree."""
         png, tree = self.snaps / f"{tag}.png", self.snaps / f"{tag}.json"
         p = self.start("touchbar-customizer", [*extra, "--snap", png, "--tree", tree])
         self.own(png, lambda b: b.startswith(b"\x89PNG"))
@@ -112,31 +130,60 @@ class Rehearsal:
             elements = json.loads(tree.read_text())["elements"]
             self.own(tree, lambda b: True)
         except (OSError, ValueError, KeyError):
-            return "" if p.returncode else "(no tree)"
-        return "\n".join(str(e.get("text") or "") for e in elements)
+            return p.returncode, ""
+        return p.returncode, "\n".join(str(e.get("text") or "") for e in elements)
+
+    def produced(self, captured: dict) -> tuple[str, str | None]:
+        """Expectations from the save that just exited, before any other process of the run
+        starts: the config it left (TOML holding the edited label), and a captured link's target
+        (as captured, unless the save wrote through the link)."""
+        config = self.home / CONFIG_REL
+        now = lstat_state(config)
+        blob = config.read_bytes() if now["type"] in ("file", "symlink") and config.is_file() else None
+        try:
+            if blob is None or EDITED.encode() not in blob:
+                raise ValueError("the edited label is missing")
+            tomllib.loads(blob.decode())
+        except (ValueError, UnicodeDecodeError) as e:
+            raise Refused(f"the save did not leave the edited config ({now['type']}): {e}") from e
+        if captured["original"]["type"] != "symlink":
+            return expectation(now), None
+        through = now == captured["original"]  # still the captured link: the save wrote its target
+        target = lstat_state(Path(captured["target"])) if through else captured["target_state"]
+        return expectation(now), expectation(target)
 
     def scenario(self, name: str, original_label: str | None) -> None:
         rec = {"name": name}
+        self.report["scenarios"].append(rec)
         store, manifest = self.root / "stores" / name, self.root / "manifests" / f"{name}.json"
-        profile.capture(self.home, store, manifest, allow_caller_home=True)
-        rec["edit_shown"] = EDITED in self.snap(f"{name}-edit", ["--script", FLOW, "--at", "mark:end"])
-        reopened = self.snap(f"{name}-reopen-edited", [])
-        rec["reopen_edited"] = EDITED in reopened and not re.search(r"theme[^\n]*(error|invalid|cannot)", reopened, re.I)
-        profile.settle(manifest, [], [])
+        captured = profile.capture(self.home, store, manifest, allow_caller_home=True)
+        kept = f"nothing settled or restored; current bytes kept, original in {captured['store']}"
+        rc, shown = self.snap(f"{name}-edit", ["--script", FLOW, "--at", "mark:end"])
+        rec["save_exit"], rec["passed"] = rc, False
+        if rc != 0 or EDITED not in shown:
+            raise Refused(f"scenario {name}: the save failed (exit {rc}); {kept}")
+        rec["expect_config"], rec["expect_target"] = self.produced(captured)
+        rc, reopened = self.snap(f"{name}-reopen-edited", [])
+        rec["reopen_exit"] = rc
+        theme_error = re.search(r"theme[^\n]*(error|invalid|cannot)", reopened, re.I)
+        if rc != 0 or EDITED not in reopened or theme_error:
+            raise Refused(f"scenario {name}: the reopen failed or did not show the save (exit {rc}); {kept}")
         try:
+            profile.settle(manifest, [], [], rec["expect_config"], rec["expect_target"])
             rehearsal_restore.restore(manifest)
-            rec["restored"] = True
-        except (Conflict, Refused, OSError) as e:
-            rec["restored"], rec["restore_error"] = False, str(e)
+        except (Conflict, Refused) as e:
+            raise Conflict(f"scenario {name}: {e}") from e
         rec["verify"] = profile.verify(manifest)
         if original_label and not rec["verify"]:
-            rec["reopen_original"] = original_label in self.snap(f"{name}-reopen-original", [])
+            rec["reopen_original"] = original_label in self.snap(f"{name}-reopen-original", [])[1]
             rec["verify_after_reopen"] = profile.verify(manifest)
+        rec["passed"] = all(v in (True, []) for k, v in rec.items()
+                            if k in ("verify", "reopen_original", "verify_after_reopen"))
+        if not rec["passed"]:
+            raise Refused(f"scenario {name}: verify after restore failed; store and manifest kept")
         data = read_json(manifest)
         self.report["stores"] += [{**st, "verified": data["verified"]} for st in data["stores"]]
         self.own(manifest, lambda b: True)
-        rec["passed"] = all(v in (True, []) for k, v in rec.items() if k not in ("name", "restore_error"))
-        self.report["scenarios"].append(rec)
 
     def simulator(self) -> None:
         store, manifest = self.root / "stores" / "simulator", self.root / "manifests" / "simulator.json"
@@ -155,7 +202,10 @@ class Rehearsal:
                "mark_once": self.own(mark, lambda b: b == b"x"),
                "frames": sum(self.own(f, lambda b: b.startswith(b"\x89PNG")) for f in sorted(self.frames.glob("*.png")))
                if self.frames.is_dir() else 0}
-        profile.settle(manifest, [], [])
+        captured = read_json(manifest)
+        through = captured["original"]["type"] == "symlink"
+        profile.settle(manifest, [], [], sha256(SIM),  # the run wrote SIM itself
+                       expectation(captured["target_state"]) if through else None)
         rehearsal_restore.restore(manifest)
         rec["verify"] = profile.verify(manifest)
         rec["passed"] = rec["f5_once"] and rec["mark_once"] and not rec["verify"]
