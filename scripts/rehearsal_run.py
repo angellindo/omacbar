@@ -249,6 +249,10 @@ class Rehearsal:
         theme = self.home / THEME_REL
         theme.parent.mkdir(parents=True, mode=0o700)
         shutil.copyfile(ROOT / "fixtures/omarchy-themes" / self.theme / "colors.toml", theme)
+        # The daemon watches this directory for the theme hook. Create it so cleanup owns it.
+        hook_dir = self.home / ".local/state/touchbar-customizer"
+        hook_dir.mkdir(mode=0o700)
+        self.report["dirs"].append(str(hook_dir))
         fixture = (ROOT / "fixtures/omarchy-themes" / self.theme / "colors.toml").read_bytes()
         self.report["dirs"] += [str(self.home / p) for p in (".config", CONFIG_REL.parent)]
         self.report["dirs"] += [str(theme.parents[i]) for i in range(len(THEME_REL.parts) - 1)]
