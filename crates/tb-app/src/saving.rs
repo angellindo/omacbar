@@ -4,6 +4,7 @@
 //! reloads or overwrites.
 
 use std::io;
+use std::path::PathBuf;
 
 use crate::app::{NO_HOME, State};
 use crate::drafts::Fields;
@@ -20,6 +21,7 @@ pub(crate) struct Saving {
     /// The disk version a dirty save was refused over; reload and overwrite are offered.
     pub(crate) conflict: Option<DiskVersion>,
     clock: fn() -> Option<u64>,
+    receipt: Option<PathBuf>,
 }
 
 impl Default for Saving {
@@ -31,6 +33,7 @@ impl Default for Saving {
             saved_this_session: false,
             conflict: None,
             clock: || None,
+            receipt: None,
         }
     }
 }
@@ -39,6 +42,11 @@ impl State {
     /// Injects epoch seconds for successful explicit saves; opening files never samples it.
     pub fn set_save_clock(&mut self, clock: fn() -> Option<u64>) {
         self.saving.clock = clock;
+    }
+
+    /// Supplies the optional receipt destination at binary startup.
+    pub fn set_save_receipt(&mut self, receipt: Option<PathBuf>) {
+        self.saving.receipt = receipt;
     }
 
     pub(crate) fn invalid_widths(&self) -> Vec<(Chord, ButtonId)> {
@@ -155,6 +163,11 @@ impl State {
         let Some(file) = &self.file else { return };
         let kept = backup.map(|b| format!("; the replaced version is kept in {b}")).unwrap_or_default();
         self.status = format!("saved config {}{kept}", file.path().display());
+        if let Some(path) = &self.saving.receipt
+            && let Err(e) = file.write_save_receipt(path)
+        {
+            self.status.push_str(&format!(". Could not write the save receipt at {} ({e})", path.display()));
+        }
         self.saving.baseline = Some(self.config.clone());
         self.saving.last_saved = (self.saving.clock)();
         self.saving.saved_this_session = true;

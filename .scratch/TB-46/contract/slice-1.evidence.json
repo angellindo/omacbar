@@ -111,6 +111,17 @@
       "log": ".scratch/TB-46/gate/2026-11-24T210617Z-slice-1"
     },
     {
+      "at": "2026-11-24T22:46:16Z",
+      "seal": "sha256:e7bb6f5acc32356222015d9feabc791153d7c6b89e2d17ea4f59dc59de0d1dd3",
+      "head": "27643ff24dc7515fb42c131219a2b60e53f8e5bd",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T224556Z-slice-1-final"
+    },
+    {
       "at": "2026-11-24T23:09:06Z",
       "seal": "sha256:c56950dc6a0108868f7e98b6b6d8cc593a04fdbc93f90805ceab2d3ef97b396a",
       "head": "27643ff24dc7515fb42c131219a2b60e53f8e5bd",

@@ -16,6 +16,8 @@ tb-config = { path = "crates/tb-config" }
 # Rune is pre-release: always pin a `dev` rev (never a branch). Bump in its own ticket.
 rune = { git = "https://github.com/anomalyco/rune", rev = "f73f72cdc563534e4f7de9f5a79bed007ac42384", default-features = false, features = ["embedded-fonts"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
 toml = "0.9"
 thiserror = "2"
 png = "0.17"

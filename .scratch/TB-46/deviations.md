@@ -35,3 +35,12 @@
 - **Paths recorded resolved.** `capture` records the store by `realpath`, like the HOME, artifacts
   and link target already were; `cleanup` and `restore` reach them from `/` one component at a time
   with `O_NOFOLLOW`, so a symlink anywhere on the way means a swapped directory and the item is kept.
+
+## Save receipt re-spec
+
+- The sealed re-spec supersedes the correction cycle's post-save read. Each explicit save receives
+  a fresh `TB_SAVE_RECEIPT` path. The receipt takes its digest from the serialized bytes the config
+  swap used. The rehearsal compares against that digest and the captured target state.
+- The invalid scenario still uses the original malformed UTF-8 bytes and the same edit-and-save
+  script. Opening the config records the raw bytes before trying UTF-8, so the normal save can
+  replace precisely the invalid version it opened. An intervening edit still causes a conflict.

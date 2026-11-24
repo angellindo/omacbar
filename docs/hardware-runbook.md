@@ -72,11 +72,11 @@ test's own only when it has the hash the producing step expects. Exit codes: 0 o
 refusal (nothing changed), 3 conflict (current version kept in place, original kept in the store).
 `capture` refuses the caller's HOME, the persistent session and a store inside the tree it would
 replace.
-`run` takes each scenario's expectation from the producing save itself: the hash of what the save
-left, read as soon as the configurator exits 0 and before any other process of the run starts,
-and accepted only if it is TOML holding the edited label. A failed save or reopen, or a config or
-old link target that changed after the save, stops the run with nothing settled or restored. Limit:
-a writer that replaces the config between the save's exit and that read is taken for the save.
+`run` gives each explicit save a fresh `TB_SAVE_RECEIPT` path inside the rehearsal profile.
+The configurator writes the config path and the SHA-256 of the bytes it saved. The report records
+that digest, and the configurator must still show the edited label on reopen. A failed save or
+reopen, a missing or invalid receipt, or a change to the saved config or the captured link target
+stops the run. The current config and the capture remain available after cleanup.
 
 Two editors and an external edit: the tool half is a conflict (exit 3, both versions kept) and a
 restore that waits for a writer holding the lock. The configurator half is TB-43's sealed Runtime

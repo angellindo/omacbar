@@ -3,10 +3,8 @@
 The profile comes from `tempfile.mkdtemp` (or a new `--home`) and is the only HOME any binary sees;
 the active theme is a copy of a repo fixture. Five config scenarios each go capture → edit+save
 (flow script) → reopen → settle → restore → verify → reopen (valid configs only, after verify so a
-default can never hide an absence). Settle carries the producing save's expectation, taken the
-moment the save exits successfully (before any other process of the run starts) and checked against
-what the save must leave (TOML with the edited label); a captured link's target is expected as
-captured unless the save wrote through the link. A failed save or reopen, or a config or target
+default can never hide an absence). Settle uses the digest in the producing save's receipt and
+expects the captured link's target to stay unchanged. A failed save or reopen, or a config or target
 that is no longer what the save left, stops the run: nothing is settled or restored over those
 bytes, and the scenario's store and manifest are kept. A simulator stage runs the daemon with keys
 to a file inside the profile on a rehearsal-built config whose only command writes a profile-local
@@ -24,13 +22,13 @@ import shutil
 import subprocess
 import tempfile
 import time
-import tomllib
 from pathlib import Path
 
 import rehearsal_profile as profile
 import rehearsal_restore
 from rehearsal_fs import (CONFIG_REL, ROOT, SESSION, THEME_REL, FAILED, OK, Conflict, Refused,
-                          lstat_state, process_identity, read_json, refuse_shared, sha256, write_json)
+                          lstat_state, process_identity, read_json, read_nofollow, refuse_shared,
+                          sha256, write_json)
 
 
 def expectation(state: dict) -> str:
@@ -94,6 +92,7 @@ class Rehearsal:
         self.snaps, self.frames = self.home / "rehearsal-snaps", self.home / "sim-frames"
         self.theme = theme
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") or k == "XDG_RUNTIME_DIR"}
+        self.env.pop("TB_SAVE_RECEIPT", None)
         self.env["HOME"] = str(self.home)
         self.report = {"kind": "run", "profile": str(root), "home": str(self.home), "scenarios": [],
                        "simulator": {}, "pids": [], "artifacts": [], "stores": [], "verified": False,
@@ -101,8 +100,10 @@ class Rehearsal:
                                 str(root / "linked"), str(self.snaps), str(self.frames)]}
         self.problems: list[str] = []
 
-    def start(self, name: str, args: list, stdin: str | None = None) -> subprocess.CompletedProcess:
-        p = subprocess.Popen([str(self.bins[name]), *map(str, args)], cwd=self.home, env=self.env,
+    def start(self, name: str, args: list, stdin: str | None = None,
+              *, receipt: Path | None = None) -> subprocess.CompletedProcess:
+        env = self.env if receipt is None else {**self.env, "TB_SAVE_RECEIPT": str(receipt)}
+        p = subprocess.Popen([str(self.bins[name]), *map(str, args)], cwd=self.home, env=env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if identity := process_identity(p.pid):
             self.report["pids"].append(identity)
@@ -121,10 +122,10 @@ class Rehearsal:
             self.report["artifacts"].append({"path": str(path), **state})
         return good
 
-    def snap(self, tag: str, extra: list) -> tuple[int, str]:
+    def snap(self, tag: str, extra: list, *, receipt: Path | None = None) -> tuple[int, str]:
         """Headless configurator run; returns its exit code and every text in its tree."""
         png, tree = self.snaps / f"{tag}.png", self.snaps / f"{tag}.json"
-        p = self.start("touchbar-customizer", [*extra, "--snap", png, "--tree", tree])
+        p = self.start("touchbar-customizer", [*extra, "--snap", png, "--tree", tree], receipt=receipt)
         self.own(png, lambda b: b.startswith(b"\x89PNG"))
         try:
             elements = json.loads(tree.read_text())["elements"]
@@ -133,36 +134,45 @@ class Rehearsal:
             return p.returncode, ""
         return p.returncode, "\n".join(str(e.get("text") or "") for e in elements)
 
-    def produced(self, captured: dict) -> tuple[str, str | None]:
-        """Expectations from the save that just exited, before any other process of the run
-        starts: the config it left (TOML holding the edited label), and a captured link's target
-        (as captured, unless the save wrote through the link)."""
-        config = self.home / CONFIG_REL
-        now = lstat_state(config)
-        blob = config.read_bytes() if now["type"] in ("file", "symlink") and config.is_file() else None
+    def save_digest(self, receipt: Path, config: Path) -> str:
+        """Validate this save's receipt and record its exact bytes for cleanup."""
         try:
-            if blob is None or EDITED.encode() not in blob:
-                raise ValueError("the edited label is missing")
-            tomllib.loads(blob.decode())
-        except (ValueError, UnicodeDecodeError) as e:
-            raise Refused(f"the save did not leave the edited config ({now['type']}): {e}") from e
-        if captured["original"]["type"] != "symlink":
-            return expectation(now), None
-        through = now == captured["original"]  # still the captured link: the save wrote its target
-        target = lstat_state(Path(captured["target"])) if through else captured["target_state"]
-        return expectation(now), expectation(target)
+            state = lstat_state(receipt)
+            if state["type"] != "file":
+                raise ValueError(f"expected a regular file, found {state['type']}")
+            blob = read_nofollow(receipt)
+            data = json.loads(blob)
+            if (sha256(blob) != state["sha256"] or not isinstance(data, dict)
+                    or data.keys() != {"config", "sha256"} or data["config"] != str(config)
+                    or not isinstance(data["sha256"], str) or not re.fullmatch("[0-9a-f]{64}", data["sha256"])):
+                raise ValueError("expected the config path and a 64-digit lowercase SHA-256")
+        except (OSError, ValueError) as e:
+            raise Refused(f"missing or invalid save receipt: {e}") from e
+        self.report["artifacts"].append({"path": str(receipt), **state})
+        return data["sha256"]
 
     def scenario(self, name: str, original_label: str | None) -> None:
-        rec = {"name": name}
+        rec = {"name": name, "passed": False}
         self.report["scenarios"].append(rec)
         store, manifest = self.root / "stores" / name, self.root / "manifests" / f"{name}.json"
         captured = profile.capture(self.home, store, manifest, allow_caller_home=True)
         kept = f"nothing settled or restored; current bytes kept, original in {captured['store']}"
-        rc, shown = self.snap(f"{name}-edit", ["--script", FLOW, "--at", "mark:end"])
-        rec["save_exit"], rec["passed"] = rc, False
+        config = self.home / CONFIG_REL
+        receipt_dir = Path(tempfile.mkdtemp(prefix="save-", dir=self.root))
+        self.report["dirs"].append(str(receipt_dir))
+        receipt = receipt_dir / "receipt.json"
+        rc, shown = self.snap(f"{name}-edit", ["--script", FLOW, "--at", "mark:end"], receipt=receipt)
+        rec["save_exit"], rec["edited_label_shown"] = rc, EDITED in shown
         if rc != 0 or EDITED not in shown:
             raise Refused(f"scenario {name}: the save failed (exit {rc}); {kept}")
-        rec["expect_config"], rec["expect_target"] = self.produced(captured)
+        try:
+            rec["expect_config"] = self.save_digest(receipt, config)
+        except Refused as e:
+            raise Refused(f"scenario {name}: {e}; {kept}") from e
+        target = captured["target_state"]
+        rec["expect_target"] = expectation(target) if target is not None else None
+        if profile.config_state(self.home)[0].get("sha256") != rec["expect_config"]:
+            raise Conflict(f"scenario {name}: config differs from the save receipt; {kept}")
         rc, reopened = self.snap(f"{name}-reopen-edited", [])
         rec["reopen_exit"] = rc
         theme_error = re.search(r"theme[^\n]*(error|invalid|cannot)", reopened, re.I)
@@ -175,7 +185,9 @@ class Rehearsal:
             raise Conflict(f"scenario {name}: {e}") from e
         rec["verify"] = profile.verify(manifest)
         if original_label and not rec["verify"]:
-            rec["reopen_original"] = original_label in self.snap(f"{name}-reopen-original", [])[1]
+            rc, original = self.snap(f"{name}-reopen-original", [])
+            rec["reopen_original_exit"] = rc
+            rec["reopen_original"] = rc == 0 and original_label in original
             rec["verify_after_reopen"] = profile.verify(manifest)
         rec["passed"] = all(v in (True, []) for k, v in rec.items()
                             if k in ("verify", "reopen_original", "verify_after_reopen"))
@@ -202,17 +214,18 @@ class Rehearsal:
                "mark_once": self.own(mark, lambda b: b == b"x"),
                "frames": sum(self.own(f, lambda b: b.startswith(b"\x89PNG")) for f in sorted(self.frames.glob("*.png")))
                if self.frames.is_dir() else 0}
+        self.report["simulator"] = rec
         captured = read_json(manifest)
         through = captured["original"]["type"] == "symlink"
         profile.settle(manifest, [], [], sha256(SIM),  # the run wrote SIM itself
                        expectation(captured["target_state"]) if through else None)
         rehearsal_restore.restore(manifest)
         rec["verify"] = profile.verify(manifest)
-        rec["passed"] = rec["f5_once"] and rec["mark_once"] and not rec["verify"]
+        rec["passed"] = (rec["exit"] == 0 and rec["f5_once"] and rec["mark_once"]
+                         and rec["frames"] > 0 and not rec["verify"])
         data = read_json(manifest)
         self.report["stores"] += [{**st, "verified": data["verified"]} for st in data["stores"]]
         self.own(manifest, lambda b: True)
-        self.report["simulator"] = rec
 
     def prepare(self, step: str) -> None:
         """The tool's own precondition for the next scenario (from the state the last one restored)."""

@@ -152,6 +152,10 @@ the configurator read it. Nothing is written; the user reloads the file or overw
 keeps the replaced file as a backup (ADR-0013).
 _Avoid_: merge, collision, race (for the user-facing refusal)
 
+**Save receipt**:
+The config path and SHA-256 of the bytes written by a confirmed explicit save. A rehearsal requests
+it at a fresh path and uses the digest as the expectation for restoring the captured config.
+
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
 _Avoid_: error (for config problems), warning
