@@ -24,7 +24,9 @@ the configurator or the daemon (the default written for a missing file, `save`, 
   (`file` | `absent`), `mode` (permission bits), `len`, `blake3` (hex), `dir-existed` (absent
   only). BLAKE3 is already in the lock file through Rune; no new package.
 - **Private.** Store 0700, generation directories 0700, files 0600, owned by the effective uid,
-  under a parent owned by it. A store that is a symlink (also one swapped in later), not a
+  under a parent owned by it. Before creating the store hierarchy, verify that the nearest
+  existing parent is owned by the effective uid. Create and open each missing component relative
+  to its verified parent descriptor. A store that is a symlink (also one swapped in later), not a
   directory, open to others, owned by someone else, or at/inside the config directory is
   refused with a diagnostic naming its path and the fix; its mode is never changed for the user.
 - **Order (atomic, durable, verified).** Refuse a path that cannot be kept, take the store lock,

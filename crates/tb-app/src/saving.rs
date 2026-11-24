@@ -1,7 +1,7 @@
 //! A baseline tracks actual config differences, and only successful explicit saves update time.
 //! A save refused because the file changed on disk (a conflict, ADR-0013) never loses either
-//! version: a clean editor shows the newer file, a dirty one keeps its draft until the user
-//! reloads or overwrites.
+//! version: a clean editor shows the newer file, and an editor with changes or a pending reset
+//! keeps its draft and offers conflict resolution.
 
 use std::io;
 
@@ -187,10 +187,10 @@ impl State {
         };
     }
 
-    /// A clean editor has nothing to lose: it shows the newer file instead. A dirty one keeps
-    /// everything it shows and offers the two resolutions.
+    /// A pending reset can hide pre-reset changes even when the shown config is the baseline.
+    /// Preserve its cancel snapshot alongside the usual conflict controls.
     fn refused_as_changed(&mut self, version: DiskVersion) {
-        if self.dirty() {
+        if self.reset_pending() || self.dirty() {
             self.keep_draft(version);
             return;
         }

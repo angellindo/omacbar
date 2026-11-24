@@ -5,7 +5,6 @@
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -14,7 +13,7 @@ use rustix::io::Errno;
 
 use super::manifest::Manifest;
 use super::{BackupError, GenerationId, GenerationKind, Health};
-use crate::durable::{create_dir_all_durably, parent_of};
+use crate::durable::parent_of;
 
 /// Name of the kept bytes inside a generation.
 pub(super) const DATA: &str = "config.toml";
@@ -57,35 +56,16 @@ impl StoreDir {
     /// writing, refusing a store this user cannot trust: a symlink, not a directory, owned by
     /// another user, open to other users, or under a parent owned by another user.
     pub fn open_for_write(path: &Path) -> Result<Self, BackupError> {
-        let io_err = |source| BackupError::Io { path: path.to_path_buf(), source };
-        create_dir_all_durably(path, 0o700).map_err(io_err)?;
-        let fd = rustix::fs::openat(CWD, path, DIR_FLAGS, Mode::empty()).map_err(|e| refusal(path, e))?;
-        let stat = rustix::fs::fstat(&fd).map_err(|e| io_err(e.into()))?;
-        let me = rustix::process::geteuid().as_raw();
-        let unsafe_store =
-            |why: String, fix: String| BackupError::Unsafe { path: path.to_path_buf(), why, fix };
-        if stat.st_uid != me {
-            return Err(unsafe_store(
-                format!("it belongs to uid {}, not to this user (uid {me})", stat.st_uid),
-                "run the program as the user who owns it, or point XDG_STATE_HOME elsewhere".to_owned(),
-            ));
-        }
+        let uid = rustix::process::geteuid().as_raw();
+        let parent = open_owned_parent(path, uid)?;
+        let fd = open_or_create_directory(&parent, path, DIR_FLAGS, 0o700, path, uid)?;
+        let stat = rustix::fs::fstat(&fd).map_err(|e| store_io(path, e))?;
         if stat.st_mode & 0o077 != 0 {
-            return Err(unsafe_store(
-                format!("its mode {:o} lets other users in", stat.st_mode & 0o777),
-                format!("run `chmod 700 {}`", path.display()),
-            ));
-        }
-        let parent = parent_of(path);
-        let owner = std::fs::metadata(parent).map_err(io_err)?.uid();
-        if owner != me {
-            return Err(unsafe_store(
-                format!(
-                    "its parent `{}` belongs to uid {owner}, not to this user (uid {me})",
-                    parent.display()
-                ),
-                "point XDG_STATE_HOME at a directory of your own".to_owned(),
-            ));
+            return Err(BackupError::Unsafe {
+                path: path.to_path_buf(),
+                why: format!("its mode {:o} lets other users in", stat.st_mode & 0o777),
+                fix: format!("run `chmod 700 {}`", path.display()),
+            });
         }
         Ok(Self { path: path.to_path_buf(), fd })
     }
@@ -214,6 +194,76 @@ impl StoreDir {
     }
 }
 
+/// Check the nearest existing directory before creating anything, then use that same
+/// descriptor to create and open each missing component. Existing state paths may resolve
+/// through symlinks, but a name appearing during creation must be an owned directory.
+fn open_owned_parent(store: &Path, uid: u32) -> Result<OwnedFd, BackupError> {
+    let flags = OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    let mut ancestor = parent_of(store);
+    let mut missing = Vec::new();
+    let mut fd = loop {
+        match rustix::fs::openat(CWD, ancestor, flags, Mode::empty()) {
+            Ok(fd) => break fd,
+            Err(Errno::NOENT) => {
+                missing.push(ancestor);
+                ancestor = parent_of(ancestor);
+            }
+            Err(e) => return Err(store_io(store, e)),
+        }
+    };
+    check_owner(store, ancestor, rustix::fs::fstat(&fd).map_err(|e| store_io(store, e))?.st_uid, uid)?;
+    for dir in missing.into_iter().rev() {
+        fd = open_or_create_directory(&fd, dir, flags | OFlags::NOFOLLOW, 0o777, store, uid)?;
+    }
+    Ok(fd)
+}
+
+fn open_or_create_directory(
+    parent: &OwnedFd,
+    dir: &Path,
+    flags: OFlags,
+    mode: u32,
+    store: &Path,
+    uid: u32,
+) -> Result<OwnedFd, BackupError> {
+    let name = dir.file_name().ok_or_else(|| store_io(store, Errno::INVAL))?;
+    let open = || rustix::fs::openat(parent, name, flags, Mode::empty());
+    let (fd, needs_sync) = match open() {
+        Ok(fd) => (fd, false),
+        Err(Errno::NOENT) => {
+            match rustix::fs::mkdirat(parent, name, Mode::from_raw_mode(mode)) {
+                Ok(()) | Err(Errno::EXIST) => {}
+                Err(e) => return Err(store_io(store, e)),
+            }
+            (open().map_err(|e| refusal(dir, e))?, true)
+        }
+        Err(e) => return Err(refusal(dir, e)),
+    };
+    check_owner(store, dir, rustix::fs::fstat(&fd).map_err(|e| store_io(store, e))?.st_uid, uid)?;
+    if needs_sync {
+        let sync =
+            rustix::fs::openat(parent, ".", DIR_FLAGS, Mode::empty()).map_err(|e| store_io(store, e))?;
+        rustix::fs::fsync(&sync).map_err(|e| store_io(store, e))?;
+    }
+    Ok(fd)
+}
+
+fn check_owner(store: &Path, dir: &Path, owner: u32, uid: u32) -> Result<(), BackupError> {
+    if owner == uid {
+        return Ok(());
+    }
+    Err(BackupError::Unsafe {
+        path: store.to_path_buf(),
+        why: format!("directory `{}` belongs to uid {owner}, not to this user (uid {uid})", dir.display()),
+        fix: "run as the user who owns the directory, or point XDG_STATE_HOME at a directory of your own"
+            .to_owned(),
+    })
+}
+
+fn store_io(store: &Path, error: Errno) -> BackupError {
+    BackupError::Io { path: store.to_path_buf(), source: error.into() }
+}
+
 /// Why the store path cannot be opened as a directory.
 fn refusal(path: &Path, e: Errno) -> BackupError {
     let unsafe_store =
@@ -286,4 +336,25 @@ fn write_new_at(dir: BorrowedFd<'_>, name: &str, bytes: &[u8]) -> io::Result<()>
     let mut file = File::from(fd);
     file.write_all(bytes)?;
     file.sync_all()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[allow(clippy::panic)]
+    fn the_store_requires_the_effective_users_uid_in_directory_metadata() {
+        let store = Path::new("/state/new/backups");
+        let ancestor = Path::new("/state");
+        let session_uid = 1000;
+        assert!(check_owner(store, ancestor, session_uid, session_uid).is_ok());
+        let Err(BackupError::Unsafe { path, why, fix }) = check_owner(store, ancestor, 1001, session_uid)
+        else {
+            panic!("a directory owned by another uid must be refused");
+        };
+        assert_eq!(path, store);
+        assert!(why.contains("/state") && why.contains("uid 1001") && why.contains("uid 1000"));
+        assert!(fix.contains("XDG_STATE_HOME"));
+    }
 }
