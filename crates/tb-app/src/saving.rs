@@ -7,7 +7,7 @@ use std::io;
 
 use crate::app::{NO_HOME, State};
 use crate::drafts::Fields;
-use tb_config::{ConfigFileError, DiskVersion};
+use tb_config::{ConfigFileError, DiskVersion, Reason};
 use tb_core::config::Config;
 use tb_core::{ButtonId, Chord};
 
@@ -110,10 +110,11 @@ impl State {
             self.status = reason;
             return;
         }
+        let reason = self.write_reason(Reason::Save);
         let Some(file) = &mut self.file else { return };
         // The selected theme file may have changed since open: resolve it again; Omarchy is the
         // active theme, never the theme a previously shown config selected.
-        match file.save_resolved(self.config.clone(), &self.active) {
+        match file.save_resolved_for(self.config.clone(), &self.active, reason) {
             Ok(theme) => {
                 self.theme = theme;
                 self.saved(None);
@@ -130,8 +131,9 @@ impl State {
             self.status = reason;
             return;
         }
+        let reason = self.write_reason(Reason::Overwrite);
         let (Some(file), Some(version)) = (&mut self.file, self.saving.conflict.clone()) else { return };
-        match file.save_over_resolved(self.config.clone(), &self.active, &version) {
+        match file.save_over_resolved_for(self.config.clone(), &self.active, &version, reason) {
             Ok(theme) => {
                 // Exactly the theme this overwrite was validated against: no second read.
                 self.theme = theme;
@@ -151,10 +153,21 @@ impl State {
         };
     }
 
+    /// A write while the default buttons are a pending draft is a factory reset's save.
+    const fn write_reason(&self, otherwise: Reason) -> Reason {
+        if self.reset_pending() { Reason::FactoryReset } else { otherwise }
+    }
+
     fn saved(&mut self, backup: Option<String>) {
         let Some(file) = &self.file else { return };
         let kept = backup.map(|b| format!("; the replaced version is kept in {b}")).unwrap_or_default();
-        self.status = format!("saved config {}{kept}", file.path().display());
+        let before_reset = self
+            .reset
+            .take()
+            .and_then(|_| file.last_generation_path())
+            .map(|g| format!("; the file before the factory reset is kept in {}", g.display()))
+            .unwrap_or_default();
+        self.status = format!("saved config {}{kept}{before_reset}", file.path().display());
         self.saving.baseline = Some(self.config.clone());
         self.saving.last_saved = (self.saving.clock)();
         self.saving.saved_this_session = true;
@@ -220,6 +233,7 @@ impl State {
         self.saving.baseline = Some(self.config.clone());
         self.saving.conflict = None;
         self.file = Some(fresh);
+        self.reset = None;
         self.drafts.clear();
         self.drag = None;
         if self.selected_button().is_none() {

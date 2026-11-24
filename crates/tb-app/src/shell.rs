@@ -4,6 +4,7 @@ use crate::app::{State, body, pressable, save_key};
 use crate::diagnostics::issues;
 use crate::panel::panel;
 use crate::preview::preview;
+use crate::reset::reset_controls;
 use crate::workspace::workspace;
 use rune::{Cx, El, ScrollSpec, col, el, row, text};
 use tb_core::{Action, BarSize, Chord, SpacingRules, place};
@@ -81,7 +82,7 @@ fn sidebar(s: &State, height: f32) -> El {
                 .child(words(s, "config-basename", "config.toml").mt(4.0))
                 .child(words(s, "layers-title", "LAYERS").mt(28.0).h(22.0))
                 .children(entries)
-                .child(col().min_h(240.0).grow(1.0).justify_end().children(
+                .child(col().min_h(240.0).grow(1.0).justify_end().child(reset_controls(s).mb(8.0)).children(
                     s.save_blocked_reason().map(|reason| words(s, "save-blocked-reason", &reason).mb(8.0)),
                 ))
                 .child(save_control(s))

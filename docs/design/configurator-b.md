@@ -111,6 +111,14 @@ Unavailable placements produce an explicit message rather than invented widths. 
 11. File status says the daemon watches the saved config file and **simulator acknowledgement
     unavailable**. It makes no liveness, revision-observed or synchronization claim. No IPC is
     added; no button action executes in the configurator.
+12. **Default buttons** (`reset-factory`, sidebar above Save) load the factory layout for the
+    editor's theme as a draft: only the editor and preview change; the theme source and version
+    stay, and `reset-notice` says so (Omarchy, or the selected theme file's path). Layer and
+    selection go to `default` / none. `reset-cancel` brings back the editor before the reset
+    exactly (config with pending edits, every button's field text, selection, layer). Save or
+    Ctrl+S (and an overwrite after a conflict) with the draft pending keep a verified
+    `factory-reset` generation of the replaced file (ADR-0015) and the status names its directory.
+    A refused save writes nothing and keeps the draft and its cancel.
 
 ## Verification boundary
 

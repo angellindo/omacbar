@@ -5,6 +5,7 @@
 //! keep and restore exactly.
 
 mod disk;
+mod reasoned;
 mod recover;
 
 use std::fs;
@@ -164,6 +165,12 @@ impl ConfigFile {
         self.last_generation.as_ref()
     }
 
+    /// The directory of [`Self::last_generation`] in the store (`<store>/<id>`).
+    pub fn last_generation_path(&self) -> Option<PathBuf> {
+        let id = self.last_generation.as_ref()?;
+        Some(self.protection.as_ref()?.dir().join(id.to_string()))
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -279,12 +286,7 @@ impl ConfigFile {
     /// is re-read; Omarchy is `active`) and validates against it, as `load_resolved` does.
     /// Returns the resolved theme. On any error nothing is written and the current config stays.
     pub fn save_resolved(&mut self, config: Config, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
-        let theme = resolve_theme(&config.theme, active)?;
-        check(&config, &theme)?;
-        let seen = self.seen.clone();
-        self.swap(&seen, Content::Text(&to_toml(&config)?), WriteKind::Save)?;
-        self.config = config;
-        Ok(theme)
+        self.save_resolved_for(config, active, Reason::Save)
     }
 
     /// An overwrite the user acknowledged after a `Changed` refusal: like `save_resolved`, but
@@ -308,11 +310,7 @@ impl ConfigFile {
         active: &BarTheme,
         acknowledged: &DiskVersion,
     ) -> Result<BarTheme, ConfigFileError> {
-        let theme = resolve_theme(&config.theme, active)?;
-        check(&config, &theme)?;
-        self.swap(acknowledged, Content::Text(&to_toml(&config)?), WriteKind::Overwrite)?;
-        self.config = config;
-        Ok(theme)
+        self.save_over_resolved_for(config, active, acknowledged, Reason::Overwrite)
     }
 
     /// Writes `content` only if the file is `expected`; records it as seen. An overwrite first keeps
@@ -324,6 +322,17 @@ impl ConfigFile {
         expected: &DiskVersion,
         content: Content<'_>,
         kind: WriteKind,
+    ) -> Result<(), ConfigFileError> {
+        self.swap_as(expected, content, kind, kind.reason())
+    }
+
+    /// `swap`, keeping the generation under `reason`.
+    fn swap_as(
+        &mut self,
+        expected: &DiskVersion,
+        content: Content<'_>,
+        kind: WriteKind,
+        reason: Reason,
     ) -> Result<(), ConfigFileError> {
         let io_at = |at: &Path, source| ConfigFileError::Io { path: at.to_path_buf(), source };
         // Unlocked first look: a stale save must not even create a removed directory.
@@ -353,7 +362,7 @@ impl ConfigFile {
         }
         let (mode, generation) = match (&self.protection, &store) {
             (Some(backups), Some(locked)) => {
-                let (mode, id) = self.keep_generation(backups, locked, expected, dir_existed, kind)?;
+                let (mode, id) = self.keep_generation(backups, locked, expected, dir_existed, reason)?;
                 (Some(mode), Some(id))
             }
             _ if kind == WriteKind::Overwrite
@@ -423,7 +432,7 @@ impl ConfigFile {
         locked: &Locked,
         expected: &DiskVersion,
         dir_existed: bool,
-        kind: WriteKind,
+        reason: Reason,
     ) -> Result<(u32, GenerationId), ConfigFileError> {
         let found = disk::probe(&self.path).map_err(|r| refused(&self.path, r))?;
         let (kept, now, mode) = match &found {
@@ -435,7 +444,7 @@ impl ConfigFile {
         if now != *expected {
             return Err(ConfigFileError::Changed(now));
         }
-        let id = backups.keep(locked, &self.path, &kept, kind.reason())?;
+        let id = backups.keep(locked, &self.path, &kept, reason)?;
         Ok((mode, id))
     }
 

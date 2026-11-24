@@ -11,9 +11,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use tb_config::{
-    BackupError, Backups, ConfigFile, ConfigFileError, Generation, GenerationId, GenerationKind, Health,
-    default_path,
+    ActiveTheme, BackupError, Backups, ConfigFile, ConfigFileError, Generation, GenerationId, GenerationKind,
+    Health, default_path,
 };
+use tb_core::config::ThemeSource;
 
 const USAGE: &str = "usage: touchbar-recover list | verify <id> | restore <id> [--remove-file]";
 
@@ -25,6 +26,7 @@ enum Command {
 
 /// Where the store and the config file are, from the environment read at startup (R12).
 struct Profile {
+    home: PathBuf,
     store: PathBuf,
     config: PathBuf,
 }
@@ -82,7 +84,7 @@ fn profile(home: Option<&Path>, state_home: Option<&OsStr>) -> Result<Profile, S
     let store = Backups::locate(Some(home), state_home).ok_or_else(|| {
         Stop::Refused("no generation store: set HOME or an absolute XDG_STATE_HOME".to_owned())
     })?;
-    Ok(Profile { store, config: default_path(home) })
+    Ok(Profile { home: home.to_path_buf(), store, config: default_path(home) })
 }
 
 fn run(command: &Command, profile: &Profile) -> Result<(), Stop> {
@@ -116,6 +118,9 @@ fn restore(id: GenerationId, remove: bool, profile: &Profile) -> Result<(), Stop
     match done {
         Ok(()) => {
             output::restored(&generation, &profile.config, file.last_generation());
+            if matches!(generation.kind, GenerationKind::File) {
+                output::checked(&check_restored(profile));
+            }
             Ok(())
         }
         Err(ConfigFileError::Changed(_)) => Err(Stop::Conflict(format!(
@@ -124,6 +129,24 @@ fn restore(id: GenerationId, remove: bool, profile: &Profile) -> Result<(), Stop
             profile.config.display()
         ))),
         Err(e) => Err(not_restored(id, &e)),
+    }
+}
+
+/// Whether the restored file validates as `touchbard` would load it: its theme source resolved
+/// against the active Omarchy theme of this home. Read only: an unprotected `ConfigFile` and a
+/// reload never write a default, a theme file or a generation.
+fn check_restored(profile: &Profile) -> output::Verdict {
+    let active = ActiveTheme::under_home(&profile.home);
+    let mut file = ConfigFile::new(&profile.config);
+    match file.reload_resolved(&active.load().theme) {
+        Ok(_) => match &file.config().theme {
+            ThemeSource::Omarchy => output::Verdict::ValidOmarchy(active.colors_path().to_path_buf()),
+            ThemeSource::File { path } => output::Verdict::ValidThemeFile(PathBuf::from(path)),
+        },
+        Err(ConfigFileError::Invalid(issues)) => {
+            output::Verdict::Refused(issues.iter().map(ToString::to_string).collect())
+        }
+        Err(e) => output::Verdict::Refused(vec![e.to_string()]),
     }
 }
 
@@ -157,6 +180,7 @@ fn describe(generation: &Generation) -> (String, &'static str, String) {
         tb_config::Reason::Save => "save",
         tb_config::Reason::Overwrite => "overwrite",
         tb_config::Reason::Recover => "recover",
+        tb_config::Reason::FactoryReset => "factory-reset",
     };
     let kind = match generation.kind {
         GenerationKind::File => "file",

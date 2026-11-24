@@ -20,7 +20,7 @@ the configurator or the daemon (the default written for a missing file, `save`, 
 - **Layout.** One directory per generation, `backups/<id>/` (id = 1, 2, ... allocated under an
   exclusive `flock` on `backups/`), holding `manifest.toml` and, for a kept file, `config.toml`
   (exact bytes). Manifest (`deny_unknown_fields`, kebab-case): `format = 1`, `id`, `config`
-  (absolute path, symlinks unresolved), `reason` (`first-write` | `save` | `overwrite` | `recover`), `kind`
+  (absolute path, symlinks unresolved), `reason` (`first-write` | `save` | `overwrite` | `recover` | `factory-reset`), `kind`
   (`file` | `absent`), `mode` (permission bits), `len`, `blake3` (hex), `dir-existed` (absent
   only). BLAKE3 is already in the lock file through Rune; no new package.
 - **Private.** Store 0700, generation directories 0700, files 0600, owned by the effective uid,

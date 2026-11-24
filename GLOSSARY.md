@@ -159,6 +159,14 @@ write by the configurator or the daemon, in `$XDG_STATE_HOME/touchbar-customizer
 (else `~/.local/state/...`), never deleted automatically (ADR-0015).
 _Avoid_: backup (the `.bak` next to the config from an overwrite), snapshot (a rendered image), version
 
+**Factory reset**:
+Loading the default buttons (the preset layout for the active theme) into the configurator as a
+draft. It changes only the editor and its preview, keeps the config's theme source and version,
+and can be cancelled back to the exact draft before it. Saving it keeps a `factory-reset`
+generation of the file it replaces. Not a restore of the user's own file, and not the physical
+return to the firmware key row.
+_Avoid_: restore, restore defaults (ambiguous), reset (for the hardware return)
+
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
 _Avoid_: error (for config problems), warning

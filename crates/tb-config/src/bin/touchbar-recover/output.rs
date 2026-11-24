@@ -1,7 +1,7 @@
 //! The binary's only output (R11): results on stdout, refusals on stderr.
 
 use std::fmt::Display;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tb_config::{Generation, GenerationId, GenerationKind};
 
@@ -67,10 +67,41 @@ pub fn restored(generation: &Generation, config: &Path, kept: Option<&Generation
         )),
         GenerationKind::Absent { .. } => {
             say(format_args!("removed {} as generation {} records", config.display(), generation.id));
+            say("touchbard and touchbar-customizer write the default config when they start without one");
         }
     }
     if let Some(kept) = kept {
         say(format_args!("what it replaced is kept as generation {kept}"));
     }
-    say("touchbard reloads a valid config; an invalid one keeps the last valid design on the bar");
+}
+
+/// What the check of a restored file found, read as `touchbard` would read it.
+pub enum Verdict {
+    /// Valid with the Omarchy source; the active theme's colours file it was checked against.
+    ValidOmarchy(PathBuf),
+    /// Valid with the selected theme file at this path.
+    ValidThemeFile(PathBuf),
+    /// Not accepted: the library's diagnostics, one per issue.
+    Refused(Vec<String>),
+}
+
+pub fn checked(verdict: &Verdict) {
+    match verdict {
+        Verdict::ValidOmarchy(colors) => say(format_args!(
+            "the restored config is valid with the Omarchy theme source (active theme {}); \
+             touchbard draws it once it reloads the file",
+            colors.display()
+        )),
+        Verdict::ValidThemeFile(path) => say(format_args!(
+            "the restored config is valid with the theme file {}; touchbard draws it once it reloads the file",
+            path.display()
+        )),
+        Verdict::Refused(why) => {
+            say("the restored config is kept as restored, but touchbard would not accept it:");
+            for line in why {
+                say(format_args!("  {line}"));
+            }
+            say("touchbard keeps the last valid design on the bar until the file is fixed");
+        }
+    }
 }

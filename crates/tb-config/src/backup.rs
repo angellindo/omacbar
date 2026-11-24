@@ -56,6 +56,8 @@ pub enum Reason {
     Overwrite,
     /// A restore of a chosen generation (`ConfigFile::recover`).
     Recover,
+    /// A save of the factory layout the configurator loaded as a draft (a factory reset).
+    FactoryReset,
 }
 
 /// What a generation holds.
@@ -299,7 +301,9 @@ impl Backups {
     }
 }
 
-/// The newest verified generation of the same config holding the same state as `wanted`.
+/// The newest verified generation of the same config holding the same state as `wanted`. A
+/// factory reset is reused only from another factory reset, so the file it replaced is always
+/// listed as the one before a factory reset.
 fn newest_same(store: &StoreDir, ids: &[GenerationId], wanted: &Manifest) -> Option<GenerationId> {
     ids.iter().rev().find_map(|&id| match store.inspect(id) {
         Inspected::Read { manifest, health: Health::Verified, .. } if manifest.config == wanted.config => {
@@ -307,7 +311,8 @@ fn newest_same(store: &StoreDir, ids: &[GenerationId], wanted: &Manifest) -> Opt
                 && manifest.mode == wanted.mode
                 && manifest.len == wanted.len
                 && manifest.blake3 == wanted.blake3
-                && manifest.dir_existed == wanted.dir_existed;
+                && manifest.dir_existed == wanted.dir_existed
+                && (wanted.reason != Reason::FactoryReset || manifest.reason == wanted.reason);
             Some(same.then_some(id))
         }
         _ => None,

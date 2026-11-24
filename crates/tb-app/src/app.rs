@@ -14,6 +14,7 @@ use tb_render::view::color;
 
 use crate::drafts::Fields;
 use crate::preview::{Dragging, PREVIEW_SCALE};
+use crate::reset::BeforeReset;
 use crate::saving::Saving;
 
 /// Logical window size of configurator variant B.
@@ -34,6 +35,8 @@ pub struct State {
     pub(crate) drag: Option<Dragging>,
     pub(crate) saving: Saving,
     pub(crate) status: String,
+    /// The editor before the default buttons were loaded, while that draft is pending.
+    pub(crate) reset: Option<BeforeReset>,
 }
 
 impl State {
@@ -65,6 +68,7 @@ impl State {
             drag: None,
             saving: Saving::default(),
             status: String::new(),
+            reset: None,
         };
         let Some(mut file) = file else {
             NO_HOME.clone_into(&mut s.status);
@@ -245,6 +249,7 @@ pub fn spec() -> AppSpec<State> {
                 s.select(Some(ButtonId::new("f3")));
                 s.add(false);
             }),
+            ("reset", State::reset_factory),
             ("issues", |s| {
                 let f3 = ButtonId::new("f3");
                 s.select(Some(f3.clone()));
