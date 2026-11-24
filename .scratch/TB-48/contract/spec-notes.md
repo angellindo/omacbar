@@ -110,3 +110,104 @@ it keeps the child's whole stdout in the case's profile dir as `size-limited-edi
 (`<CARGO_TARGET_TMPDIR>/configurator_generations/<case>/`), and every report assertion still
 carries the raw report in its captured failure message. No assertion, key, control or lint level
 changed; no `#[allow]` added.
+
+# TB-48 slice 2: spec notes (QA)
+
+Base: `t3/tb48-slice1-qa-contract` @ f14be7c (slice 1 final PASS, 43 cases + 2 checks green).
+Slice 1's contract, history, final record and frozen tests are unchanged; `support/generations.rs`
+is reused as is and listed again among slice 2's frozen files (its bytes are already sealed by
+slice 1; listing it pins that the slice 2 suites read the store with exactly these helpers).
+
+## API and CLI the frozen tests pin (plan Seams, design §3-4)
+
+- Binary `touchbar-recover`, a `[[bin]]` of tb-config, found at run time with
+  `option_env!("CARGO_BIN_EXE_touchbar-recover")`. On a tree without it every CLI case compiles and
+  fails on that `expect` (RED_BEHAVIOR, never COMPILE_ERROR): the setup before it (real protected
+  saves through slice 1's library) runs and passes first.
+- Reads `HOME` / `XDG_STATE_HOME` only (store = slice 1's `Backups::locate`); config =
+  `default_path(HOME)`. Runs with `DISPLAY` / `WAYLAND_DISPLAY` removed and a bogus `VK_ICD_FILENAMES`.
+- `list` (exit 0): stdout names the store path; one line per generation of this config holding the
+  id as a word plus the words `<reason>` (kebab, e.g. `save`), `<kind>` (`file` | `absent`) and
+  `verified` | `damaged`. No store / no config: exit 0, creates nothing.
+- `verify <id>`: 0 when the generation is verified **and restorable into this profile's config**
+  (stdout names the id); 1 otherwise (missing, damaged, linked in, another config's), stderr
+  names the id. `verify` answers "can `restore <id>` use it here".
+- `restore <id> [--remove-file]`: 0 done; 1 refused or failed (stderr says why: names the id, the
+  config path for a symlink, the store path for an unwritable store, `os error 27` for EFBIG);
+  2 usage; 3 conflict. Malformed ids and a missing `--remove-file` may answer 1 or 2 (never 0 or
+  3), with stderr, and must change nothing. Usage cases pinned to exactly 2: no args, unknown
+  subcommand, `restore`/`verify` without id, `list extra`, unknown flag, `--remove-file` alone,
+  two ids.
+- `kind`, `reason = "recover"`, `mode` (decimal or `0o`) are read from `<store>/<id>/manifest.toml`
+  as slice 1 fixed it; data in `<store>/<id>/config.toml`.
+- Library: `ConfigFile::look(&mut self) -> Result<_, ConfigFileError>`,
+  `ConfigFile::recover(&mut self, &GenerationId) -> Result<_, ConfigFileError>`, `Reason::Recover`,
+  `last_generation()` names the `recover` generation. Red on base: E0599 naming `look`/`recover`
+  (symbol `recover`).
+
+## Decisions made testable
+
+- Every restore that writes keeps exactly one `recover` generation of what it replaced (file:
+  exact bytes + bits; missing file: `Absent { dir_existed: true }`; missing dir:
+  `Absent { dir_existed: false }`), newest in `list`, verified; earlier generations all remain.
+- A refusal (bad id, damaged/foreign/linked generation, symlinked config, absent without
+  `--remove-file`, conflict) keeps nothing and changes neither the config entry nor the store.
+- `--remove-file` removes only the file, never its directory, after keeping it.
+- Write failures: unwritable store → exit 1, config and store unchanged; unwritable config dir →
+  exit 1, original entry identical and no temp beside it (a `recover` generation of the untouched
+  file may remain); EFBIG under `prlimit --fsize=65536` with `SIGXFSZ` ignored → exit 1, original
+  intact. A retry once fixed succeeds.
+- Store under absolute `XDG_STATE_HOME`, else `HOME/.local/state` (unset, relative, empty).
+  All test stores are outside the profile tree a restore replaces.
+
+## Conflict window (QA-10)
+
+Deterministic, no sleeps: the test holds `flock` on the store directory and on the config
+directory (the locks every protected writer takes, ADR-0015 order store → directory), starts
+`restore`, waits until `/proc/locks` lists the child's pid as a blocked waiter, replaces the file
+(temp + rename, no lock), then releases. This pins the plan's "`restore` = `look`, then `recover`"
+(the look is unlocked, before the writer's locks): an implementation that looks under the lock
+would see the newer file and fail QA-10.
+
+## Daemon reload (QA-27)
+
+`touchbar-recover` cannot be located from a tb-daemon test (cargo gives `CARGO_BIN_EXE_*` only for
+the package's own bins), so the running `touchbard --sim` (HOME + XDG_STATE_HOME temp) sees a
+restore done through the same library `look` + `recover` the binary wraps. Needs the GPU like the
+other `--sim` frame tests.
+
+## No Rune / GPU (check `recover-graph`)
+
+`.scratch/TB-48/contract/recover_graph_check.py` reads `cargo metadata` (offline, locked): tb-config
+must have the `touchbar-recover` bin and its normal+build closure must not contain rune*, wgpu*,
+ash, winit, naga, vello, tb-render, tb-app or tb-daemon. Red on base (no bin).
+
+## Cross-slice note
+
+Slice 1's `spawn-isolation` check runs every test target naming `CARGO_BIN_EXE_` (now also
+`recover_terminal*` and `touchbard_recovery`) under a decoy `XDG_STATE_HOME`. Until slice 2 is
+implemented those targets fail, so slice 1's check is red on intermediate trees; it is green
+again once slice 2 is (each spawn passes its own `XDG_STATE_HOME`). This also guards the new
+spawns' isolation. Re-run slice 1's gate after slice 2's implementation.
+
+## Feasibility and red evidence
+
+- Red on f14be7c (seal below): QA-01..23 RED_BEHAVIOR, each failing in `recover_bin()` after its
+  setup (real protected saves) ran; QA-24..27 RED_MISSING_SYMBOL (E0599 `look`, `recover`,
+  `Recover`); check `recover-graph` FAILED (no bin). Logs under `.scratch/TB-48/gate/`.
+- Satisfiable: a throwaway ~100-line prototype (`look`, `recover`, `Reason::Recover`, a
+  `--remove-file` path and the bin) built in a scratch copy outside the repo passed all 27 cases
+  (QA run `.scratch/TB-48/qa/spec2-proto-*`); nothing of it is in this tree.
+- Lint: `cargo clippy -D warnings` clean for both CLI suites here and for `config_recover` /
+  `touchbard_recovery` against stub symbols in that copy; rustfmt checked by `--stamp`.
+- Evidence history (gate-written, `slice-2.evidence.json`): seal `8f4bc486…` run 1 clean red (then a
+  Clippy `many_single_char_names` fix in `recover_terminal.rs` re-sealed). Seal `7e6bf614…` run 1
+  is **contaminated**: the prototype copy shared the cargo target `/tmp/tb48t`; cargo trusted its
+  fresh dep-info and ran prototype-built `config_recover` / `touchbard_recovery` binaries, so
+  QA-24..27 read GREEN on the base. QA then ran `cargo clean -p` for the five workspace crates in
+  `/tmp/tb48t`, removed the copy and the stray `debug/touchbar-recover` (no dep-info names the
+  copy), and run 2 under the same seal is the valid red: QA-01..23 RED_BEHAVIOR (23 × "tb-config
+  has no `touchbar-recover` binary target"), QA-24..27 RED_MISSING_SYMBOL (E0599 `look`,
+  `recover`, `Recover`), `recover-graph` FAILED (no bin), never_red empty
+  (log `.scratch/TB-48/gate/2026-11-24T195942Z-slice-2`). Lesson: never point a scratch copy of
+  the workspace at the shared target.
