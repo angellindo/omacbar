@@ -24,6 +24,8 @@ The repository does not install or enable the pixel-mode display stack. A green 
 cannot establish panel operation. Follow the prerequisites and human gates in
 [hardware research](research/0001-t1-touch-bar-hardware.md) and
 [firmware findings](research/0006-macos-reference-stack.md) before separate hardware work.
+The staged procedure, with an owner, entry state, stop criterion, return and evidence for every
+stage and the full return B → A, is the [hardware runbook](hardware-runbook.md).
 Agents never load modules, edit udev/systemd/ESP, change device permissions, or write `/dev`.
 
 Once an explicitly planned human hardware procedure provides a supported display backend,

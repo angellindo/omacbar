@@ -97,6 +97,11 @@ The display backend for work without the bar: it writes each screen it shows as 
 the simulator window, shows it live.
 _Avoid_: emulator, mock bar
 
+**Rehearsal profile**:
+A throwaway `HOME` that `scripts/rehearsal.py` creates privately, fills from repo fixtures, uses as
+the only home of the configurator and daemon during a rehearsal, restores and then removes.
+_Avoid_: test home, sandbox, the persistent session (that is `try-app.sh`'s)
+
 **Simulator window**:
 A desktop window that shows the simulator's screen live at the bar's proportions. Pressing the
 primary mouse button on it lands a touch at the matching bar x; releasing the button lifts it.
