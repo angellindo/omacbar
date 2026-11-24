@@ -57,3 +57,38 @@ start with `.` (they are not generations).
 - CLAUDE.md "Look at it" commands and ADR/GLOSSARY text (slice 1 lists them; not runtime-testable
   here). `docs/` wording is left to review.
 - Restore (slice 2), reset (slice 3), recovery UI (slice 4).
+
+## Repair 1 (2026-11-24): size-limit cases QA-42 / QA-43
+
+The first seal capped the whole configurator binary with `prlimit --fsize=65536` from `exec`.
+Mesa `anv` (Intel) cannot create a device below RLIMIT_FSIZE = 1 GiB, so both runs stopped at
+"no GPU device" before the Save: QA-42 failed, and QA-43 passed without ever reaching the Save.
+A limit applied to the live pid after GPU init was timing-based, so it was not adopted.
+
+Now both cases run the same configurator headless (`rune::Runtime`, no GPU) through its
+production entry `tb_app::spec().init` (reads `HOME` / `XDG_STATE_HOME` once, as the binary
+does), inside a child process: this test binary again, running only the `#[ignore]`d helper
+`size_limited_editor_saves_once` (inert unless `CONFIGURATOR_GENERATIONS_SIZE_LIMITED_CHILD` is
+set), under `sh -c 'trap "" XFSZ; exec prlimit --fsize=65536:65536 -- …'`. The cap is in force
+from `exec`, so there is nothing to synchronize. Both cases use the same profile layout, the same
+limit (soft and hard), the same drag (F3 by -190 pt, as `scripts/drag-f3-before-f1.json`) and a tap
+on `save`. Only the seeded file's size differs (control under 16 KiB vs > 256 KiB, mode 0600 vs 0640).
+
+Positive evidence the parent requires from the child's report and the disk:
+- the cap: `/proc/self/limits` soft and hard = 65536, `SIGXFSZ` in `SigIgn`;
+- the editor opened the seeded file, the drag changed the layout, the dirty summary showed pending
+  changes, Save was tapped, and the `status` text changed;
+- room: status `saved config <path>`, no pending changes, the file on disk parses to the editor's
+  layout, exactly one `file` generation holding the exact seeded bytes (0600), reason `save`;
+- no room: the new layout serializes to < 16 KiB (so the only write over the cap is the copy of
+  the > 256 KiB original), status `not saved <path>…` containing `os error 27` (EFBIG), the draft
+  still pending, the file byte-identical with mode 0640, and no `file` generation listed.
+
+The full-binary cases QA-40 / QA-41 are unchanged (they need a GPU, no cap).
+
+## Repair 2 (2026-11-24): report transport
+
+With `--nocapture` libtest prints `test size_limited_editor_saves_once ... ` without a newline,
+so the helper's first report line (`fsize-soft`) did not start with the prefix and the parent
+failed with "no `fsize-soft` in the report" on both trees, before judging the save. The helper
+now prints one empty line before its first report line. No assertion, key or control changed.
