@@ -1,0 +1,8 @@
+[
+  {"t": 0.3, "type": "tap", "key": "reset-factory"},
+  {"t": 0.9, "type": "tap", "key": "reset-cancel"},
+  {"t": 1.5, "type": "tap", "key": "reset-factory"},
+  {"t": 2.1, "type": "tap", "key": "save"},
+  {"t": 2.8, "type": "tap", "key": "recover-1"},
+  {"t": 3.8, "type": "mark", "name": "end"}
+]

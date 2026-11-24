@@ -119,6 +119,25 @@ Unavailable placements produce an explicit message rather than invented widths. 
     Ctrl+S (and an overwrite after a conflict) with the draft pending keep a verified
     `factory-reset` generation of the replaced file (ADR-0015) and the status names its directory.
     A refused save writes nothing and keeps the draft and its cancel.
+13. **Restore a saved config** (sidebar, below the issues): `backups-location` shows the full path
+    of the generation store as text and says `touchbar-recover list` shows every generation. The
+    newest five generations of this file are listed newest first (`recover-<id>`: id, which write
+    kept it, e.g. "before factory reset", size and mode); more than five add `recovery-more` with
+    the count and `touchbar-recover list`. An absence or a damaged generation is listed with why
+    and is never restorable. A press restores the generation through the guarded write (ADR-0013,
+    ADR-0015): exact bytes and permission bits, the replaced file kept as a `recover` generation;
+    the editor then shows the file as startup does (an invalid one with its issues) and the status
+    names where the replaced file is kept. Only offered with nothing pending: with unsaved edits
+    or a pending reset the rows are disabled and `recovery-pending` says to save or cancel first.
+    A file changed on disk since it was opened is shown instead (nothing written); a removed file
+    is reported and nothing is written. `key-row-return` is only text: the physical return to the
+    key row is the human procedure in `docs/hardware-runbook.md` § Physical return to key mode,
+    never done by the editor; the layout and its generations stay on disk. Default buttons,
+    restore and the key-row return are three separate controls. Scene `recovery`.
+    For a headless rehearsal, use `crates/tb-app/scripts/reset-save-recover.json` with
+    `--size 1200x1600 --at mark:end` on a disposable profile seeded with a valid personal
+    config and an empty generation store. The script cancels a reset, saves a second reset
+    and restores generation 1.
 
 ## Verification boundary
 

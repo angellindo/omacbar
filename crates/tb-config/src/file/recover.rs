@@ -3,9 +3,15 @@
 //! replaces, and writes the kept bytes with the kept permission bits.
 
 use super::{ConfigFile, ConfigFileError, Content, WriteKind};
-use crate::backup::{BackupError, GenerationId, Stored};
+use crate::backup::{BackupError, Backups, GenerationId, Stored};
 
 impl ConfigFile {
+    /// The generation store that protects this file (what a restore can choose from); `None` for
+    /// an unprotected one.
+    pub fn backups(&self) -> Option<&Backups> {
+        self.protection.as_ref()
+    }
+
     /// Records what is on disk now as the version seen, without parsing it: a missing or invalid
     /// file is what a restore may replace too. A symlink is followed, as reads do (a later write
     /// still refuses it).

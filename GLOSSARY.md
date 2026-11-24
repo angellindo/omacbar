@@ -167,6 +167,14 @@ generation of the file it replaces. Not a restore of the user's own file, and no
 return to the firmware key row.
 _Avoid_: restore, restore defaults (ambiguous), reset (for the hardware return)
 
+**Restore**:
+Writing a chosen generation back over the config file, exactly (bytes and permission bits),
+through the guarded write: the file it replaces is kept first as a `recover` generation, so a
+restore can itself be undone. Done from the configurator (newest five, only with nothing pending)
+or with `touchbar-recover` (every generation, with no display or valid config). Not a factory
+reset, and not the physical return to the firmware key row.
+_Avoid_: recover (for the user action; `recover` names the generation's reason), rollback, undo
+
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
 _Avoid_: error (for config problems), warning

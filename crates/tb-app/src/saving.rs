@@ -172,6 +172,7 @@ impl State {
         self.saving.last_saved = (self.saving.clock)();
         self.saving.saved_this_session = true;
         self.saving.conflict = None;
+        self.refresh_history();
     }
 
     fn not_saved(&mut self, e: &ConfigFileError) {
@@ -213,7 +214,7 @@ impl State {
     /// Reads the file through a fresh `ConfigFile` and, only if it resolves, makes it the editor's
     /// file, config and baseline. A failure changes nothing: the editor's file still remembers the
     /// version it read, so bytes the user never accepted cannot authorize a later save.
-    fn adopt(&mut self) -> Result<String, String> {
+    pub(crate) fn adopt(&mut self) -> Result<String, String> {
         let Some(file) = &self.file else { return Err(NO_HOME.to_owned()) };
         let name = self.file_name();
         let mut fresh = file.reopened();
@@ -240,10 +241,12 @@ impl State {
             self.selected = None;
         }
         self.fields = Fields::of(self.selected_button());
+        self.opened = self.config.clone();
+        self.refresh_history();
         Ok(shown)
     }
 
-    fn file_name(&self) -> String {
+    pub(crate) fn file_name(&self) -> String {
         let name = self.file.as_ref().and_then(|f| f.path().file_name());
         name.map_or_else(|| "the config file".to_owned(), |n| n.to_string_lossy().into_owned())
     }

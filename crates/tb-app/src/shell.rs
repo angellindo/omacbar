@@ -4,6 +4,7 @@ use crate::app::{State, body, pressable, save_key};
 use crate::diagnostics::issues;
 use crate::panel::panel;
 use crate::preview::preview;
+use crate::recovery::recovery;
 use crate::reset::reset_controls;
 use crate::workspace::workspace;
 use rune::{Cx, El, ScrollSpec, col, el, row, text};
@@ -70,6 +71,13 @@ pub(crate) fn view(s: &State, cx: &mut Cx<State>) -> El {
 
 fn sidebar(s: &State, height: f32) -> El {
     let entries = Chord::ALL.into_iter().map(|chord| layer_row(s, chord));
+    // A theme load failure is already shown above Save. Keep the result of the file operation
+    // visible as well, including when a restore succeeded but its theme could not load.
+    let status = if s.saving.blocked.is_some() {
+        s.status.clone()
+    } else {
+        s.save_blocked_reason().unwrap_or_else(|| s.status.clone())
+    };
     col().key("sidebar").size(208.0, height).min_w(208.0).child(
         col().key("sidebar-scroll").size(208.0, height).scroll(ScrollSpec { stick_bottom: false }).child(
             col()
@@ -89,10 +97,9 @@ fn sidebar(s: &State, height: f32) -> El {
                 .children(conflict_controls(s))
                 .child(words(s, "dirty-summary", &s.dirty_summary()).mt(4.0))
                 .child(words(s, "last-saved", &s.last_saved_text()))
-                .child(
-                    words(s, "status", &s.save_blocked_reason().unwrap_or_else(|| s.status.clone())).mt(6.0),
-                )
-                .child(issues(s).mt(12.0)),
+                .child(words(s, "status", &status).wrap_anywhere().mt(6.0))
+                .child(issues(s).mt(12.0))
+                .child(recovery(s).mt(16.0)),
         ),
     )
 }
