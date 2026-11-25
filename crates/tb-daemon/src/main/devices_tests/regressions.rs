@@ -51,6 +51,47 @@ fn auto_refuses_indeterminate_touch_bar_metadata_before_opening_any_card() {
 }
 
 #[test]
+fn drm_runs_one_action_and_restores_once_when_packet_stdin_closes_after_the_lift() {
+    let root = fake_card("stdin-packets");
+    let recording = root.join("keys.bin");
+    let kms = RecordingKms::touch_bar();
+    let log = kms.log();
+    let (input, writer) = rustix::pipe::pipe_with(rustix::pipe::PipeFlags::DIRECT).unwrap();
+    let alias = rustix::io::dup(&input).unwrap();
+    let flags = fcntl_getfl(&alias).unwrap();
+    assert_eq!(rustix::io::write(&writer, b"down 906\n").unwrap(), 9);
+    assert_eq!(rustix::io::write(&writer, b"up\n").unwrap(), 3);
+    drop(writer);
+
+    let mut args = parse_args(["--drm", "auto"].map(str::to_owned).into_iter()).unwrap();
+    args.emit = Some(Emit::Path(recording.clone()));
+    let result = run_with_devices(&root, args, Some(kms), input, None);
+    let records = fs::read(recording).unwrap();
+    fs::remove_dir_all(root).unwrap();
+
+    assert_eq!(result, Ok(()));
+    assert_eq!(fcntl_getfl(&alias).unwrap(), flags);
+    let records = records.as_chunks::<24>();
+    assert_eq!(records.1, b"");
+    let keys: Vec<_> = records
+        .0
+        .iter()
+        .map(|record| {
+            (
+                u16::from_ne_bytes(record[16..18].try_into().unwrap()),
+                u16::from_ne_bytes(record[18..20].try_into().unwrap()),
+                i32::from_ne_bytes(record[20..24].try_into().unwrap()),
+            )
+        })
+        .collect();
+    assert_eq!(keys, [(1, 63, 1), (0, 0, 0), (1, 63, 0), (0, 0, 0)]);
+    let calls = log.calls();
+    assert_eq!(calls.iter().filter(|call| matches!(call, KmsCall::SetCrtc { fb: 0, .. })).count(), 1);
+    assert_eq!(calls.iter().filter(|call| matches!(call, KmsCall::DropMaster)).count(), 1);
+    assert_eq!(calls.last(), Some(&KmsCall::Close));
+}
+
+#[test]
 fn drm_reads_stdin_from_the_inherited_file_offset_or_a_socket() {
     let root = fake_card("stdin-file-and-socket");
     let path = root.join("touches");

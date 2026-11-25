@@ -7,15 +7,16 @@ use rustix::event::{PollFd, PollFlags, poll};
 use rustix::fs::{self, FileType, Mode, OFlags};
 use rustix::io::Errno;
 use rustix::net::{RecvFlags, recv};
-use rustix::pipe::{PipeFlags, SpliceFlags, pipe_with, splice};
+use rustix::pipe::{PipeFlags, SpliceFlags, fcntl_getpipe_size, pipe_with, splice};
 
-/// Exclusive reader of a descriptor opened nonblocking when a stop pipe is supplied. EOF on
-/// the stop pipe takes precedence over available input, so a busy reader can still be cancelled.
+/// With a stop pipe, direct reads require a descriptor that cannot block. Use [`Self::inherited`]
+/// for shared input. Stop readiness takes precedence over available input.
 pub struct StopRead<F>(pub F, pub Option<Arc<PipeReader>>);
 
 impl<F: AsFd> StopRead<F> {
     /// Inherited input may be shared with another reader. Use a nonblocking operation that leaves
     /// the inherited open file description alone, even when poll readiness is lost.
+    /// Pipe reads can stage up to one private pipe's capacity to preserve packet boundaries.
     pub fn inherited(input: F, stop: Option<Arc<PipeReader>>) -> io::Result<impl Read> {
         let mode = if stop.is_some() { InheritedMode::for_fd(&input)? } else { InheritedMode::Read };
         Ok(InheritedInput { input: Self(input, stop), mode })
@@ -24,6 +25,7 @@ impl<F: AsFd> StopRead<F> {
     fn read_with(
         &self,
         buf: &mut [u8],
+        buffered: Option<&OwnedFd>,
         mut read: impl FnMut(&F, &mut [u8]) -> rustix::io::Result<usize>,
     ) -> io::Result<usize> {
         if buf.is_empty() {
@@ -31,9 +33,16 @@ impl<F: AsFd> StopRead<F> {
         }
         loop {
             if let Some(stop) = &self.1 {
-                let mut fds =
-                    [PollFd::new(stop.as_ref(), PollFlags::IN), PollFd::new(&self.0, PollFlags::IN)];
-                match poll(&mut fds, None) {
+                let mut fds = [
+                    PollFd::new(stop.as_ref(), PollFlags::IN),
+                    PollFd::new(&self.0, PollFlags::IN),
+                    PollFd::from_borrowed_fd(
+                        buffered.map_or_else(|| stop.as_fd(), AsFd::as_fd),
+                        PollFlags::IN,
+                    ),
+                ];
+                let count = if buffered.is_some() { 3 } else { 2 };
+                match poll(&mut fds[..count], None) {
                     Ok(_) if !fds[0].revents().is_empty() => return Ok(0),
                     Ok(_) => {}
                     Err(Errno::INTR) => continue,
@@ -50,7 +59,7 @@ impl<F: AsFd> StopRead<F> {
 
 impl<F: AsFd> Read for StopRead<F> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.read_with(buf, |fd, buf| rustix::io::read(fd, buf))
+        self.read_with(buf, None, |fd, buf| rustix::io::read(fd, buf))
     }
 }
 
@@ -62,7 +71,7 @@ struct InheritedInput<F> {
 enum InheritedMode {
     Read,
     Socket,
-    Pipe { read_end: OwnedFd, write_end: OwnedFd },
+    Pipe { read_end: OwnedFd, write_end: OwnedFd, capacity: usize },
     Reopened(OwnedFd),
 }
 
@@ -82,7 +91,8 @@ impl InheritedMode {
                 // Both ends of splice are pipes. SPLICE_F_NONBLOCK covers the source even
                 // when its inherited description is blocking or cannot be reopened.
                 let (read_end, write_end) = pipe_with(PipeFlags::NONBLOCK | PipeFlags::CLOEXEC)?;
-                Ok(Self::Pipe { read_end, write_end })
+                let capacity = fcntl_getpipe_size(&write_end)?;
+                Ok(Self::Pipe { read_end, write_end, capacity })
             }
             _ if flags.contains(OFlags::NONBLOCK) => Ok(Self::Read),
             FileType::CharacterDevice if can_reopen(fd, stat.st_rdev)? => {
@@ -108,14 +118,31 @@ fn can_reopen(fd: BorrowedFd<'_>, device: rustix::fs::Dev) -> io::Result<bool> {
 
 impl<F: AsFd> Read for InheritedInput<F> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.input.read_with(buf, |fd, buf| match &self.mode {
+        let buffered = match &self.mode {
+            InheritedMode::Pipe { read_end, .. } => Some(read_end),
+            _ => None,
+        };
+        self.input.read_with(buf, buffered, |fd, buf| match &self.mode {
             InheritedMode::Read => rustix::io::read(fd, buf),
             InheritedMode::Socket => recv(fd, buf, RecvFlags::DONTWAIT).map(|(_, len)| len),
-            InheritedMode::Pipe { read_end, write_end } => {
-                let len = splice(fd, None, write_end, None, buf.len(), SpliceFlags::NONBLOCK)?;
-                rustix::io::read(read_end, &mut buf[..len])
+            InheritedMode::Pipe { read_end, write_end, capacity } => {
+                // Packet pipes stop each read at the packet boundary, even if splice moved
+                // several packets. Drain the private pipe before consulting the source again.
+                match rustix::io::read(read_end, &mut *buf) {
+                    Err(Errno::AGAIN) => {}
+                    result => return result,
+                }
+                // Stage whole buffers so that read can discard the tail of a short packet.
+                // The private pipe's capacity is also the upper bound on read-ahead.
+                if splice(fd, None, write_end, None, *capacity, SpliceFlags::NONBLOCK)? == 0 {
+                    return Ok(0);
+                }
+                rustix::io::read(read_end, buf)
             }
             InheritedMode::Reopened(fd) => rustix::io::read(fd, buf),
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -66,3 +66,18 @@ fn a_recorded_virtual_keyboard_in_a_missing_directory_is_an_error_and_makes_noth
     assert!(made.is_err(), "no directory is made for the file");
     assert!(!missing.exists());
 }
+
+#[test]
+fn a_fifo_with_a_reader_is_refused_as_a_recording_destination() {
+    use rustix::fs::{CWD, Mode, OFlags, mkfifoat, open};
+    use tb_daemon::EmitError;
+
+    let path = fresh_dir("fifo-with-reader").join("keys.fifo");
+    mkfifoat(CWD, &path, Mode::RUSR | Mode::WUSR).unwrap();
+    let _reader = open(&path, OFlags::RDONLY | OFlags::NONBLOCK, Mode::empty()).unwrap();
+
+    let Err(EmitError::Open { source, .. }) = VirtualKeyboard::record_to(&path) else {
+        panic!("a recording destination must be a regular file");
+    };
+    assert_eq!(source.kind(), std::io::ErrorKind::InvalidInput);
+}
