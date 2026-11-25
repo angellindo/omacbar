@@ -1,0 +1,33 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-25T04:20:51Z",
+      "seal": "sha256:08bb9abefbb975ced863cd81790ec88d33cfb889d8de4021369ed48a75c3dd96",
+      "head": "6415d1301044b91d7a9ac9663658801af41e8830",
+      "final": false,
+      "results": {
+        "QA-201": "RED_MISSING_SYMBOL",
+        "QA-202": "RED_MISSING_SYMBOL",
+        "QA-203": "RED_MISSING_SYMBOL",
+        "QA-204": "RED_MISSING_SYMBOL",
+        "QA-205": "RED_MISSING_SYMBOL",
+        "QA-206": "RED_MISSING_SYMBOL",
+        "QA-207": "RED_MISSING_SYMBOL",
+        "QA-208": "RED_MISSING_SYMBOL",
+        "QA-209": "RED_MISSING_SYMBOL",
+        "QA-210": "RED_MISSING_SYMBOL",
+        "QA-211": "RED_MISSING_SYMBOL",
+        "QA-212": "RED_MISSING_SYMBOL",
+        "QA-213": "RED_MISSING_SYMBOL",
+        "QA-214": "RED_MISSING_SYMBOL",
+        "QA-215": "RED_MISSING_SYMBOL",
+        "QA-216": "GREEN",
+        "QA-217": "GREEN",
+        "QA-218": "GREEN",
+        "QA-219": "GREEN",
+        "QA-220": "GREEN"
+      },
+      "log": ".scratch/TB-47/gate/2026-11-25T042040Z-slice-2"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"ticket": "TB-47", "confirmed": true, "by": "bouncer", "at": "2026-11-22T05:11:25.441557+00:00", "lane": "standard", "base": "main", "brief": "Opt-in validated Linux KMS and digitizer adapters against offline interfaces", "hil": ["physical validation in TB-10 and TB-45"]}

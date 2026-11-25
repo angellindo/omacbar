@@ -1,0 +1,68 @@
+{
+  "head": "987a398ceca63ff7dc24413969e322638468f29a",
+  "worktree_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "cargo_exit": 0,
+  "tests": {
+    "an_explicit_device_path_outside_dev_is_refused_with_exit_one_and_left_unchanged": "ok",
+    "the_simulator_still_ends_on_sighup_sigint_and_sigterm_by_their_default_action": "ok"
+  },
+  "decoy": {
+    "entries_before": 3,
+    "entries_after": 10,
+    "changed": [
+      "touchbar-customizer",
+      "touchbar-customizer/backups",
+      "touchbar-customizer/backups/1",
+      "touchbar-customizer/backups/1/manifest.toml",
+      "touchbar-customizer/backups/2",
+      "touchbar-customizer/backups/2/manifest.toml",
+      "touchbar-customizer/backups/3",
+      "touchbar-customizer/backups/3/manifest.toml"
+    ],
+    "generations": [
+      "1",
+      "2",
+      "3"
+    ],
+    "theme_set": "caller\n"
+  },
+  "signal_rounds": [
+    {
+      "sim_dir": "signal-sim-1953008-5",
+      "first_frame": true,
+      "home": "home-1953008-6",
+      "home_generations": []
+    },
+    {
+      "sim_dir": "signal-sim-1953008-7",
+      "first_frame": true,
+      "home": "home-1953008-8",
+      "home_generations": []
+    },
+    {
+      "sim_dir": "signal-sim-1953008-9",
+      "first_frame": true,
+      "home": "home-1953008-10",
+      "home_generations": []
+    }
+  ],
+  "other_private_homes": [
+    {
+      "home": "home-1953008-1",
+      "home_generations": []
+    },
+    {
+      "home": "home-1953008-2",
+      "home_generations": []
+    },
+    {
+      "home": "home-1953008-3",
+      "home_generations": []
+    },
+    {
+      "home": "home-1953008-4",
+      "home_generations": []
+    }
+  ],
+  "pass": false
+}

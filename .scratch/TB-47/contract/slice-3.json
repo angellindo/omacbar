@@ -1,11 +1,12 @@
 {
   "version": 1,
   "mode": "behavior",
-  "reason": "Protects the touchbard entry path for the opt-in device run: --drm/--touch parse only as opt-in flags and never with the simulator window; a path that is not a /dev/dri/cardN or /dev/input/eventN node is refused before sysfs or the input devices are read; the card is identified in sysfs before it is opened and its opened node confirmed before master; a refused start or digitizer shows nothing and releases the card; each tap acts once; cancel, lost sync, read errors, daemon errors, unplug (Gone) and a failed restore are reported and restore exactly once; a stop signal ends a run with a blocked reader promptly with one restore; commands keep the caller's signal mask; the simulator's flags, frames and default signal actions are unchanged.",
+  "reason": "Protects the touchbard entry path for the opt-in device run: --drm/--touch parse only as opt-in flags and never with the simulator window; a path that is not a /dev/dri/cardN or /dev/input/eventN node is refused before sysfs or the input devices are read; the card is identified in sysfs before it is opened and its opened node confirmed before master; a refused start or digitizer shows nothing and releases the card; each tap acts once; cancel, lost sync, read errors, daemon errors, unplug (Gone) and a failed restore are reported and restore exactly once; a stop signal ends a run with a blocked reader promptly with one restore; commands keep the caller's signal mask; the simulator's flags, frames and default signal actions are unchanged. Every touchbard a TB-47 test starts, as a process (touchbard_hardware) or in-process (--bin touchbard and its test-binary children), keeps its generation store out of the caller's XDG_STATE_HOME: the xdg-decoy check runs each path against its own decoy, requires it unchanged and fails closed when a path proves too little; on request the signal test itself requires each HUP/INT/TERM round to keep one absent first-write generation in that round's own HOME (integration amendment at 987a398, see .scratch/TB-47/qa-integration-isolation/RECEIPT.md).",
   "files": [
     "crates/tb-daemon/src/main/tests.rs",
     "crates/tb-daemon/src/main/hardware_tests.rs",
-    "crates/tb-daemon/tests/touchbard_hardware.rs"
+    "crates/tb-daemon/tests/touchbard_hardware.rs",
+    ".scratch/TB-47/contract/xdg_decoy_check.py"
   ],
   "cases": [
     {
@@ -216,5 +217,15 @@
       "reason": "Key actions in the simulator run are unchanged when the action wiring is shared with the device run"
     }
   ],
-  "checks": []
+  "checks": [
+    {
+      "id": "xdg-decoy",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        ".scratch/TB-47/contract/xdg_decoy_check.py"
+      ]
+    }
+  ]
 }

@@ -2,12 +2,13 @@
 //! or `/dev/input/eventN` node with exit 1 (not the usage error 2), before anything is shown and
 //! without touching the given file, and its simulator keeps ending on SIGHUP, SIGINT and SIGTERM by
 //! their default action. Each run gets an empty HOME, a temp working directory and a temp `--sim`
-//! dir under cargo's temp dir; signals go only to the child this file started. No run selects
-//! `auto` or a `/dev` path, so no device, `/sys` entry or input device of the host is opened. Needs
-//! a Vulkan adapter (lavapipe is fine), like the other `touchbard_*` tests.
+//! dir under cargo's temp dir, and no `XDG_STATE_HOME`, so its generation store stays in that
+//! HOME; signals go only to the child this file started. No run selects `auto` or a `/dev` path,
+//! so no device, `/sys` entry or input device of the host is opened. Needs a Vulkan adapter
+//! (lavapipe is fine), like the other `touchbard_*` tests.
 //!
 //! The binary path is read with `option_env!`, so this file compiles without the binary target.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::print_stdout)]
 
 use std::io::Read;
 use std::os::unix::process::ExitStatusExt;
@@ -48,6 +49,8 @@ fn run_in(cwd: &Path, args: &[&str]) -> Output {
         .args(args)
         .current_dir(cwd)
         .env("HOME", fresh_dir("home"))
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -115,10 +118,13 @@ fn the_simulator_still_ends_on_sighup_sigint_and_sigterm_by_their_default_action
     for (name, signal) in [("HUP", SIGHUP), ("INT", SIGINT), ("TERM", SIGTERM)] {
         let dir = fresh_dir("signal-sim");
         let sim = dir.join("sim");
+        let home = fresh_dir("home");
         let mut child = touchbard()
             .args(["--sim", sim.to_str().unwrap()])
             .current_dir(&dir)
-            .env("HOME", fresh_dir("home"))
+            .env("HOME", &home)
+            // The generation store follows HOME, inside the temp home, never the caller's state.
+            .env_remove("XDG_STATE_HOME")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -145,5 +151,29 @@ fn the_simulator_still_ends_on_sighup_sigint_and_sigterm_by_their_default_action
         }
         let status = child.wait().unwrap();
         assert_eq!(status.signal(), Some(signal), "SIG{name} still ends the simulator unhandled: {status:?}");
+        private_first_writes(&home, name);
+    }
+}
+
+/// Counts the absent first-write generations a run kept in its own HOME's state dir and prints
+/// the count for the integrated isolation check (TB-47 xdg-decoy), which sets
+/// `TB_TEST_REQUIRE_PRIVATE_GENERATION` to require exactly one. Without it nothing is required,
+/// since a daemon without a generation store keeps none.
+fn private_first_writes(home: &Path, name: &str) {
+    let config = format!("config = \"{}/", home.display());
+    let store = home.join(".local/state/touchbar-customizer/backups");
+    let manifests = std::fs::read_dir(&store)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| std::fs::read_to_string(entry.ok()?.path().join("manifest.toml")).ok());
+    let absent = manifests
+        .filter(|m| {
+            let has = |line: &str| m.lines().any(|l| l.starts_with(line));
+            has("kind = \"absent\"") && has("reason = \"first-write\"") && has(&config)
+        })
+        .count();
+    println!("private first-write generations SIG{name}: {absent}");
+    if std::env::var_os("TB_TEST_REQUIRE_PRIVATE_GENERATION").is_some() {
+        assert_eq!(absent, 1, "SIG{name}: one absent first-write generation in the run's own HOME");
     }
 }

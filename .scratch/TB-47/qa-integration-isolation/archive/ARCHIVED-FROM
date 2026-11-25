@@ -1,0 +1,4 @@
+integration-987a398: git show 987a398 (committed at the integration merge), before any QA change.
+parent-tb47-204663a: working tree of the TB-47 parent checkout (HEAD 204663ab698ea9b3b43dd0c3522dda63625c125c, branch tb-47-integrated-stage), copied 2026-11-25T17:07:53Z.
+parent-tb48-354da2e: working tree of the TB-48 parent checkout (HEAD 354da2e3d95d12ac047b7f2a3e6e64605b6192e2, branch tb-48-integrated-recovery), copied 2026-11-25T17:07:53Z; its QA was running finals in parallel, so later runs there are not in this copy.
+ack files are .ack, renamed so they are not taken for live intake records.

@@ -1,0 +1,91 @@
+## check-worktree-29420787.log
+qa-env: head=987a398ceca63ff7dc24413969e322638468f29a rustc 1.99.1 (58cf8f9c3 2026-10-13) cpu=7 jobs=1 threads=1 xdg_state=<checkout>/target/tb47-qa-isolation/profiles/check-worktree/state target=<checkout>/target/tb47-tb48-directed/target
+private first-write generations SIGHUP: 1
+private first-write generations SIGINT: 1
+private first-write generations SIGTERM: 1
+TB-47 xdg decoy: {"path": "process: --test touchbard_hardware", "exit": 0, "tests_passed": 2, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+TB-47 xdg decoy: {"path": "in-process: --bin touchbard", "exit": 0, "tests_passed": 27, "tests_failed": [], "proof_complete": true, "decoy_changed": ["touchbar-customizer", "touchbar-customizer/backups", "touchbar-customizer/backups/1", "touchbar-customizer/backups/1/manifest.toml", "touchbar-customizer/backups/2", "touchbar-customizer/backups/2/manifest.toml", "touchbar-customizer/backups/3", "touchbar-customizer/backups/3/manifest.toml", "touchbar-customizer/backups/4", "touchbar-customizer/backups/4/manifest.toml", "touchbar-customizer/backups/5", "touchbar-customizer/backups/5/manifest.toml", "touchbar-customizer/backups/6", "touchbar-customizer/backups/6/manifest.toml"], "decoy_generations": 6, "pass": false}
+## check-worktree.log
+qa-env: head=987a398ceca63ff7dc24413969e322638468f29a rustc 1.99.1 (58cf8f9c3 2026-10-13) cpu=7 jobs=1 threads=1 xdg_state=<checkout>/target/tb47-qa-isolation/profiles/check-worktree/state target=<checkout>/target/tb47-tb48-directed/target
+private first-write generations SIGHUP: 1
+private first-write generations SIGINT: 1
+private first-write generations SIGTERM: 1
+TB-47 xdg decoy: {"path": "process: --test touchbard_hardware", "exit": 0, "tests_passed": 2, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+TB-47 xdg decoy: {"path": "in-process: --bin touchbard", "exit": 0, "tests_passed": 27, "tests_failed": [], "proof_complete": true, "decoy_changed": ["touchbar-customizer", "touchbar-customizer/backups", "touchbar-customizer/backups/1", "touchbar-customizer/backups/1/manifest.toml", "touchbar-customizer/backups/2", "touchbar-customizer/backups/2/manifest.toml", "touchbar-customizer/backups/3", "touchbar-customizer/backups/3/manifest.toml", "touchbar-customizer/backups/4", "touchbar-customizer/backups/4/manifest.toml", "touchbar-customizer/backups/5", "touchbar-customizer/backups/5/manifest.toml", "touchbar-customizer/backups/6", "touchbar-customizer/backups/6/manifest.toml"], "decoy_generations": 6, "pass": false}
+## combined-29420787.log
+qa-env: head=3174c1e1e88b537ceaf9ef8e5fae11b7f79828ab rustc 1.99.1 (58cf8f9c3 2026-10-13) cpu=7 jobs=1 threads=1 xdg_state=<checkout>/target/tb47-qa-isolation/profiles/combined/state target=<checkout>/target/tb47-qa-isolation/combined-target
+private first-write generations SIGHUP: 1
+private first-write generations SIGINT: 1
+private first-write generations SIGTERM: 1
+TB-47 xdg decoy: {"path": "process: --test touchbard_hardware", "exit": 0, "tests_passed": 2, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+TB-47 xdg decoy: {"path": "in-process: --bin touchbard", "exit": 0, "tests_passed": 27, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+check rc=0
+private first-write generations SIGHUP: 1
+private first-write generations SIGINT: 1
+private first-write generations SIGTERM: 1
+TB-47 xdg decoy: {"path": "process: --test touchbard_hardware", "exit": 0, "tests_passed": 2, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+TB-47 xdg decoy: {"path": "in-process: --bin touchbard", "exit": 0, "tests_passed": 27, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+check-2-threads rc=0
+175 |     println!("private first-write generations SIG{name}: {absent}");
+clippy rc=101
+fmt rc=0
+## combined.log
+qa-env: head=3174c1e1e88b537ceaf9ef8e5fae11b7f79828ab rustc 1.99.1 (58cf8f9c3 2026-10-13) cpu=7 jobs=1 threads=1 xdg_state=<checkout>/target/tb47-qa-isolation/profiles/combined/state target=<checkout>/target/tb47-qa-isolation/combined-target
+private first-write generations SIGHUP: 1
+private first-write generations SIGINT: 1
+private first-write generations SIGTERM: 1
+TB-47 xdg decoy: {"path": "process: --test touchbard_hardware", "exit": 0, "tests_passed": 2, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+TB-47 xdg decoy: {"path": "in-process: --bin touchbard", "exit": 0, "tests_passed": 27, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+check rc=0
+private first-write generations SIGHUP: 1
+private first-write generations SIGINT: 1
+private first-write generations SIGTERM: 1
+TB-47 xdg decoy: {"path": "process: --test touchbard_hardware", "exit": 0, "tests_passed": 2, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+TB-47 xdg decoy: {"path": "in-process: --bin touchbard", "exit": 0, "tests_passed": 27, "tests_failed": [], "proof_complete": true, "decoy_changed": [], "decoy_generations": 0, "pass": true}
+check-2-threads rc=0
+clippy rc=0
+fmt rc=0
+## thermal
+2026-11-25T17:07:24Z waiting for shared thermal lock
+2026-11-25T17:10:47Z lock acquired
+2026-11-25T17:10:48Z start: CPU 7, 60 C
+2026-11-25T17:10:50Z PAUSE start at 75 C
+2026-11-25T17:10:53Z PAUSE end at 62 C
+2026-11-25T17:10:56Z PAUSE start at 74 C
+2026-11-25T17:11:02Z PAUSE end at 60 C
+2026-11-25T17:11:03Z end: peak 75 C, thermal pauses 2, exit 1
+2026-11-25T17:12:00Z waiting for shared thermal lock
+2026-11-25T17:17:52Z lock acquired
+2026-11-25T17:17:53Z start: CPU 7, 57 C
+2026-11-25T17:18:00Z end: peak 68 C, thermal pauses 0, exit 1
+2026-11-25T17:18:01Z waiting for shared thermal lock
+2026-11-25T17:22:15Z waiting for shared thermal lock
+2026-11-25T17:26:42Z lock acquired
+2026-11-25T17:26:43Z start: CPU 7, 56 C
+2026-11-25T17:26:50Z end: peak 68 C, thermal pauses 0, exit 1
+2026-11-25T17:26:50Z waiting for shared thermal lock
+2026-11-25T17:34:49Z lock acquired
+2026-11-25T17:34:50Z start: CPU 7, 56 C
+2026-11-25T17:35:55Z end: peak 69 C, thermal pauses 0, exit 0
+2026-11-25T17:35:55Z waiting for shared thermal lock
+2026-11-25T17:37:40Z lock acquired
+2026-11-25T17:37:40Z start: CPU 7, 58 C
+2026-11-25T17:38:00Z end: peak 69 C, thermal pauses 0, exit 1
+2026-11-25T17:38:34Z waiting for shared thermal lock
+2026-11-25T17:38:34Z lock acquired
+2026-11-25T17:38:34Z start: CPU 7, 55 C
+2026-11-25T17:38:41Z end: peak 67 C, thermal pauses 0, exit 1
+2026-11-25T17:38:41Z waiting for shared thermal lock
+2026-11-25T17:38:41Z lock acquired
+2026-11-25T17:38:41Z start: CPU 7, 64 C
+2026-11-25T17:38:57Z end: peak 73 C, thermal pauses 0, exit 0
+2026-11-25T17:38:57Z waiting for shared thermal lock
+2026-11-25T17:38:57Z lock acquired
+2026-11-25T17:38:58Z start: CPU 7, 59 C
+2026-11-25T17:39:00Z PAUSE start at 74 C
+2026-11-25T17:39:01Z PAUSE end at 59 C
+2026-11-25T17:39:05Z PAUSE start at 74 C
+2026-11-25T17:39:06Z PAUSE end at 59 C
+2026-11-25T17:39:07Z PAUSE start at 78 C
+2026-11-25T17:39:10Z PAUSE end at 59 C
+2026-11-25T17:39:23Z end: peak 78 C, thermal pauses 3, exit 1

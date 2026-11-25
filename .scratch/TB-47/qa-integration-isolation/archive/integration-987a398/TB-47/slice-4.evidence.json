@@ -1,0 +1,40 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-25T06:34:27Z",
+      "seal": "sha256:23a26866c59b84349dcbd5843bdd6a63af3c2b3b89572eb5ceac07458e73029f",
+      "head": "01dbc59381de12d6699efd4bc56cc00862405a23",
+      "final": false,
+      "results": {
+        "visual": "FAILED",
+        "checklist-section": "FAILED",
+        "checklist-preconditions": "FAILED",
+        "checklist-opt-in-flags": "FAILED",
+        "checklist-tb10-vs-tb45": "FAILED",
+        "checklist-source-vs-observed": "FAILED",
+        "checklist-submitted-only": "FAILED",
+        "checklist-foreign-state-refused": "FAILED",
+        "checklist-restore-reported": "FAILED",
+        "checklist-no-promise-after-kill": "FAILED",
+        "checklist-runbook-return": "FAILED",
+        "checklist-human-evidence": "FAILED",
+        "adr-legacy-kms": "FAILED",
+        "adr-sysfs-identity-and-master": "FAILED",
+        "adr-inactive-prior-state": "FAILED",
+        "adr-submitted-only": "FAILED",
+        "adr-considered-options": "FAILED",
+        "glossary-touch-bar-card": "FAILED",
+        "glossary-digitizer-profile": "FAILED",
+        "glossary-restore": "FAILED",
+        "preserve-adr-unsafe-boundaries": "GREEN",
+        "preserve-adr-sigwait": "GREEN",
+        "preserve-adr-digitizer-grab-tb45": "GREEN",
+        "preserve-adr-success-path-hil": "GREEN",
+        "preserve-glossary-digitizer-cancel": "GREEN",
+        "preserve-no-private-data": "GREEN",
+        "preserve-no-unverified-ids-ranges": "GREEN"
+      },
+      "log": ".scratch/TB-47/gate/2026-11-25T063423Z-slice-4"
+    }
+  ]
+}

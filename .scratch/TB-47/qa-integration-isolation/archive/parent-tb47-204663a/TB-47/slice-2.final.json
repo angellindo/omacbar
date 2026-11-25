@@ -1,0 +1,9 @@
+{
+  "ticket": "TB-47",
+  "slice": 2,
+  "seal": "sha256:08bb9abefbb975ced863cd81790ec88d33cfb889d8de4021369ed48a75c3dd96",
+  "head": "204663ab698ea9b3b43dd0c3522dda63625c125c",
+  "at": "2026-11-25T15:47:19Z",
+  "result": "PASS",
+  "log": ".scratch/TB-47/gate/2026-11-25T154120Z-slice-2-final"
+}

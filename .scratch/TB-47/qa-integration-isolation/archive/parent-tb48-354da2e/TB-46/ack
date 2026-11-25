@@ -1,0 +1,12 @@
+{
+  "ticket": "TB-46",
+  "confirmed": true,
+  "by": "bouncer",
+  "at": "2026-11-22T05:09:38.627024+00:00",
+  "lane": "standard",
+  "base": "main",
+  "brief": "Rehearse reversible isolated profile operation and document human-only staged restoration A/B.",
+  "hil": [
+    "physical recovery: human only"
+  ]
+}
