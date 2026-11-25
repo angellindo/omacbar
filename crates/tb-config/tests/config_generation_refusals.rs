@@ -128,7 +128,7 @@ const fn libc_nonblock() -> i32 {
     0o4000
 }
 
-/// Binds a Unix socket at `path` itself. `bind` takes at most 108 bytes (SUN_LEN) and the profile
+/// Binds a Unix socket at `path` itself. `bind` takes at most 108 bytes (`SUN_LEN`) and the profile
 /// lives under cargo's temp dir, which a checkout at a long path pushes past that; so the socket is
 /// bound through `/proc/self/fd/<n>/<name>`, a short name for the same directory held open.
 fn bind_at(path: &Path) -> UnixListener {

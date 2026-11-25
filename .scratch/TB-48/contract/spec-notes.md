@@ -468,3 +468,8 @@ A product that accepts a socket at the config path keeps QA-19 red: with `probe`
 `version_followed` treating a socket as absent, the load returns `Ok(WroteDefault)` and the
 `is_unsupported` assertion fails. The new seal's red run is on f3d8ec2 (the slice 1 contract
 commit), as for the earlier seals.
+
+Correction of this amendment, same day: under the first new seal (`sha256:9d570b91…`, commit
+ecd1a04) every `--final` failed in `check.sh` because clippy `doc_markdown` flagged `SUN_LEN` in
+the new helper's doc comment. Backticks added, nothing else changed; re-sealed and re-run red on
+f3d8ec2. The failed finals stay in the evidence.
