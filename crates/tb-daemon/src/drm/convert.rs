@@ -98,6 +98,9 @@ impl Layout {
     /// Writes `rect` of the bar `frame` into `pixels`, rotated. `None` if a computed offset falls
     /// outside `frame` or `pixels` (the caller checked the rect and the buffer, so it never does).
     pub(crate) fn write_rect(&self, frame: &Frame, pixels: &mut [u8], rect: Rect) -> Option<()> {
+        if !has_area(rect) {
+            return Some(());
+        }
         let bar_w = usize::try_from(frame.width).ok()?;
         let bpp = usize::try_from(self.format.bytes()).ok()?;
         let row_bytes = self.fb_w.checked_mul(bpp)?;
@@ -116,14 +119,18 @@ impl Layout {
     }
 }
 
+pub(super) fn has_area(rect: Rect) -> bool {
+    rect.width > 0 && rect.height > 0
+}
+
 /// The DIRTYFB clips for bar `damage` (each already checked to fit the bar), in fb coordinates.
 /// More than `DRM_MODE_FB_DIRTY_MAX_CLIPS` rects become one whole-framebuffer clip.
 pub(crate) fn clips(fb_w: u16, fb_h: u16, damage: &[Rect]) -> Vec<DirtyClip> {
-    if damage.len() > MAX_CLIPS {
+    let damage = damage.iter().copied().filter(|&rect| has_area(rect));
+    if damage.clone().count() > MAX_CLIPS {
         return vec![DirtyClip { x1: 0, y1: 0, x2: fb_w, y2: fb_h }];
     }
     damage
-        .iter()
         .map(|r| DirtyClip {
             x1: fb_w.saturating_sub(r.y.saturating_add(r.height)),
             y1: r.x,

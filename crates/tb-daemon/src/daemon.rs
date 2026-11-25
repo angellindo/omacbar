@@ -88,7 +88,7 @@ impl<R: SceneRenderer, D: Display> Daemon<R, D> {
     }
 
     /// Applies one event; renders and presents only if the scene changed, with its damage.
-    /// On error the daemon keeps the last good state and presents nothing.
+    /// On error the daemon keeps the last good scene. A failed press disarms its action.
     pub fn handle(&mut self, event: Event) -> Result<(), DaemonError> {
         let pressed = self.pressed.as_ref();
         match event {
@@ -124,7 +124,13 @@ impl<R: SceneRenderer, D: Display> Daemon<R, D> {
                 }
                 // Pressed: the landing button while the touch is over it, else nothing.
                 let id = self.touch.as_ref().and_then(Landing::pressed).cloned();
-                self.show_pressed(id)?;
+                if let Err(error) = self.show_pressed(id) {
+                    // This contact stays disarmed until its Up or Cancel, including any slides.
+                    if let Some(landing) = &mut self.touch {
+                        landing.button = None;
+                    }
+                    return Err(error);
+                }
             }
             Event::Touch(Touch::Up) => {
                 if let Some((button, chord)) = self.touch.take().and_then(Landing::tapped) {

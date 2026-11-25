@@ -9,7 +9,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::target::{DRM_DRIVER, NodeId, T1_PRODUCT, T1_VENDOR, TargetError, parse_dev, read_trimmed};
+use crate::target::{DRM_DRIVER, NodeId, SysfsDir, T1_PRODUCT, T1_VENDOR, TargetError, parse_dev};
 
 /// Where userspace opens DRM cards; a target path must be exactly this plus a number.
 const CARD_PREFIX: &str = "/dev/dri/card";
@@ -51,17 +51,17 @@ pub fn check_touch_bar_card(sysfs: &Path, card: &Path) -> Result<PathBuf, Target
     Ok(card.to_owned())
 }
 
-/// After opening `card`: re-reads sysfs (driver, USB ids, `dev`) and checks that `node` is the
-/// character device sysfs names for it. A card renumbered or replaced since discovery is refused.
+/// Before acquiring master, checks the opened character device against one sysfs card and
+/// refuses it if the card disappears or its class entry changes during confirmation.
 pub fn confirm_touch_bar_node(sysfs: &Path, card: &Path, node: NodeId) -> Result<PathBuf, TargetError> {
     let name = card_name(card)?;
-    identify(sysfs, name)?;
-    let dev_path = sysfs.join("class/drm").join(name).join("dev");
-    let expected = read_trimmed(&dev_path)?;
+    let entry = identify(sysfs, name)?;
+    let expected = entry.read("dev")?;
     let matches = parse_dev(&expected) == Some((node.major, node.minor));
     if !(node.char_device && matches) {
         return Err(TargetError::Changed { card: name.to_owned(), expected, found: node });
     }
+    entry.confirm_current()?;
     Ok(card.to_owned())
 }
 
@@ -84,35 +84,25 @@ fn is_digits(text: &str) -> bool {
     (1..=4).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// `Ok` when `class/drm/<name>` is a card whose driver is `appletbdrm` and whose USB device (the
-/// bound interface's parent) is `05ac:8600`. The driver is checked first, so a desktop GPU is
-/// refused as `WrongDriver` without any USB attribute read.
-fn identify(sysfs: &Path, name: &str) -> Result<(), TargetError> {
-    let card_dir = sysfs.join("class/drm").join(name);
-    std::fs::symlink_metadata(&card_dir)
-        .map_err(|source| TargetError::Io { path: card_dir.clone(), source })?;
-    let device = card_dir.join("device");
-    let driver_link = device.join("driver");
-    let driver = match std::fs::read_link(&driver_link) {
+/// Pins `class/drm/<name>` and checks the driver and USB identity through that directory.
+fn identify(sysfs: &Path, name: &str) -> Result<SysfsDir, TargetError> {
+    let card = SysfsDir::open(&sysfs.join("class/drm").join(name))?;
+    let interface = card.child("device")?;
+    let driver = match interface.link("driver") {
         Ok(target) => target.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_owned(),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+        Err(TargetError::Io { source, .. }) if source.kind() == io::ErrorKind::NotFound => {
             return Err(TargetError::Unbound { card: name.to_owned() });
         }
-        Err(source) => return Err(TargetError::Io { path: driver_link, source }),
+        Err(error) => return Err(error),
     };
     if driver != DRM_DRIVER {
         return Err(TargetError::WrongDriver { driver });
     }
-    let interface =
-        std::fs::canonicalize(&device).map_err(|source| TargetError::Io { path: device.clone(), source })?;
-    let usb = interface.parent().ok_or_else(|| TargetError::Io {
-        path: interface.clone(),
-        source: io::Error::new(io::ErrorKind::NotFound, "the USB interface has no parent device"),
-    })?;
-    let vendor = read_trimmed(&usb.join("idVendor"))?;
-    let product = read_trimmed(&usb.join("idProduct"))?;
+    let usb = interface.child("..")?;
+    let vendor = usb.read("idVendor")?;
+    let product = usb.read("idProduct")?;
     if (vendor.as_str(), product.as_str()) != (T1_VENDOR, T1_PRODUCT) {
         return Err(TargetError::WrongDevice { vendor, product });
     }
-    Ok(())
+    Ok(card)
 }
