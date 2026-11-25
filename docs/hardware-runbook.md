@@ -53,7 +53,7 @@ two baselines match and lists every difference otherwise.
 
 | Owner | Authorized target | Entry state | Expected changes | Stop criterion | Return procedure | Evidence (after-comparison) |
 |---|---|---|---|---|---|---|
-| Agent; no hardware, no sudo | A fresh private profile from `mktemp` (0700, outside the repo and the caller's HOME) with a fixture theme; simulator frames and keys files inside it | `git status` recorded; the tool records the persistent session's metadata (never its content) | Only files inside the profile: config scenarios, snapshots, frames, keys file, the profile-local mark | Any scenario, the simulator stage or the session check fails; any refusal | `run` restores each scenario under the config-directory lock with compare-and-swap; afterwards `scripts/rehearsal.py cleanup --manifest <report>` removes only the run's own unchanged artifacts | Report: five scenarios (absent without and with parents, commented 0640, invalid, symlink) restored and verified; F5 pressed once into the keys file, `none` wrote nothing, the mark holds one `x`; session metadata identical |
+| Agent; no hardware, no sudo | A fresh private profile from `mktemp` (0700, outside the repo and the caller's HOME) with a fixture theme; simulator frames and keys files inside it | `git status` recorded; the tool records the persistent session's metadata (never its content) | Only files inside the profile: config scenarios, snapshots, frames, keys file, the profile-local mark | Any unexpected save result or change, simulator failure, or session metadata change | `run` restores changed scenarios under the config-directory lock. `cleanup --manifest <report>` removes the run's own unchanged artifacts and retains generations. | Report: four saves restored and verified (absent without and with parents, commented 0640, invalid). Symlink save refused with no receipt, then the simulator's regular config restored to the original link. F5 emitted once, one local mark, unchanged session metadata. |
 
 ```sh
 nice -n 19 env CARGO_BUILD_JOBS=2 cargo build -p tb-app -p tb-daemon
@@ -63,18 +63,34 @@ scripts/rehearsal.py cleanup --manifest "$R/rehearsal.json"
 ```
 
 The single-config steps are available on their own for any manual test on a throwaway profile:
-`capture --home H --store S --manifest M` before the test, `settle --manifest M [--pid N]
-[--artifact PATH SHA256]` after it (an artifact is the test's own only when it has the hash the
-producing step expects), then `restore`, `verify`, `cleanup`. Exit codes: 0 ok, 1 failure or
+`capture --home H --store S --manifest M` before the test, `settle --manifest M --expect-config E
+[--expect-target E] [--pid N] [--artifact PATH SHA256]` after it, then `restore`, `verify`,
+`cleanup`. `E` is what the producing step left (`absent`, the SHA-256 of the saved bytes, or
+`symlink:<link text>`; `--expect-target` for a captured symlink's target): settle never adopts
+what it finds, a different state is a conflict and authorizes no restore. An artifact is the
+test's own only when it has the hash the producing step expects. Exit codes: 0 ok, 1 failure or
 refusal (nothing changed), 3 conflict (current version kept in place, original kept in the store).
 `capture` refuses the caller's HOME, the persistent session and a store inside the tree it would
 replace.
+`run` gives each explicit save a fresh `TB_SAVE_RECEIPT` path inside the rehearsal profile.
+After saving a regular config, the configurator writes the config path and the SHA-256 of the
+bytes it saved. The report records that digest and checks the edited label on reopen. The symlink
+scenario requires an explicit refusal, no receipt, and the original link and target unchanged.
+The simulator uses a known regular file at the captured link's path, then restores the link under
+the config-directory lock and reopens the original layout. An unexpected result stops the run and
+keeps the affected config and capture available. The report lists the private generation store.
 
 Two editors and an external edit: the tool half is a conflict (exit 3, both versions kept) and a
 restore that waits for a writer holding the lock. The configurator half is TB-43's sealed Runtime
 cases in `crates/tb-app/tests/configurator_conflict.rs` (clean and dirty stale editors, overwrite
 with `config.toml.bak`, symlinked configs), cited here, not duplicated. A writer that does not take
-the lock keeps TB-43's short window between the check and the rename.
+the lock: restore compares again after the file to put back is written, synced and chmodded, right
+before each rename or unlink; such a writer's edit is lost only if it lands in the short window
+between that last comparison and the rename or unlink (ADR-0013's accepted residual). A change seen
+by the comparison is a conflict that keeps the
+other writer's version in place and the original in the store. `cleanup` reaches every path through
+directories opened from `/` without following symlinks: a parent or store swapped for a symlink is
+kept, not walked.
 
 ### S1 · TB-27 gate: external firmware copy
 
@@ -89,27 +105,35 @@ evidence each sub-stage needs. Every command is typed on the internal keyboard.
 
 | Step | Owner | Authorized target | Entry state | Expected changes | Stop criterion | Return procedure | Evidence (after-comparison) |
 |---|---|---|---|---|---|---|---|
-| 2.0 Preserve and prepare | Human | `$SERVICE_SOURCES`, the three installed files, the service manifest, a private notes directory | Baseline A re-recorded; S1 passed today; charger on, bar lit | Private copies only: `cp -a` of the three files and the manifest, `stat` of each, service state and suspend configuration noted; the internal-keyboard rollback of 0007 stage 0 prepared | Any source file differs in hash from its installed file; a pending `restore.json` (0007) | Nothing changed on the system yet | Sources ↔ installed files hash-equal; private copies and `stat` output saved; rollback script typed and readable |
+| 2.0 Preserve and prepare | Human | `$SERVICE_SOURCES`, the three installed files, the service manifest, a private notes directory | Baseline A re-recorded; S1 passed today; charger on, bar lit | Private copies only: `cp -a` of the three files and the manifest (`installed.json`) into `$PRIVATE/2.0/`, `stat` of each, service state and suspend configuration noted; the internal-keyboard rollback of 0007 stage 0 prepared | Any source file differs in hash from its installed file; a pending `restore.json` (0007) | Nothing changed on the system yet | Sources ↔ installed files hash-equal; private copies and `stat` output saved; rollback script typed and readable |
 | 2.1 Stop | Human | `macbook-touchbar-local.service` (stop only) | 2.0 complete | Service inactive; files and enablement unchanged | Any check of 0007 stage 1 fails: dark bar, Esc/F1/F12 not seen in `cat -v`, keyboard or trackpad missing | Start the service again; if the bar is dark, reboot (the service is still enabled) | Bar lit; Esc, F1 and F12 produce their sequences; resume after a short suspend shows the bar within 5 s; `baseline` shows only the service state changed |
 | 2.2 Disable | Human | The service's enablement only | 2.1 verified | Service disabled; the three files still present | Bar changes, or a file goes missing | Run the prepared rollback (enable --now) | `is-enabled` = disabled; `compare` against the 2.1 baseline shows only enablement |
 | 2.3 Observe | Human | Normal use: one reboot, one long suspend on battery, long idle | 2.2 verified | None beyond 2.2 | A dark bar after any resume or the reboot | Reboot if dark, then the prepared rollback | Bar lit and key row working after at least three resumes and one reboot; journal shows the drop-in ran without device writes (0007 stage 3) |
-| 2.4 Remove | Human | The three managed files, through the service's own `manage.py remove` from `$SERVICE_SOURCES` | 2.3 verified | The three files removed; manifest marked removed; key-mode files the service does not own unchanged (`mbp143-t1-socw`, fnmode and idle modprobe preferences, `99-ibridge.rules`) | `remove` refuses (edited file or pending restore): stop and report, do not delete by hand | B → A below | `baseline --label B`; `compare` A B lists only the service state and the three removed files; this is baseline B |
+| 2.4 Remove | Human | The three managed files, through the service's own `manage.py remove` from `$SERVICE_SOURCES` | 2.3 verified | The three files removed; the service manifest `installed.json` rewritten with `state: removed` (its content, size and times change; research 0007 §1); key-mode files the service does not own unchanged (`mbp143-t1-socw`, fnmode and idle modprobe preferences, `99-ibridge.rules`) | `remove` refuses (edited file or pending restore): stop and report, do not delete by hand | B → A below | `baseline --label B`; `compare` A B lists only the service state, the three removed files and the manifest `installed.json` (content now `state: removed`; root-only: `sudo cat` shows the state, `sudo sha256sum` differs from the 2.0 copy); this is baseline B |
 
 ### B → A · Full return from baseline B to baseline A
 
 | Owner | Authorized target | Entry state | Expected changes | Stop criterion | Return procedure | Evidence (after-comparison) |
 |---|---|---|---|---|---|---|
-| Human | The three service files reinstalled from `$SERVICE_SOURCES`; systemd units | Baseline B recorded; sources still hash-equal to the copies preserved in 2.0 | The three files back with their recorded modes; service enabled and active | A source hash differs from the preserved copy; `start` refuses ("Expected panel ON"): reboot first, then retry once, then stop | Remove the reinstalled files again (2.4) and stay at B | `baseline --label A2`; `compare` A A2 shows no difference except timestamps the reinstall changes |
+| Human | The three service files reinstalled from `$SERVICE_SOURCES`; the service manifest `installed.json` put back from `$PRIVATE/2.0/`; systemd units | Baseline B recorded; sources still hash-equal to the copies preserved in 2.0; the preserved manifest copy and its `stat` from 2.0 readable | The three files back with their recorded modes; the manifest `installed.json` back to the preserved bytes (`state: enabled`), mode, owner and mtime; service enabled and active | A source hash differs from the preserved copy; the put-back manifest differs from the 2.0 copy in bytes, mode, owner or mtime; `start` refuses ("Expected panel ON"): reboot first, then retry once, then stop | Remove the reinstalled files again (2.4) and stay at B | Manifest `installed.json`: `cmp` with the 2.0 copy silent, `stat` mode/owner/size/mtime equal to the 2.0 copy (ctime and inode differ, expected); `baseline --label A2`; `compare` A A2 shows no difference except timestamps the reinstall changes |
 
 ```sh
 sudo install -m 0755 "$SERVICE_SOURCES/macbook-touchbar-local.py" /usr/local/lib/macbook-touchbar-local.py
 sudo install -m 0644 "$SERVICE_SOURCES/macbook-touchbar-local.service" /etc/systemd/system/macbook-touchbar-local.service
 sudo install -m 0644 "$SERVICE_SOURCES/94-macbook-touchbar-display.conf" /etc/systemd/system/systemd-suspend.service.d/94-macbook-touchbar-display.conf
+# the manifest: preserved bytes and metadata from 2.0 (cp -a keeps mode, owner and times)
+sudo cp -a "$PRIVATE/2.0/installed.json" /var/lib/macbook-touchbar-local/installed.json
+sudo cmp "$PRIVATE/2.0/installed.json" /var/lib/macbook-touchbar-local/installed.json && echo same bytes
+diff <(sudo stat -c '%a %U:%G %s %y' "$PRIVATE/2.0/installed.json") \
+     <(sudo stat -c '%a %U:%G %s %y' /var/lib/macbook-touchbar-local/installed.json) && echo same metadata
 sudo systemctl daemon-reload && sudo systemctl enable --now macbook-touchbar-local.service
 ```
 
 (Research 0007 §Staged procedure, stage 4 rollback; `manage.py stage` refuses while the manifest
-exists, so the files are installed directly.)
+exists, so the files are installed directly. That rollback reinstalls only the three files; the
+manifest `remove` marked `state: removed` is put back by hand from the copy preserved in 2.0, before
+the service starts, and compared with it: bytes with `cmp`, mode, owner, size and mtime with `stat`.
+Any difference is a stop: keep both, the copy in `$PRIVATE/2.0/` stays the reference.)
 
 ### S3 · TB-9: pixel-mode trial (kernel-specific)
 
@@ -213,14 +237,16 @@ rather than reusing old build output.
 
 ### Factory-default layout reset in the configurator
 
-Not implemented in TB-46; it is a follow-up ticket (TB-48). Preconditions it must meet: it changes
-only the draft; it shows the preview before anything is saved; it can be cancelled; and before Save
-it guarantees a recoverable copy of the current file and goes through TB-43's compare-and-swap save.
+In the configurator, **Load default buttons** (TB-48) loads the factory layout into the draft and
+preview, keeping the selected theme source. Cancel restores the previous draft. An explicit Save
+keeps a private, verified generation as a recoverable copy before replacing the file through
+TB-43's compare-and-swap guard.
 
 ### Restoring a personal config copy
 
-Putting back a copy of the user's own config: S0's `restore` on a throwaway profile, or a manual
-copy. It never touches the hardware and never saves over the personal layout from an agent.
+For a personal layout, choose a verified generation in the configurator or use `touchbar-recover`.
+A restore keeps a generation of the file it replaces. S0 uses `rehearsal.py restore` on its
+throwaway profile. These procedures operate on the profile. The physical check is in S2 and S3.
 
 ### Physical return to key mode
 
@@ -231,8 +257,10 @@ Shown only by the firmware key row on the panel.
 
 - **S0** lo corre un agente sin hardware: `scripts/rehearsal.py run` crea un perfil privado
   desechable con un tema de fixtures, prueba cinco escenarios de config (ausente, con comentario y
-  modo 0640, inválido, symlink) y el simulador, restaura con el lock de TB-43 y compara; `cleanup`
-  borra solo lo propio sin cambios. La sesión persistente de `try-app.sh` no se lee ni se toca.
+  modo 0640, inválido, enlace simbólico) y el simulador. Comprueba el rechazo del guardado sobre
+  el enlace sin recibo ni cambios en el destino. Restaura el enlace tras el simulador con el lock
+  de TB-43. `cleanup` borra solo artefactos propios verificados y conserva las generaciones.
+  El ensayo compara únicamente metadatos de la sesión persistente de `try-app.sh`.
 - **S1–S4 y B → A** son solo tuyos: cada etapa tiene responsable, objetivo autorizado, estado de
   entrada, cambios esperados, criterio de parada, retorno y evidencia. La línea base A se vuelve a
   registrar al empezar cada etapa con `rehearsal.py baseline`; B es modo teclas verificado tras TB-28.
@@ -241,4 +269,5 @@ Shown only by the firmware key row on the panel.
   teclas vista en el panel lo demuestra.
 - La compilación de los drivers está fijada por commit y hash y se puede repetir en un directorio
   temporal; solo prueba que compila, nada de carga, enlace ni retorno.
-- El reset de fábrica en el configurador **no** está hecho aquí (TB-48).
+- TB-48 permite cargar y previsualizar el diseño de fábrica, cancelar el borrador y recuperar una
+  generación personal. La vuelta física a la fila de firmware se verifica con S2 y S3.

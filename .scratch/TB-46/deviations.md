@@ -15,3 +15,32 @@
   each only after its content was checked against what its step must leave (PNG magic, parsable
   tree, exact F5 press/release records, a single `x`, fixture bytes). The report is the manifest
   `cleanup` takes; each store is removed only when its own scenario verified.
+
+## Correction cycle 1 (review-1 BLOCKERs 1–4)
+
+- **Run expectation source: producing save, not a twin profile.** The plan's QA decision allows
+  "capture expected file identity from the operation that produced it". A twin private profile
+  (replaying the save under a second HOME) was rejected because the sealed contract pins one HOME
+  for every binary of a run (`Run.test_run_isolates…`, `…temp_dir_inside_the_caller_home…`:
+  `len(homes) == 1`) and exactly one save per scenario in that profile (`Expectations` nominal
+  case). `run` therefore takes the hash of what the save left the moment the configurator exits 0,
+  before any other process of the run starts, and accepts it only if it is TOML holding the edited
+  label; a captured link's target is expected as captured (from the capture manifest) unless the
+  save wrote through the link. The simulator stage's expectation is `sha256(SIM)`, written by the
+  run itself. Residual, documented in the runbook: a writer replacing the config between the save's
+  exit and that read is taken for the save. The CLI `settle` never reads its own expectation.
+- **Any failed scenario stops the run.** Continuing would let the next scenario's `prepare` write
+  over bytes a conflict kept; the failing scenario's store and manifest are not owned, so `cleanup`
+  keeps them.
+- **Paths recorded resolved.** `capture` records the store by `realpath`, like the HOME, artifacts
+  and link target already were; `cleanup` and `restore` reach them from `/` one component at a time
+  with `O_NOFOLLOW`, so a symlink anywhere on the way means a swapped directory and the item is kept.
+
+## Save receipt re-spec
+
+- The sealed re-spec supersedes the correction cycle's post-save read. Each explicit save receives
+  a fresh `TB_SAVE_RECEIPT` path. The receipt takes its digest from the serialized bytes the config
+  swap used. The rehearsal compares against that digest and the captured target state.
+- The invalid scenario still uses the original malformed UTF-8 bytes and the same edit-and-save
+  script. Opening the config records the raw bytes before trying UTF-8, so the normal save can
+  replace precisely the invalid version it opened. An intervening edit still causes a conflict.

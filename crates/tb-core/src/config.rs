@@ -51,15 +51,22 @@ impl Default for Config {
 
 impl Config {
     /// The shipped default with every style override `theme` cannot resolve cleared. No colour is
-    /// guessed: the button keeps its role colour. Under a theme with every token the default
-    /// uses (every shipped Omarchy theme) this equals `Config::default()`.
+    /// guessed: the button keeps its role colour. A `text` override is paired with its `fill`, so
+    /// when the fill is cleared the text is cleared too and the button is drawn in the idle roles.
+    /// Under a theme with every token the default uses (every shipped Omarchy theme) this equals
+    /// `Config::default()`.
     pub fn default_for(theme: &BarTheme) -> Self {
         let mut config = Self::default();
         let buttons =
             config.layout.layers.iter_mut().flat_map(|l| &mut l.groups).flat_map(|g| &mut g.buttons);
+        let unresolved = |c: &Option<String>| c.as_deref().is_some_and(|c| theme.resolve(c).is_none());
         for b in buttons {
-            for color in [&mut b.style.fill, &mut b.style.text, &mut b.style.border] {
-                if color.as_deref().is_some_and(|c| theme.resolve(c).is_none()) {
+            if unresolved(&b.style.fill) {
+                b.style.fill = None;
+                b.style.text = None;
+            }
+            for color in [&mut b.style.text, &mut b.style.border] {
+                if unresolved(color) {
                     *color = None;
                 }
             }

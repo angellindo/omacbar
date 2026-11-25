@@ -175,6 +175,10 @@ or with `touchbar-recover` (every generation, with no display or valid config). 
 reset, and not the physical return to the firmware key row.
 _Avoid_: recover (for the user action; `recover` names the generation's reason), rollback, undo
 
+**Save receipt**:
+The config path and SHA-256 of the bytes written by a confirmed explicit save. A rehearsal requests
+it at a fresh path and uses the digest as the expectation for restoring the captured config.
+
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
 _Avoid_: error (for config problems), warning

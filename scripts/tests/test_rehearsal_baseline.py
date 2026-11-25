@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import stat
 import unittest
 
@@ -102,6 +103,33 @@ class Baseline(Fixture):
         self.assertNotEqual(p.returncode, 0, "a difference is not a match")
         self.assertIn("bConfigurationValue", p.stdout)
         self.assertIn(SERVICE, p.stdout)
+
+    def test_compare_sees_the_service_manifest_content_and_metadata_and_a_preserved_copy_put_back(self):
+        """Private test data only: a readable fixture manifest, its 2.0-style preserved copy
+        (`cp -a`: bytes, mode and times), 2.4's `state: removed`, then the copy put back."""
+        manifest = self.fake_root / "var/lib/macbook-touchbar-local/installed.json"
+        os.chmod(manifest, 0o644)
+        preserved = self.tmp / "preserved" / "installed.json"
+        preserved.parent.mkdir(mode=0o700)
+        shutil.copy2(manifest, preserved)
+        a, b, a2, a3 = (self.tmp / n for n in ("A", "B", "A2", "A3"))
+        self.baseline("A", a)
+        self.assertIn(hashlib.sha256(b'{"state": "enabled"}\n').hexdigest(), self.text_of(a))
+        manifest.write_text('{"state": "removed"}\n')
+        self.baseline("B", b)
+        p = self.tool("compare", a, b)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("installed.json", p.stdout, "the manifest's removed state is a difference")
+        shutil.copy2(preserved, manifest)
+        os.chmod(manifest, 0o600)
+        self.baseline("A2", a2)
+        p = self.tool("compare", a, a2)
+        self.assertNotEqual(p.returncode, 0, "same bytes with another mode is still a difference")
+        self.assertIn("installed.json", p.stdout)
+        shutil.copy2(preserved, manifest)  # bytes, mode and times of the preserved copy
+        self.baseline("A3", a3)
+        p = self.tool("compare", a, a3)
+        self.assertNotIn("installed.json", p.stdout, "the preserved copy put back matches A")
 
 
 if __name__ == "__main__":

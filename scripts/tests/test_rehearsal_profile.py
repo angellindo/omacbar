@@ -1,13 +1,15 @@
 """Rehearsal profile capture → settle → restore → verify on throwaway trees: regular, absent,
 invalid and symlinked configs come back with their bytes, type, mode, link and parents; paths
-outside the owned profile are refused before anything changes."""
+outside the owned profile are refused before anything changes. Every settle carries the expectation
+of the step that wrote the config (here the test's own save), and of the link target when there is one."""
 
 from __future__ import annotations
 
 import os
 import unittest
 
-from rehearsal_fixture import CONFIG_REL, THEME_REL, Fixture, replace_bytes, state, store_holds, tree
+from rehearsal_fixture import (CONFIG_REL, THEME_REL, Fixture, replace_bytes, sha256, state, store_holds,
+                               tree)
 
 COMMENTED = b'# my layout, keep this comment\n[[layers]]\nlabel = "Mine"\n'
 SAVED = b'# rewritten by a save\nlabel = "Edited"\n'
@@ -15,11 +17,12 @@ INVALID = b'not = [ valid toml \xff\n'
 
 
 class RestoreScenarios(Fixture):
-    def edit_and_restore(self):
-        """The test's edit (a save replaces the file), then settle and restore."""
+    def edit_and_restore(self, expect_target: str | None = None):
+        """The test's edit (a save replaces the file), then settle with the save's expectation and
+        restore."""
         self.config.parent.mkdir(parents=True, exist_ok=True)
         replace_bytes(self.config, SAVED)
-        self.settle()
+        self.settle(sha256(SAVED), expect_target=expect_target)
         self.restore()
 
     def test_a_commented_file_with_mode_0640_comes_back_byte_for_byte(self):
@@ -56,7 +59,7 @@ class RestoreScenarios(Fixture):
         replace_bytes(self.config, SAVED)
         stranger = self.home / ".config" / "other-app.toml"
         stranger.write_bytes(b"written by someone else\n")
-        self.settle()
+        self.settle(sha256(SAVED))
         self.restore()
         self.assertEqual(state(self.config), {"type": "absent"})
         self.assertEqual(stranger.read_bytes(), b"written by someone else\n",
@@ -94,7 +97,8 @@ class RestoreScenarios(Fixture):
         os.symlink(link_text, self.config)
         before_link, before_target = state(self.config), state(target)
         self.capture()
-        self.edit_and_restore()  # the save renames over the link, as a temp+rename save does
+        # the save renames over the link, as a temp+rename save does; the target is left as it was
+        self.edit_and_restore(expect_target=sha256(COMMENTED))
         self.assertEqual(state(self.config), before_link)
         self.assertEqual(os.readlink(self.config), link_text)
         self.assertEqual(state(target), before_target)
@@ -106,7 +110,7 @@ class RestoreScenarios(Fixture):
         self.config.write_bytes(COMMENTED)
         self.capture()
         replace_bytes(self.config, SAVED)
-        self.settle()
+        self.settle(sha256(SAVED))
         self.assertNotEqual(self.tool("verify", "--manifest", self.manifest).returncode, 0,
                             "verify must fail while the edit is still in place")
         self.restore()

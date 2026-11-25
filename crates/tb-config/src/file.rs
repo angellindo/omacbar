@@ -12,6 +12,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
 use tb_core::config::{Config, ConfigError, ConfigIssue, ThemeSource, parse, parse_valid, to_toml, validate};
 use tb_core::{BarSize, BarTheme, SpacingRules};
 use thiserror::Error;
@@ -20,7 +21,10 @@ use crate::ThemeFileError;
 use crate::backup::{BackupError, Backups, GenerationId, Kept, Locked, Reason};
 use crate::durable::{create_dir_all_durably, parent_of};
 pub use disk::DiskVersion;
-use disk::{DirLock, Found, Refused, version_at, version_followed, write_atomically, write_backup};
+use disk::{
+    DirLock, Found, Refused, version_at, version_followed, write_atomically, write_backup,
+    write_new_atomically,
+};
 
 /// Permission bits of a config file a protected write creates: it is personal.
 const NEW_FILE_MODE: u32 = 0o600;
@@ -186,6 +190,20 @@ impl ConfigFile {
         self.backup.as_deref()
     }
 
+    /// Publishes a receipt immediately after a successful explicit save. The recorded version
+    /// is the buffer passed to the swap, so another writer cannot change the reported digest.
+    pub fn write_save_receipt(&self, path: &Path) -> io::Result<()> {
+        let bytes = self.seen.0.as_deref().ok_or_else(|| io::Error::other("no saved config bytes"))?;
+        let config = self.path.to_str().ok_or_else(|| io::Error::other("config path is not UTF-8"))?;
+        let receipt = serde_json::json!({"config": config, "sha256": format!("{:x}", Sha256::digest(bytes))});
+        if path.file_name() == self.path.file_name()
+            && dir_of(path).canonicalize()? == dir_of(&self.path).canonicalize()?
+        {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "save receipt would replace the config"));
+        }
+        write_new_atomically(path, receipt.to_string().as_bytes(), NEW_FILE_MODE)
+    }
+
     /// Reads a candidate, resolves its saved theme source, then validates and accepts both.
     /// Rejection leaves the current config untouched. A missing file gets the default for the
     /// active theme (`Config::default_for`), written atomically unless another writer created the
@@ -248,9 +266,10 @@ impl ConfigFile {
                 None => return Ok(None),
             },
         };
-        let text = self.text(bytes.clone())?;
-        self.seen = DiskVersion(Some(bytes));
-        Ok(Some(text))
+        // A decoding failure still came from a specific version on disk. The explicit
+        // replacement of that invalid config must compare against the bytes we read.
+        self.seen = DiskVersion(Some(bytes.clone()));
+        self.text(bytes).map(Some)
     }
 
     /// Creates the missing file as the default for `theme` (`Ok(None)`, now current), or returns

@@ -1,6 +1,11 @@
 """Shared fixture for the rehearsal tool tests: a throwaway copy of the repo with a fake persistent
 session, a fake caller HOME and a private profile. Never reads the real `.scratch/manual-test` or
-the caller's real HOME."""
+the caller's real HOME.
+
+`settle` always carries the expectation of the step that produced the config (`--expect-config`,
+and `--expect-target` for a captured symlink): `absent`, the SHA-256 of a regular file's bytes, or
+`symlink:<link text>`. The tool compares it with what it finds; reading the current state after a
+save never stands in for it."""
 
 from __future__ import annotations
 
@@ -56,6 +61,63 @@ def replace_bytes(path: Path, data: bytes, mode: int = 0o644) -> None:
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def expect_link(text: str) -> str:
+    """Expectation for a config left as a symlink with this link text."""
+    return f"symlink:{text}"
+
+
+ABSENT = "absent"
+
+# Run by `Fixture.tool_with_editor`: the real CLI in a process where an external editor (one that
+# does not take the configurator's lock) saves `watched` by temp + rename the first time the tool
+# syncs or chmods a descriptor of another file that holds exactly `payload` (the bytes being put
+# back, i.e. the tool's temp file still in preparation). Nothing else in the tool is replaced.
+EDITOR_HOOK = r'''
+import os, runpy, sys
+tool, watched, external, payload, log, *args = sys.argv[1:]
+external, payload = bytes.fromhex(external), bytes.fromhex(payload)
+real = {n: getattr(os, n) for n in ("fsync", "fdatasync", "fchmod")}
+fired = []
+
+
+def preparing(fd):
+    try:
+        path = os.readlink(f"/proc/self/fd/{fd}")
+        if path == os.path.realpath(watched) or not os.path.isfile(path):
+            return False
+        with open(path, "rb") as f:
+            return f.read() == payload
+    except OSError:
+        return False
+
+
+def edit():
+    tmp = os.path.join(os.path.dirname(watched), "." + os.path.basename(watched) + ".external-editor")
+    with open(tmp, "wb") as f:
+        f.write(external)
+    os.rename(tmp, watched)
+    with open(log, "w") as f:
+        f.write("saved during preparation\n")
+
+
+def hooked(name):
+    def call(fd, *rest):
+        result = real[name](fd, *rest)
+        if not fired and preparing(fd):
+            fired.append(name)
+            edit()
+        return result
+    return call
+
+
+for name in real:
+    setattr(os, name, hooked(name))
+sys.path.insert(0, os.path.dirname(tool))
+sys.argv = [tool, *args]
+runpy.run_path(tool, run_name="__main__")
+'''
 
 
 def store_holds(store: Path, data: bytes) -> bool:
@@ -123,8 +185,22 @@ class Fixture(unittest.TestCase):
     def capture(self):
         return self.ok("capture", "--home", self.home, "--store", self.store, "--manifest", self.manifest)
 
-    def settle(self, *extra):
-        return self.ok("settle", "--manifest", self.manifest, *extra)
+    def settle(self, expect_config: str, *extra, expect_target: str | None = None):
+        """Settle with the expectation of the step that produced the config (and its link target)."""
+        target = ("--expect-target", expect_target) if expect_target is not None else ()
+        return self.ok("settle", "--manifest", self.manifest, "--expect-config", expect_config,
+                       *target, *extra)
+
+    def tool_with_editor(self, *args, watched: Path, payload: bytes, external: bytes):
+        """Run the CLI with an external editor saving `watched` while the tool prepares the file
+        that will put `payload` back. Returns (process, whether the editor saved)."""
+        hook, log = self.tmp / "editor-hook.py", self.tmp / "editor-hook.log"
+        hook.write_text(EDITOR_HOOK)
+        log.unlink(missing_ok=True)
+        p = subprocess.run([sys.executable, "-B", str(hook), str(self.tool_path), str(watched),
+                            external.hex(), payload.hex(), str(log), *map(str, args)],
+                           cwd=self.repo, env=self.env, capture_output=True, text=True, timeout=60)
+        return p, log.is_file()
 
     def restore(self, code=0):
         return self.ok("restore", "--manifest", self.manifest, code=code)

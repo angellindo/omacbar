@@ -1,5 +1,6 @@
 //! The configurator binary owns the production clock; library callers inject their own.
 
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[allow(
@@ -12,6 +13,9 @@ fn save_time() -> Option<u64> {
 
 fn main() {
     let mut spec = tb_app::spec();
-    spec.setup = Some(|state, _| state.set_save_clock(save_time));
+    spec.setup = Some(|state, _| {
+        state.set_save_clock(save_time);
+        state.set_save_receipt(std::env::var_os("TB_SAVE_RECEIPT").map(PathBuf::from));
+    });
     rune::run(spec);
 }

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "mode": "tooling",
+  "reason": "Reversible rehearsal on a throwaway profile (capture, settle with declared own artifacts, restore under TB-43's config-directory flock as compare-and-swap, verify, cleanup of unchanged own artifacts only), run isolation from the caller's HOME and the persistent launcher session, read-only A/B baselines on fixture roots, and the staged human runbook's content: seven fields per stage, human-owned physical stages, three distinct returns, pinned driver compile evidence with its limits, and the research 0001 correction.",
+  "files": [
+    "scripts/tests/rehearsal_fixture.py",
+    "scripts/tests/test_rehearsal_profile.py",
+    "scripts/tests/test_rehearsal_conflicts.py",
+    "scripts/tests/test_rehearsal_run.py",
+    "scripts/tests/test_rehearsal_baseline.py",
+    "scripts/tests/test_hardware_runbook.py"
+  ],
+  "cases": [],
+  "checks": [
+    {
+      "id": "tests",
+      "command": ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/tests", "-p", "test_rehearsal*.py"]
+    },
+    {
+      "id": "runbook",
+      "command": ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/tests", "-p", "test_hardware_runbook.py"]
+    }
+  ]
+}

@@ -2,9 +2,11 @@
 
 capture: records the config path (absent / file / symlink and its target), which parent directories
 existed and the active theme's provenance, copies the bytes into a private store outside the tree
-being replaced, and writes the manifest; any failure leaves nothing behind. settle: records the
-state the test left and the test's own artifacts (declared with the hash the producing step
-expects) and processes. verify: compares the current state with the capture."""
+being replaced, and writes the manifest; any failure leaves nothing behind. settle: compares the
+config (and a captured link's target) with the expectation of the step that produced it and only
+then records it as what the test left, with the test's own artifacts (declared with the hash the
+producing step expects) and processes; what it reads never certifies itself. verify: compares the
+current state with the capture."""
 
 from __future__ import annotations
 
@@ -13,9 +15,9 @@ import shutil
 import tomllib
 from pathlib import Path
 
-from rehearsal_fs import (CONFIG_REL, THEME_REL, Refused, close_all, inside, lstat_state,
-                          open_dirs, process_identity, read_json, read_nofollow, refuse_shared,
-                          sha256, write_json)
+from rehearsal_fs import (CONFIG_REL, THEME_REL, Conflict, Refused, close_all, inside, lstat_state,
+                          matches, open_dirs, parse_expectation, process_identity, read_json,
+                          read_nofollow, refuse_shared, sha256, write_json)
 
 
 def config_state(home: Path) -> tuple[dict, int]:
@@ -56,6 +58,7 @@ def capture(home: Path, store: Path, manifest: Path, allow_caller_home: bool = F
     refuse_shared(home, "profile HOME", allow_caller_home)
     if os.path.lexists(store) or os.path.lexists(manifest):
         raise Refused(f"store {store} or manifest {manifest} already exists")
+    store = Path(os.path.realpath(store))  # recorded resolved: cleanup walks it without symlinks
     if inside(store, home):
         raise Refused(f"store {store} is inside the profile tree being replaced")
     refuse_shared(store, "store", allow_caller_home=True)
@@ -109,14 +112,30 @@ def _write_store(store: Path, copies: dict, manifest: Path, data: dict) -> None:
         raise
 
 
-def settle(manifest: Path, pids: list[int], artifacts: list[tuple[str, str]]) -> list[str]:
-    """Record what the test left. Returns the problems (artifacts not owned, gone processes)."""
+def settle(manifest: Path, pids: list[int], artifacts: list[tuple[str, str]],
+           expect_config: str | None, expect_target: str | None = None) -> list[str]:
+    """Record what the test left, only if it is what the producing step expects. Returns the
+    problems (artifacts not owned, gone processes). A missing, malformed or different expectation
+    raises and leaves nothing restore could act on."""
     data = read_json(manifest)
     if data.get("kind") not in ("capture",):
         raise Refused(f"{manifest} is not a capture manifest")
-    home = Path(data["home"])
-    data["left"], _ = config_state(home)
-    data["left_target"] = target_state(data["target"])
+    try:
+        want, want_target = _expectations(data, expect_config, expect_target)
+        home = Path(data["home"])
+        now, _ = config_state(home)
+        kept = f"current kept in place, original in {data['store']}"
+        if not matches(now, want):
+            raise Conflict(f"config is {_shown(now)}, the producing step expects {_shown(want)}; {kept}")
+        now_target = target_state(data["target"])
+        if want_target is not None and not matches(now_target, want_target):
+            raise Conflict(f"symlink target {data['target']} is {_shown(now_target)}, the producing step "
+                           f"expects {_shown(want_target)}; {kept}")
+    except (Conflict, Refused):
+        _unsettle(manifest, data)
+        raise
+    data["left"], data["left_target"] = now, now_target
+    data["expected"] = {"config": expect_config, "target": expect_target}
     problems = []
     for pid in pids:
         identity = process_identity(pid)
@@ -135,6 +154,29 @@ def settle(manifest: Path, pids: list[int], artifacts: list[tuple[str, str]]) ->
             data["artifacts"].append({"path": str(p.parent.resolve() / p.name), **state})
     write_json(manifest, data)
     return problems
+
+
+def _expectations(data: dict, expect_config: str | None, expect_target: str | None):
+    if expect_config is None:
+        raise Refused("settle needs --expect-config from the step that produced the config; "
+                      "nothing recorded")
+    want = parse_expectation(expect_config, "--expect-config")
+    if data["original"]["type"] == "symlink" and expect_target is None:
+        raise Refused("the captured config is a symlink: settle needs --expect-target too; nothing recorded")
+    if data["original"]["type"] != "symlink" and expect_target is not None:
+        raise Refused("--expect-target is only for a captured symlink; nothing recorded")
+    return want, None if expect_target is None else parse_expectation(expect_target, "--expect-target")
+
+
+def _shown(state: dict) -> str:
+    return state["type"] + "".join(f" {k}={state[k]}" for k in ("sha256", "link") if k in state)
+
+
+def _unsettle(manifest: Path, data: dict) -> None:
+    """A refused settle also withdraws an earlier one: restore needs a settle that held."""
+    if data.get("left") is not None:
+        data["left"] = data["left_target"] = None
+        write_json(manifest, data)
 
 
 def differences(data: dict) -> list[str]:

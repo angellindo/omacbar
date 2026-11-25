@@ -1,10 +1,11 @@
 """`rehearsal.py run`: the whole rehearsal in one fresh private profile.
 
 The profile comes from `tempfile.mkdtemp` (or a new `--home`) and is the only HOME any binary sees;
-the active theme is a copy of a repo fixture. Five config scenarios each go capture → edit+save
-(flow script) → reopen → settle → restore → verify → reopen (valid configs only, after verify so a
-default can never hide an absence). A simulator stage runs the daemon with keys to a file inside the
-profile on a rehearsal-built config whose only command writes a profile-local mark. The persistent
+the active theme is a copy of a repo fixture. For four config scenarios, verify the edited save
+against its receipt before restoring. For a symlink, verify the refusal, absence of a receipt,
+and unchanged link and target. The simulator then installs a known regular config in the private
+profile and restores the captured link after running the daemon. Keys go to a file, and the only
+command writes a profile-local mark. The persistent
 launcher session is compared by metadata only (never read) before and after. The report doubles as
 the manifest `cleanup` takes: it lists only outputs whose content was checked against what the
 producing step must leave."""
@@ -23,7 +24,19 @@ from pathlib import Path
 import rehearsal_profile as profile
 import rehearsal_restore
 from rehearsal_fs import (CONFIG_REL, ROOT, SESSION, THEME_REL, FAILED, OK, Conflict, Refused,
-                          lstat_state, process_identity, read_json, refuse_shared, sha256, write_json)
+                          lstat_state, process_identity, read_json, read_nofollow, refuse_shared,
+                          sha256, write_json)
+
+
+def expectation(state: dict) -> str:
+    """The `settle` expectation for one lstat state."""
+    if state["type"] == "file":
+        return state["sha256"]
+    if state["type"] == "symlink":
+        return f"symlink:{state['link']}"
+    if state["type"] == "absent":
+        return "absent"
+    raise Refused(f"cannot expect a {state['type']}")
 
 FLOW = Path(__file__).resolve().parent / "rehearsal/edit-label-save.json"
 EDITED = "Rehearsal"  # the label the flow script types
@@ -76,6 +89,7 @@ class Rehearsal:
         self.snaps, self.frames = self.home / "rehearsal-snaps", self.home / "sim-frames"
         self.theme = theme
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") or k == "XDG_RUNTIME_DIR"}
+        self.env.pop("TB_SAVE_RECEIPT", None)
         self.env["HOME"] = str(self.home)
         self.report = {"kind": "run", "profile": str(root), "home": str(self.home), "scenarios": [],
                        "simulator": {}, "pids": [], "artifacts": [], "stores": [], "verified": False,
@@ -83,8 +97,10 @@ class Rehearsal:
                                 str(root / "linked"), str(self.snaps), str(self.frames)]}
         self.problems: list[str] = []
 
-    def start(self, name: str, args: list, stdin: str | None = None) -> subprocess.CompletedProcess:
-        p = subprocess.Popen([str(self.bins[name]), *map(str, args)], cwd=self.home, env=self.env,
+    def start(self, name: str, args: list, stdin: str | None = None,
+              *, receipt: Path | None = None) -> subprocess.CompletedProcess:
+        env = self.env if receipt is None else {**self.env, "TB_SAVE_RECEIPT": str(receipt)}
+        p = subprocess.Popen([str(self.bins[name]), *map(str, args)], cwd=self.home, env=env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if identity := process_identity(p.pid):
             self.report["pids"].append(identity)
@@ -98,71 +114,118 @@ class Rehearsal:
     def own(self, path: Path, expected) -> bool:
         """Record `path` as the run's own only if its content is what the step must leave."""
         state = lstat_state(path)
-        good = state["type"] == "file" and expected(path.read_bytes())
+        if state["type"] != "file":
+            return False
+        blob = read_nofollow(path)
+        good = sha256(blob) == state["sha256"] and expected(blob)
         if good:
             self.report["artifacts"].append({"path": str(path), **state})
         return good
 
-    def snap(self, tag: str, extra: list) -> str:
-        """Headless configurator run; returns every text in its tree ('' if it did not run)."""
+    def snap(self, tag: str, extra: list, *, receipt: Path | None = None) -> tuple[int, str]:
+        """Headless configurator run; returns its exit code and every text in its tree."""
         png, tree = self.snaps / f"{tag}.png", self.snaps / f"{tag}.json"
-        p = self.start("touchbar-customizer", [*extra, "--snap", png, "--tree", tree])
+        p = self.start("touchbar-customizer", [*extra, "--snap", png, "--tree", tree], receipt=receipt)
         self.own(png, lambda b: b.startswith(b"\x89PNG"))
         try:
             elements = json.loads(tree.read_text())["elements"]
             self.own(tree, lambda b: True)
         except (OSError, ValueError, KeyError):
-            return "" if p.returncode else "(no tree)"
-        return "\n".join(str(e.get("text") or "") for e in elements)
+            return p.returncode, ""
+        return p.returncode, "\n".join(str(e.get("text") or "") for e in elements)
+
+    def save_digest(self, receipt: Path, config: Path) -> str:
+        """Validate this save's receipt and record its exact bytes for cleanup."""
+        try:
+            state = lstat_state(receipt)
+            if state["type"] != "file":
+                raise ValueError(f"expected a regular file, found {state['type']}")
+            blob = read_nofollow(receipt)
+            data = json.loads(blob)
+            if (sha256(blob) != state["sha256"] or not isinstance(data, dict)
+                    or data.keys() != {"config", "sha256"} or data["config"] != str(config)
+                    or not isinstance(data["sha256"], str) or not re.fullmatch("[0-9a-f]{64}", data["sha256"])):
+                raise ValueError("expected the config path and a 64-digit lowercase SHA-256")
+        except (OSError, ValueError) as e:
+            raise Refused(f"missing or invalid save receipt: {e}") from e
+        self.report["artifacts"].append({"path": str(receipt), **state})
+        return data["sha256"]
 
     def scenario(self, name: str, original_label: str | None) -> None:
-        rec = {"name": name}
+        rec = {"name": name, "passed": False}
+        self.report["scenarios"].append(rec)
         store, manifest = self.root / "stores" / name, self.root / "manifests" / f"{name}.json"
-        profile.capture(self.home, store, manifest, allow_caller_home=True)
-        rec["edit_shown"] = EDITED in self.snap(f"{name}-edit", ["--script", FLOW, "--at", "mark:end"])
-        reopened = self.snap(f"{name}-reopen-edited", [])
-        rec["reopen_edited"] = EDITED in reopened and not re.search(r"theme[^\n]*(error|invalid|cannot)", reopened, re.I)
-        profile.settle(manifest, [], [])
+        captured = profile.capture(self.home, store, manifest, allow_caller_home=True)
+        kept = f"nothing settled or restored; current bytes kept, original in {captured['store']}"
+        config = self.home / CONFIG_REL
+        receipt_dir = Path(tempfile.mkdtemp(prefix="save-", dir=self.root))
+        self.report["dirs"].append(str(receipt_dir))
+        receipt = receipt_dir / "receipt.json"
+        rc, shown = self.snap(f"{name}-edit", ["--script", FLOW, "--at", "mark:end"], receipt=receipt)
+        rec["save_exit"], rec["edited_label_shown"] = rc, EDITED in shown
+        if captured["original"]["type"] == "symlink":
+            rec["save_refused"] = any(line.startswith("not saved") and "symbolic link" in line
+                                      for line in shown.splitlines())
+            rec["receipt_absent"] = not os.path.lexists(receipt)
+            if rc != 0 or not rec["save_refused"] or not rec["receipt_absent"]:
+                raise Refused(f"scenario {name}: expected a symbolic-link refusal with no receipt; {kept}")
+            self.verify_original(rec, manifest, original_label)
+            return
+        if rc != 0 or EDITED not in shown:
+            raise Refused(f"scenario {name}: the save failed (exit {rc}); {kept}")
         try:
+            rec["expect_config"] = self.save_digest(receipt, config)
+        except Refused as e:
+            raise Refused(f"scenario {name}: {e}; {kept}") from e
+        if profile.config_state(self.home)[0].get("sha256") != rec["expect_config"]:
+            raise Conflict(f"scenario {name}: config differs from the save receipt; {kept}")
+        rc, reopened = self.snap(f"{name}-reopen-edited", [])
+        rec["reopen_exit"] = rc
+        theme_error = re.search(r"theme[^\n]*(error|invalid|cannot)", reopened, re.I)
+        if rc != 0 or EDITED not in reopened or theme_error:
+            raise Refused(f"scenario {name}: the reopen failed or did not show the save (exit {rc}); {kept}")
+        try:
+            profile.settle(manifest, [], [], rec["expect_config"])
             rehearsal_restore.restore(manifest)
-            rec["restored"] = True
-        except (Conflict, Refused, OSError) as e:
-            rec["restored"], rec["restore_error"] = False, str(e)
+        except (Conflict, Refused) as e:
+            raise Conflict(f"scenario {name}: {e}") from e
+        self.verify_original(rec, manifest, original_label)
+
+    def verify_original(self, rec: dict, manifest: Path, original_label: str | None) -> None:
         rec["verify"] = profile.verify(manifest)
         if original_label and not rec["verify"]:
-            rec["reopen_original"] = original_label in self.snap(f"{name}-reopen-original", [])
+            rc, original = self.snap(f"{rec['name']}-reopen-original", [])
+            rec["reopen_original_exit"] = rc
+            rec["reopen_original"] = rc == 0 and original_label in original
             rec["verify_after_reopen"] = profile.verify(manifest)
+        rec["passed"] = all(v in (True, []) for k, v in rec.items()
+                            if k in ("verify", "reopen_original", "verify_after_reopen"))
+        if not rec["passed"]:
+            raise Refused(f"scenario {rec['name']}: original did not verify; store and manifest kept")
         data = read_json(manifest)
         self.report["stores"] += [{**st, "verified": data["verified"]} for st in data["stores"]]
         self.own(manifest, lambda b: True)
-        rec["passed"] = all(v in (True, []) for k, v in rec.items() if k not in ("name", "restore_error"))
-        self.report["scenarios"].append(rec)
 
     def simulator(self) -> None:
         store, manifest = self.root / "stores" / "simulator", self.root / "manifests" / "simulator.json"
-        profile.capture(self.home, store, manifest, allow_caller_home=True)
-        config = self.home / CONFIG_REL
-        tmp = config.with_name(".config.toml.rehearsal-sim")
-        tmp.write_bytes(SIM)
-        os.replace(tmp, config)
+        captured = profile.capture(self.home, store, manifest, allow_caller_home=True)
+        rehearsal_restore.install_simulator_config(captured, SIM)
         keys, mark = self.home / "keys.bin", self.home / "rehearsal-mark"
         p = self.start("touchbard", ["--sim", self.frames, "--emit", keys], stdin=TAPS)
         for _ in range(20):
             if mark.exists():
                 break
             time.sleep(0.1)
-        rec = {"exit": p.returncode, "f5_once": self.own(keys, lambda b: decode_keys(b) == F5_KEYS),
+        rec = {"name": "simulator", "exit": p.returncode, "f5_once": self.own(keys, lambda b: decode_keys(b) == F5_KEYS),
                "mark_once": self.own(mark, lambda b: b == b"x"),
                "frames": sum(self.own(f, lambda b: b.startswith(b"\x89PNG")) for f in sorted(self.frames.glob("*.png")))
                if self.frames.is_dir() else 0}
-        profile.settle(manifest, [], [])
-        rehearsal_restore.restore(manifest)
-        rec["verify"] = profile.verify(manifest)
-        rec["passed"] = rec["f5_once"] and rec["mark_once"] and not rec["verify"]
-        data = read_json(manifest)
-        self.report["stores"] += [{**st, "verified": data["verified"]} for st in data["stores"]]
-        self.own(manifest, lambda b: True)
         self.report["simulator"] = rec
+        profile.settle(manifest, [], [], sha256(SIM), expectation(captured["target_state"]))
+        rehearsal_restore.restore(manifest)
+        self.verify_original(rec, manifest, "Linked")
+        rec["restored_link"] = True
+        rec["passed"] = rec["exit"] == 0 and rec["f5_once"] and rec["mark_once"] and rec["frames"] > 0
 
     def prepare(self, step: str) -> None:
         """The tool's own precondition for the next scenario (from the state the last one restored)."""
@@ -186,6 +249,11 @@ class Rehearsal:
         theme = self.home / THEME_REL
         theme.parent.mkdir(parents=True, mode=0o700)
         shutil.copyfile(ROOT / "fixtures/omarchy-themes" / self.theme / "colors.toml", theme)
+        # The daemon watches this directory for the theme hook. Create it so cleanup owns it.
+        hook_dir = self.home / ".local/state/touchbar-customizer"
+        hook_dir.mkdir(mode=0o700)
+        self.report["dirs"].append(str(hook_dir))
+        self.report["generation_store"] = str(hook_dir / "backups")
         fixture = (ROOT / "fixtures/omarchy-themes" / self.theme / "colors.toml").read_bytes()
         self.report["dirs"] += [str(self.home / p) for p in (".config", CONFIG_REL.parent)]
         self.report["dirs"] += [str(theme.parents[i]) for i in range(len(THEME_REL.parts) - 1)]

@@ -6,7 +6,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -127,23 +129,82 @@ def open_dirs(base: Path, rel: Path) -> list[int]:
     return fds
 
 
+def open_parent(path: Path) -> int:
+    """fd of `path`'s parent, reached from / one component at a time without following any
+    symlink. Recorded paths are fully resolved, so a symlink on the way means a directory was
+    swapped after it was recorded: Refused, nothing opened. A missing directory raises
+    FileNotFoundError."""
+    path = Path(path)
+    if not path.is_absolute() or any(part in (".", "..") for part in path.parts):
+        raise Refused(f"{path} is not an absolute, resolved path")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open("/", flags)
+    try:
+        for part in path.parent.parts[1:]:
+            nxt = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+    except FileNotFoundError:
+        os.close(fd)
+        raise
+    except OSError as e:
+        os.close(fd)
+        raise Refused(f"{path.parent} is no longer a plain directory chain (symlink swapped in?)") from e
+    return fd
+
+
+def open_dir(path: Path) -> int:
+    """fd of the directory `path` itself, validated like `open_parent`."""
+    parent = open_parent(path)
+    try:
+        return os.open(Path(path).name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    except FileNotFoundError:
+        raise
+    except OSError as e:
+        raise Refused(f"{path} is not a plain directory (symlink swapped in?)") from e
+    finally:
+        os.close(parent)
+
+
+HASH = re.compile(r"[0-9a-fA-F]{64}")
+
+
+def parse_expectation(text: str, what: str) -> dict:
+    """`absent`, the SHA-256 of a regular file's bytes, or `symlink:<link text>`."""
+    if text == "absent":
+        return {"type": "absent"}
+    if text.startswith("symlink:") and len(text) > len("symlink:"):
+        return {"type": "symlink", "link": text[len("symlink:"):]}
+    if HASH.fullmatch(text):
+        return {"type": "file", "sha256": text.lower()}
+    raise Refused(f"{what} {text!r} is not `absent`, a 64-hex SHA-256 or `symlink:<link text>`")
+
+
+def matches(state: dict, expected: dict) -> bool:
+    """`state` (from lstat_state) is what `expected` says; a file's mode is not part of it."""
+    return all(state.get(k) == v for k, v in expected.items())
+
+
 def close_all(fds: list[int]) -> None:
     for fd in fds:
         os.close(fd)
 
 
-def write_whole(dir_fd: int, name: str, data: bytes, mode: int) -> None:
-    """Replace `name` in `dir_fd` with `data`: temp file, fsync, chmod, rename, fsync the dir.
+def write_whole(dir_fd: int, name: str, data: bytes, mode: int,
+                still: Callable[[], None] = lambda: None) -> None:
+    """Replace `name` in `dir_fd` with `data`: temp file, fsync, chmod, `still()` (the last
+    comparison: it raises if `name` is no longer what may be replaced), rename, fsync the dir.
     On any failure (or interrupt) the temp file is removed and `name` is untouched."""
     tmp = f".{name}.rehearsal-{os.getpid()}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dir_fd)
     try:
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dir_fd)
         try:
             os.write(fd, data)
             os.fsync(fd)
             os.fchmod(fd, mode)
         finally:
             os.close(fd)
+        still()
         os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
         os.fsync(dir_fd)
     except BaseException:
@@ -154,11 +215,12 @@ def write_whole(dir_fd: int, name: str, data: bytes, mode: int) -> None:
         raise
 
 
-def link_whole(dir_fd: int, name: str, link: str) -> None:
-    """Replace `name` with a symlink to `link` through a temp link and a rename."""
+def link_whole(dir_fd: int, name: str, link: str, still: Callable[[], None] = lambda: None) -> None:
+    """Replace `name` with a symlink to `link` through a temp link, `still()`, and a rename."""
     tmp = f".{name}.rehearsal-link-{os.getpid()}"
+    os.symlink(link, tmp, dir_fd=dir_fd)
     try:
-        os.symlink(link, tmp, dir_fd=dir_fd)
+        still()
         os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
         os.fsync(dir_fd)
     except BaseException:

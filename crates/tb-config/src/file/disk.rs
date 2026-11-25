@@ -207,6 +207,20 @@ pub(super) fn write_atomically<E>(
     written
 }
 
+/// Publishes a complete private receipt at a fresh path. Existing files (including a
+/// config, generation or symlink) must never be replaced by an auxiliary write.
+pub(super) fn write_new_atomically(path: &Path, bytes: &[u8], mode: u32) -> io::Result<()> {
+    let (temp, file) = create_temp(path, Some(mode))?;
+    let result = write_synced(file, bytes).and_then(|()| {
+        rustix::fs::renameat_with(CWD, &temp, CWD, path, rustix::fs::RenameFlags::NOREPLACE)
+            .map_err(io::Error::from)
+    });
+    if result.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    result
+}
+
 fn write_synced(mut file: fs::File, bytes: &[u8]) -> io::Result<()> {
     file.write_all(bytes)?;
     file.sync_all()
