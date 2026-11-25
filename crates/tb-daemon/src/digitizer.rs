@@ -226,15 +226,13 @@ pub fn open_digitizer(
         return Err(DigitizerError::unverified(&meta));
     }
     let calibration = calibrate(&meta, profiles, BarSize::MACBOOK_PRO.width)?;
-    let reader = opened.grab().map_err(|source| {
+    let grabbed = opened.grab().map_err(|source| {
         if source.raw_os_error() == Some(rustix::io::Errno::BUSY.raw_os_error()) {
             DigitizerError::Busy
         } else {
             error("grab", source)
         }
     })?;
-    // EVIOCGABS(ABS_MT_SLOT) on this fd describes current kernel state. The evdev queue can
-    // still hold a prefix written for a different slot. Only a selector in the stream aligns
-    // subsequent records with a slot, both here and after SYN_DROPPED.
-    Ok(EvdevTouches::new(reader, calibration))
+    let reader = grabbed.discard_pending().map_err(|source| error("reset queued events from", source))?;
+    Ok(EvdevTouches::from_grabbed(reader, calibration))
 }

@@ -71,6 +71,15 @@ fn position(layout: &Layout, id: &str) -> (u16, u16, i32) {
 type Record = (u16, u16, i32);
 
 fn replay(layout: Layout, records: impl IntoIterator<Item = Record>) -> (Vec<Vec<Key>>, Vec<Presented>) {
+    replay_with(layout, records, 1, EvdevTouches::new)
+}
+
+fn replay_with(
+    layout: Layout,
+    records: impl IntoIterator<Item = Record>,
+    last_slot: i32,
+    source: impl FnOnce(Cursor<Vec<u8>>, tb_daemon::Calibration) -> EvdevTouches<Cursor<Vec<u8>>>,
+) -> (Vec<Vec<Key>>, Vec<Presented>) {
     let bytes: Vec<_> = records
         .into_iter()
         .flat_map(|(kind, code, value)| {
@@ -91,15 +100,13 @@ fn replay(layout: Layout, records: impl IntoIterator<Item = Record>) -> (Vec<Vec
         product: profile.product,
         name: profile.name.to_owned(),
         axes: vec![
-            AbsAxis { code: SLOT, min: 0, max: 1 },
+            AbsAxis { code: SLOT, min: 0, max: last_slot },
             AbsAxis { code: TRACKING_ID, min: 0, max: 255 },
             POSITION,
         ],
     };
-    let mut source = EvdevTouches::new(
-        Cursor::new(bytes),
-        calibrate(&meta, &[profile], BarSize::MACBOOK_PRO.width).unwrap(),
-    );
+    let mut source =
+        source(Cursor::new(bytes), calibrate(&meta, &[profile], BarSize::MACBOOK_PRO.width).unwrap());
     let (tx, rx) = mpsc::channel();
     forward_touches(&mut source, &tx).unwrap();
     drop(tx);
@@ -276,4 +283,202 @@ fn position_from_a_report_without_a_contact_does_not_arm_a_later_landing() {
     let records =
         [abs(SLOT, 0), f5, REPORT, tid(1), REPORT, tid(-1), REPORT, f5, tid(2), REPORT, tid(-1), REPORT];
     assert_taps(layout, &records, &["F5"]);
+}
+
+#[test]
+fn the_first_new_contact_can_tap_without_a_slot_selector() {
+    assert_grabbed_tap(3, |f5, _| vec![tid(20), f5, REPORT, tid(-1), REPORT], Some("F5"), 3);
+}
+
+fn assert_grabbed_tap(
+    last_slot: i32,
+    records: impl FnOnce(Record, Record) -> Vec<Record>,
+    tap: Option<&str>,
+    present_count: usize,
+) {
+    let layout = presets::default_layout();
+    let records = records(position(&layout, "f5"), position(&layout, "f6"));
+    let (emitted, presents) = replay_with(layout, records, last_slot, EvdevTouches::from_grabbed);
+    let expected: Vec<_> = tap.into_iter().map(|key| vec![Key::named(key).unwrap()]).collect();
+    assert_eq!(emitted, expected);
+    assert_eq!(presents.len(), present_count);
+    assert_eq!(presents.first().unwrap().frame, presents.last().unwrap().frame);
+}
+
+const DROPPED: Record = (0, 3, 0);
+
+#[test]
+fn a_contact_already_down_when_grabbed_cannot_tap() {
+    assert_grabbed_tap(3, |f5, _| vec![f5, REPORT, tid(-1), REPORT], None, 1);
+}
+
+#[test]
+fn a_later_selector_does_not_label_earlier_implicit_reports() {
+    // The kernel's current selection could already be slot 1 while slot 3's reports are queued.
+    // Slot 1's coordinate and lift cannot affect the preceding complete tap.
+    assert_grabbed_tap(
+        3,
+        |f5, f6| vec![tid(20), f5, REPORT, tid(-1), abs(SLOT, 1), f6, tid(-1), REPORT],
+        Some("F5"),
+        3,
+    );
+}
+
+#[test]
+fn a_position_from_an_unknown_contact_cannot_arm_the_next_id() {
+    assert_grabbed_tap(3, |f5, _| vec![f5, tid(20), REPORT, tid(-1), REPORT], None, 1);
+}
+
+#[test]
+fn a_lift_clears_the_old_position_but_proves_the_slot_is_idle() {
+    assert_grabbed_tap(
+        3,
+        |f5, f6| {
+            vec![f5, tid(-1), REPORT, tid(20), REPORT, tid(-1), REPORT, f6, tid(21), REPORT, tid(-1), REPORT]
+        },
+        Some("F6"),
+        3,
+    );
+}
+
+#[test]
+fn a_new_id_without_a_position_does_not_reuse_the_previous_taps_position() {
+    assert_grabbed_tap(
+        3,
+        |f5, _| vec![tid(20), f5, REPORT, tid(-1), REPORT, tid(21), REPORT, tid(-1), REPORT],
+        Some("F5"),
+        3,
+    );
+}
+
+#[test]
+fn a_startup_queue_reset_never_arms_the_contact_in_its_discarded_report() {
+    assert_grabbed_tap(
+        3,
+        |f5, f6| {
+            vec![
+                DROPPED,
+                abs(SLOT, 1),
+                tid(19),
+                f5,
+                REPORT,
+                f5,
+                tid(-1),
+                REPORT,
+                tid(20),
+                f6,
+                REPORT,
+                tid(-1),
+                REPORT,
+            ]
+        },
+        Some("F6"),
+        3,
+    );
+}
+
+#[test]
+fn overflow_cancels_the_old_touch_and_a_new_implicit_contact_can_tap_after_sync() {
+    assert_grabbed_tap(
+        3,
+        |f5, f6| {
+            vec![
+                tid(20),
+                f5,
+                REPORT,
+                tid(-1),
+                DROPPED,
+                abs(SLOT, 2),
+                tid(21),
+                f5,
+                REPORT,
+                f5,
+                tid(-1),
+                REPORT,
+                tid(22),
+                f6,
+                REPORT,
+                tid(-1),
+                REPORT,
+            ]
+        },
+        Some("F6"),
+        5,
+    );
+}
+
+#[test]
+fn both_possible_first_selectors_leave_the_implicit_contact_in_the_other_of_two_slots() {
+    for next in [0, 1] {
+        assert_grabbed_tap(
+            1,
+            |f5, f6| {
+                vec![
+                    tid(20),
+                    f5,
+                    REPORT,
+                    abs(SLOT, next),
+                    f6,
+                    tid(-1),
+                    REPORT,
+                    abs(SLOT, 1 - next),
+                    tid(-1),
+                    REPORT,
+                ]
+            },
+            Some("F5"),
+            3,
+        );
+    }
+}
+
+#[test]
+fn a_lift_in_an_ambiguous_slot_cannot_finish_the_implicit_contact() {
+    assert_grabbed_tap(
+        3,
+        |f5, f6| vec![tid(20), f5, REPORT, abs(SLOT, 1), f6, REPORT, abs(SLOT, 2), tid(-1), REPORT],
+        None,
+        3,
+    );
+}
+
+#[test]
+fn an_invalid_selector_requires_an_explicit_valid_selector_before_the_next_tap() {
+    assert_grabbed_tap(
+        3,
+        |f5, f6| {
+            vec![
+                abs(SLOT, 4),
+                tid(20),
+                f5,
+                REPORT,
+                tid(-1),
+                REPORT,
+                abs(SLOT, 3),
+                tid(21),
+                f6,
+                REPORT,
+                tid(-1),
+                REPORT,
+            ]
+        },
+        Some("F6"),
+        3,
+    );
+}
+
+#[test]
+fn an_implicit_contact_cannot_tap_from_a_partial_report() {
+    assert_grabbed_tap(3, |f5, _| vec![tid(20), f5, REPORT, tid(-1)], None, 3);
+    assert_grabbed_tap(3, |f5, _| vec![tid(20), f5], None, 1);
+}
+
+#[test]
+fn the_first_explicit_slot_cannot_replace_the_implicit_contact() {
+    assert_grabbed_tap(
+        3,
+        |f5, f6| vec![tid(20), f5, REPORT, abs(SLOT, 1), tid(21), f6, REPORT, tid(-1), REPORT],
+        None,
+        3,
+    );
 }

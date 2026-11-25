@@ -7,7 +7,7 @@ use std::io;
 use std::path::Path;
 
 use rustix::fs::{Mode, OFlags};
-use rustix::ioctl::{IntegerSetter, Opcode, Updater, ioctl, opcode};
+use rustix::ioctl::{IntegerSetter, Opcode, Setter, Updater, ioctl, opcode};
 
 use super::{AbsAxis, DigitizerMeta, MT_SLOT, MT_TRACKING_ID, MT_X, MT_Y};
 use crate::target::NodeId;
@@ -18,6 +18,9 @@ const GET_ID: Opcode = opcode::read::<InputId>(GROUP, 0x02);
 const GET_NAME: Opcode = opcode::read::<[u8; 256]>(GROUP, 0x06);
 const GET_ABS_BITS: Opcode = opcode::read::<u64>(GROUP, 0x23);
 const GRAB: Opcode = opcode::write::<i32>(GROUP, 0x90);
+const SET_CLOCK: Opcode = opcode::write::<u32>(GROUP, 0xa0);
+// Linux UAPI time.h.
+const CLOCK_MONOTONIC: u32 = 1;
 
 const fn abs_opcode(code: u16) -> Opcode {
     let [code, high] = code.to_le_bytes();
@@ -115,10 +118,19 @@ impl DigitizerNode {
         Ok(info)
     }
 
-    pub(super) fn grab(self) -> io::Result<File> {
+    pub(super) fn grab(self) -> io::Result<Self> {
         // SAFETY: evdev treats the third argument to EVIOCGRAB as a boolean value, not a pointer
         // to read. The value 1 requests a grab (Linux v6.15, drivers/input/evdev.c).
         unsafe { ioctl(&self.file, IntegerSetter::<GRAB>::new_usize(1)) }?;
+        Ok(self)
+    }
+
+    pub(super) fn discard_pending(self) -> io::Result<File> {
+        // EVIOCGRAB does not clear the client queue, which may have gaps from an earlier grab.
+        // Linux changes the fresh client's clock from REALTIME and replaces pending records with
+        // SYN_DROPPED under the queue lock. An empty queue needs no marker (v6.15 evdev.c).
+        // SAFETY: EVIOCSCLOCKID copies one unsigned int from the supplied pointer.
+        unsafe { ioctl(&self.file, Setter::<SET_CLOCK, _>::new(CLOCK_MONOTONIC)) }?;
         Ok(self.file)
     }
 }

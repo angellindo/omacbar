@@ -12,9 +12,16 @@ const SYN_DROPPED: u16 = 3;
 /// `TRKID_MAX` in Linux `include/linux/input/mt.h`.
 const MAX_TRACKING_ID: i32 = 0xffff;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SlotId {
+    Implicit,
+    Explicit(i32),
+}
+
 #[derive(Debug, Default)]
 struct Slot {
     id: Option<i32>,
+    known_idle: bool,
     position: Option<u16>,
     position_before_id: Option<u16>,
     // A bad sample poisons this landing until an explicit lift or the end of the report.
@@ -23,7 +30,7 @@ struct Slot {
 
 #[derive(Debug)]
 struct Contact {
-    slot: i32,
+    slot: SlotId,
     reported: Option<u16>,
 }
 
@@ -38,8 +45,9 @@ enum Ending {
 pub struct EvdevTouches<R: Read> {
     reader: R,
     calibration: Calibration,
-    slot: Option<i32>,
-    slots: HashMap<i32, Slot>,
+    kernel_stream: bool,
+    slot: Option<SlotId>,
+    slots: HashMap<SlotId, Slot>,
     contact: Option<Contact>,
     // Only the contact already reported to the daemon may leave an ending here.
     ending: Option<Ending>,
@@ -50,11 +58,23 @@ pub struct EvdevTouches<R: Read> {
 }
 
 impl<R: Read> EvdevTouches<R> {
+    /// Replays raw records, waiting for a selector at startup and after lost sync.
     pub fn new(reader: R, calibration: Calibration) -> Self {
+        Self::with_stream(reader, calibration, false)
+    }
+
+    /// Reads unfiltered Linux evdev records after taking the grab and resetting any pending queue.
+    /// The stream must include Linux's slot changes and suppress unchanged tracking IDs.
+    pub fn from_grabbed(reader: R, calibration: Calibration) -> Self {
+        Self::with_stream(reader, calibration, true)
+    }
+
+    fn with_stream(reader: R, calibration: Calibration, kernel_stream: bool) -> Self {
         Self {
             reader,
             calibration,
-            slot: None,
+            kernel_stream,
+            slot: kernel_stream.then_some(SlotId::Implicit),
             slots: HashMap::new(),
             contact: None,
             ending: None,
@@ -69,7 +89,7 @@ impl<R: Read> EvdevTouches<R> {
         match (kind, code) {
             (EV_SYN, SYN_DROPPED) => {
                 self.discarding = true;
-                self.slot = None;
+                self.slot = self.kernel_stream.then_some(SlotId::Implicit);
                 self.slots.clear();
                 if self.forget_touch() {
                     self.output.push_back(Touch::Cancel);
@@ -90,11 +110,7 @@ impl<R: Read> EvdevTouches<R> {
 
     fn absolute(&mut self, code: u16, value: i32) {
         if code == MT_SLOT {
-            self.slot = (0..=self.calibration.last_slot).contains(&value).then_some(value);
-            if self.slot.is_none() {
-                self.slots.clear();
-                self.cancel_contact();
-            }
+            self.select_slot(value);
             return;
         }
         let Some(slot) = self.slot else { return };
@@ -107,8 +123,8 @@ impl<R: Read> EvdevTouches<R> {
                     if !state.invalid {
                         if state.id.is_some() {
                             state.position = Some(x);
-                        } else {
-                            // An idle or unknown slot can supply a position for a landing in this report.
+                        } else if !self.kernel_stream || state.known_idle {
+                            // In a live stream an unknown slot could still hold an older contact.
                             state.position = None;
                             state.position_before_id = Some(x);
                         }
@@ -119,39 +135,82 @@ impl<R: Read> EvdevTouches<R> {
         }
     }
 
-    fn tracking_id(&mut self, slot: i32, id: i32) {
+    fn select_slot(&mut self, value: i32) {
+        if !(0..=self.calibration.last_slot).contains(&value) {
+            self.slot = None;
+            self.slots.clear();
+            self.cancel_contact();
+            return;
+        }
+        let next = SlotId::Explicit(value);
+        match self.slot {
+            // The first selector names a different slot. With two slots it identifies both.
+            Some(SlotId::Implicit) if self.calibration.last_slot == 1 => {
+                let previous = SlotId::Explicit(1 - value);
+                if let Some(state) = self.slots.remove(&SlotId::Implicit) {
+                    self.slots.insert(previous, state);
+                }
+                if let Some(contact) = &mut self.contact {
+                    contact.slot = previous;
+                }
+            }
+            // With more slots, updates on this first explicit slot still cannot affect the
+            // implicit contact. The next switch could return to it, so cancel at that point.
+            Some(SlotId::Implicit) if self.calibration.last_slot > 1 => {}
+            Some(current) if current != next => {
+                self.slots.remove(&SlotId::Implicit);
+                if self.contact.as_ref().is_some_and(|contact| contact.slot == SlotId::Implicit) {
+                    self.cancel_contact();
+                }
+            }
+            _ => {}
+        }
+        self.slot = Some(next);
+    }
+
+    fn tracking_id(&mut self, slot: SlotId, id: i32) {
         match id {
             -1 => self.lift(slot),
             0..=MAX_TRACKING_ID => self.start_contact(slot, id),
-            _ => self.invalidate_slot(slot),
+            _ => {
+                self.slots.entry(slot).or_default().known_idle = false;
+                self.invalidate_slot(slot);
+            }
         }
     }
 
-    fn lift(&mut self, slot: i32) {
+    fn lift(&mut self, slot: SlotId) {
         let state = self.slots.entry(slot).or_default();
+        let position = state.position;
+        if self.kernel_stream {
+            state.position = None;
+        }
         state.id = None;
+        state.known_idle = true;
         state.position_before_id = None;
         state.invalid = false;
         if let Some(contact) = self.contact.as_ref().filter(|contact| contact.slot == slot) {
             if let Some(reported) = contact.reported {
-                let slide = state.position.filter(|x| *x != reported);
+                let slide = position.filter(|x| *x != reported);
                 self.ending = Some(Ending::Lift { slide });
             }
             self.contact = None;
         }
     }
 
-    fn start_contact(&mut self, slot: i32, id: i32) {
+    fn start_contact(&mut self, slot: SlotId, id: i32) {
         let state = self.slots.entry(slot).or_default();
         if state.id == Some(id) {
             return;
         }
+        let before_id = state.position_before_id.take();
         if state.id.replace(id).is_some() {
-            // Without an explicit lift the samples up to this ID belong to the old contact.
+            // Replacements need their own sample even if the old contact moved in this report.
             state.position = None;
-        } else if let Some(x) = state.position_before_id.take() {
+        } else if let Some(x) = before_id {
             state.position = Some(x);
         }
+        state.known_idle = false;
         let valid = !state.invalid;
         if self.contact.as_ref().is_some_and(|contact| contact.slot == slot) {
             self.cancel_contact();
@@ -161,7 +220,7 @@ impl<R: Read> EvdevTouches<R> {
         }
     }
 
-    fn invalidate_slot(&mut self, slot: i32) {
+    fn invalidate_slot(&mut self, slot: SlotId) {
         let state = self.slots.entry(slot).or_default();
         state.position = None;
         state.position_before_id = None;
