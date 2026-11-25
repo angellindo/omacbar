@@ -10,12 +10,15 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fs::File;
 use std::io;
+use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
+
+use rustix::fs::fstat;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::durable::{parent_of, resolved};
+use crate::durable::{directory_prefix, is_inside, parent_of, resolved, same_inode};
 use manifest::{FORMAT, Kind, Manifest};
 use store::{Inspected, StoreDir};
 
@@ -182,7 +185,6 @@ impl Backups {
                     out.push(generation(id, &manifest, kind, health));
                 }
                 Inspected::Unreadable(why) => unreadable(id, why),
-                Inspected::Untrusted(why) => return Err(self.damaged(id, why)),
                 _ => {}
             }
         }
@@ -233,9 +235,9 @@ impl Backups {
         let store = StoreDir::open(&self.dir)?.ok_or_else(not_found)?;
         match store.inspect(id) {
             Inspected::Missing => Err(not_found()),
-            Inspected::Unreadable(why)
-            | Inspected::Untrusted(why)
-            | Inspected::Read { health: Health::Damaged(why), .. } => Err(self.damaged(id, why)),
+            Inspected::Unreadable(why) | Inspected::Read { health: Health::Damaged(why), .. } => {
+                Err(self.damaged(id, why))
+            }
             Inspected::Read { manifest, kind, health, data } => {
                 Ok((generation(id, &manifest, kind, health), manifest, data))
             }
@@ -246,42 +248,125 @@ impl Backups {
         BackupError::Damaged { store: self.dir.clone(), id, why }
     }
 
-    /// Refuses a store at or inside the directory of `config`: a restore replaces that
-    /// directory's file, and the copies must not live where they could be lost with it. Checked
-    /// lexically and through symlinks, before anything is created.
+    /// Neither directory can contain the other. Check before either tree is created, also
+    /// resolving aliases to the nearest existing ancestor if the destination is absent.
     pub(crate) fn check_location(&self, config: &Path) -> Result<(), BackupError> {
-        let config_dir = parent_of(config);
-        let inside = absolute(&self.dir).starts_with(absolute(config_dir))
-            || resolved(&self.dir).starts_with(resolved(config_dir));
-        if !inside {
-            return Ok(());
+        let dir = parent_of(config);
+        for (store, config_dir) in
+            [(absolute(&self.dir), absolute(dir)), (resolved(&self.dir), resolved(dir))]
+        {
+            if store.starts_with(&config_dir) {
+                return Err(self.overlap(dir, false));
+            }
+            if config_dir.starts_with(&store) {
+                return Err(self.overlap(dir, true));
+            }
         }
-        Err(BackupError::Unsafe {
-            path: self.dir.clone(),
-            why: format!("it is inside the config directory `{}`", config_dir.display()),
-            fix: "set XDG_STATE_HOME to a directory outside it".to_owned(),
-        })
+        let (config_fd, config_tail) = directory_prefix(dir).map_err(|e| self.io(e))?;
+        let (store_fd, store_tail) = match directory_prefix(&self.dir) {
+            Ok(prefix) => prefix,
+            // StoreDir reports an existing non-directory with the appropriate refusal.
+            Err(e) if e.kind() == io::ErrorKind::NotADirectory => return Ok(()),
+            Err(e) => return Err(self.io(e)),
+        };
+        if !config_tail.is_empty()
+            && !store_tail.is_empty()
+            && same_inode(
+                &fstat(&config_fd).map_err(|e| self.io(e))?,
+                &fstat(&store_fd).map_err(|e| self.io(e))?,
+            )
+        {
+            // Bind mounts can give two names to the same prefix even after canonicalization.
+            if config_tail.ends_with(&store_tail) {
+                return Err(self.overlap(dir, true));
+            }
+            if store_tail.ends_with(&config_tail) {
+                return Err(self.overlap(dir, false));
+            }
+        }
+        self.check_directories(dir, &config_fd, config_tail.is_empty(), &store_fd, store_tail.is_empty())
     }
 
-    /// Creates the store if needed, refusing one that cannot be trusted (or that lies inside the
-    /// directory of `config`), and locks it until the returned guard drops.
+    fn overlap(&self, dir: &Path, config_inside: bool) -> BackupError {
+        let why = if config_inside {
+            format!("the config directory `{}` is inside the generation store", dir.display())
+        } else {
+            format!("it is inside the config directory `{}`", dir.display())
+        };
+        BackupError::Unsafe {
+            path: self.dir.clone(),
+            why,
+            fix: "put the config directory and XDG_STATE_HOME in separate trees".to_owned(),
+        }
+    }
+
+    fn io(&self, source: impl Into<io::Error>) -> BackupError {
+        BackupError::Io { path: self.dir.clone(), source: source.into() }
+    }
+
+    fn check_directories(
+        &self,
+        config_dir: &Path,
+        config: impl AsFd,
+        config_exists: bool,
+        store: impl AsFd,
+        store_exists: bool,
+    ) -> Result<(), BackupError> {
+        if store_exists
+            && is_inside(&config, &fstat(&store).map_err(|e| self.io(e))?).map_err(|e| self.io(e))?
+        {
+            return Err(self.overlap(config_dir, true));
+        }
+        if config_exists
+            && is_inside(&store, &fstat(&config).map_err(|e| self.io(e))?).map_err(|e| self.io(e))?
+        {
+            return Err(self.overlap(config_dir, false));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn check_config_directory(
+        &self,
+        config_dir: &Path,
+        config: impl AsFd,
+        complete: bool,
+        locked: &Locked,
+    ) -> Result<(), BackupError> {
+        let store =
+            StoreDir::open(&self.dir)?.ok_or_else(|| self.io(io::Error::from(io::ErrorKind::NotFound)))?;
+        if !same_inode(
+            &fstat(store.fd()).map_err(|e| self.io(e))?,
+            &fstat(locked.store.fd()).map_err(|e| self.io(e))?,
+        ) {
+            return Err(self.io(io::Error::other("the generation store directory changed during the write")));
+        }
+        self.check_directories(config_dir, config, complete, locked.store.fd(), true)
+    }
+
+    /// Creates the store if needed and locks it until the returned guard drops.
     pub(crate) fn lock(&self, config: &Path) -> Result<Locked, BackupError> {
         self.check_location(config)?;
-        let store = StoreDir::open_for_write(&self.dir)?;
-        let lock = store.lock().map_err(|source| BackupError::Io { path: self.dir.clone(), source })?;
+        let dir = parent_of(config);
+        let (config_fd, tail) = directory_prefix(dir).map_err(|e| self.io(e))?;
+        let store = StoreDir::open_for_write(&self.dir, |parent| {
+            self.check_directories(dir, &config_fd, tail.is_empty(), parent, false)
+        })?;
+        let lock = store.lock().map_err(|e| self.io(e))?;
+        self.check_directories(dir, &config_fd, tail.is_empty(), store.fd(), true)?;
         Ok(Locked { store, _lock: lock })
     }
 
     /// Keeps a verified generation of `kept` for `config` in the store `locked` holds, or reuses
     /// the newest verified one when it holds the same thing. Only an `Ok` lets the caller replace
     /// the file.
-    pub(crate) fn keep(
+    pub(crate) fn keep<E: From<BackupError>>(
         &self,
         locked: &Locked,
         config: &Path,
         kept: &Kept<'_>,
         reason: Reason,
-    ) -> Result<GenerationId, BackupError> {
+        before_publish: impl FnOnce() -> Result<(), E>,
+    ) -> Result<GenerationId, E> {
         let store = &locked.store;
         let io_err = |source| BackupError::Io { path: self.dir.clone(), source };
         let config = absolute(config);
@@ -289,6 +374,7 @@ impl Backups {
         let ids = store.ids()?;
         if let Some(id) = newest_same(store, &ids, &manifest) {
             // Read-back can see a prior rename whose directory sync failed.
+            before_publish()?;
             store.sync().map_err(io_err)?;
             return Ok(id);
         }
@@ -299,7 +385,7 @@ impl Backups {
             Kept::File { bytes, .. } => Some(*bytes),
             Kept::Absent { .. } => None,
         };
-        store.build(id, &text, data).map_err(io_err)?;
+        store.build(id, &text, data, before_publish)?;
         // Read it back as a later restore would: only a generation that verifies, holding exactly
         // these bytes, authorizes the write.
         match store.inspect(id) {
@@ -312,7 +398,8 @@ impl Backups {
                 store: self.dir.clone(),
                 id,
                 why: "it did not read back as written".to_owned(),
-            }),
+            }
+            .into()),
         }
     }
 }

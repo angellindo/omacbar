@@ -13,7 +13,7 @@ use rustix::io::Errno;
 
 use super::manifest::Manifest;
 use super::{BackupError, GenerationId, GenerationKind, Health};
-use crate::durable::parent_of;
+use crate::durable::{parent_of, same_inode};
 
 #[cfg(test)]
 use crate::recovery_regressions::sync_backup_dir;
@@ -35,8 +35,6 @@ pub(super) enum Inspected {
     Missing,
     /// The manifest cannot be read or contradicts itself, so it names no config.
     Unreadable(String),
-    /// Its directory or manifest is untrusted, so the manifest cannot name a config.
-    Untrusted(String),
     Read {
         manifest: Manifest,
         kind: GenerationKind,
@@ -78,11 +76,18 @@ impl StoreDir {
     }
 
     /// Creates the private store if needed, refusing untrusted directories as on reads.
-    pub fn open_for_write(path: &Path) -> Result<Self, BackupError> {
+    pub fn open_for_write(
+        path: &Path,
+        check_parent: impl FnOnce(&OwnedFd) -> Result<(), BackupError>,
+    ) -> Result<Self, BackupError> {
         let uid = rustix::process::geteuid().as_raw();
-        let parent = open_owned_parent(path, uid)?;
+        let parent = open_owned_parent(path, uid, check_parent)?;
         let fd = open_or_create_directory(&parent, path, DIR_FLAGS, 0o700, path, uid)?;
         Self::checked(path, fd, uid)
+    }
+
+    pub fn fd(&self) -> BorrowedFd<'_> {
+        self.fd.as_fd()
     }
 
     fn checked(path: &Path, fd: OwnedFd, uid: u32) -> Result<Self, BackupError> {
@@ -156,14 +161,14 @@ impl StoreDir {
             }
         };
         if let Err(why) = private_member(&stat) {
-            return Inspected::Untrusted(format!("generation directory: {why}"));
+            return Inspected::Unreadable(format!("generation directory: {why}"));
         }
         let (manifest_file, stat) = match open_regular_at(dir.as_fd(), MANIFEST) {
             Ok(entry) => entry,
             Err(why) => return Inspected::Unreadable(format!("{MANIFEST}: {why}")),
         };
         if let Err(why) = private_file(&stat) {
-            return Inspected::Untrusted(format!("{MANIFEST}: {why}"));
+            return Inspected::Unreadable(format!("{MANIFEST}: {why}"));
         }
         let manifest = read_bytes(manifest_file)
             .and_then(|bytes| String::from_utf8(bytes).map_err(|e| e.to_string()))
@@ -187,30 +192,51 @@ impl StoreDir {
     /// it into place (never over an existing name) and makes the rename durable. A listing
     /// sees the whole generation or nothing. On a failure before the rename, this attempt's own
     /// temp directory is removed; nothing else in the store is ever removed.
-    pub fn build(&self, id: GenerationId, manifest: &str, data: Option<&[u8]>) -> io::Result<()> {
-        let temp = self.make_temp()?;
-        let staged = (|| {
-            let dir = rustix::fs::openat(&self.fd, temp.as_str(), DIR_FLAGS, Mode::empty())?;
-            rustix::fs::fchmod(&dir, Mode::from_raw_mode(0o700))?;
-            if let Some(bytes) = data {
-                write_new_at(dir.as_fd(), DATA, bytes)?;
-            }
-            write_new_at(dir.as_fd(), MANIFEST, manifest.as_bytes())?;
-            sync_backup_dir(&dir)?;
-            rustix::fs::renameat_with(
-                &self.fd,
-                temp.as_str(),
-                &self.fd,
-                id.to_string(),
-                RenameFlags::NOREPLACE,
-            )?;
-            Ok::<(), io::Error>(())
-        })();
+    pub fn build<E: From<BackupError>>(
+        &self,
+        id: GenerationId,
+        manifest: &str,
+        data: Option<&[u8]>,
+        before_publish: impl FnOnce() -> Result<(), E>,
+    ) -> Result<(), E> {
+        let temp = self.make_temp().map_err(|e| self.io(e))?;
+        let dir = rustix::fs::openat(&self.fd, temp.as_str(), DIR_FLAGS, Mode::empty())
+            .map_err(|e| self.io(e.into()))?;
+        let staged = Self::stage(&dir, manifest, data)
+            .map_err(|e| E::from(self.io(e)))
+            .and_then(|()| before_publish())
+            .and_then(|()| {
+                let named = rustix::fs::statat(&self.fd, temp.as_str(), AtFlags::SYMLINK_NOFOLLOW)
+                    .map_err(|e| E::from(self.io(e.into())))?;
+                let pinned = rustix::fs::fstat(&dir).map_err(|e| E::from(self.io(e.into())))?;
+                if !same_inode(&named, &pinned) {
+                    return Err(self.io(io::Error::other("the staged generation directory changed")).into());
+                }
+                rustix::fs::renameat_with(
+                    &self.fd,
+                    temp.as_str(),
+                    &self.fd,
+                    id.to_string(),
+                    RenameFlags::NOREPLACE,
+                )
+                .map_err(|e| E::from(self.io(e.into())))
+            });
         if let Err(e) = staged {
-            self.remove_temp(&temp);
+            self.remove_temp(&temp, &dir);
             return Err(e);
         }
-        self.sync()
+        self.sync().map_err(|e| self.io(e))?;
+        Ok(())
+    }
+
+    fn stage(dir: &OwnedFd, manifest: &str, data: Option<&[u8]>) -> io::Result<()> {
+        rustix::fs::fchmod(dir, Mode::from_raw_mode(0o700))?;
+        if let Some(bytes) = data {
+            write_new_at(dir.as_fd(), DATA, bytes)?;
+        }
+        write_new_at(dir.as_fd(), MANIFEST, manifest.as_bytes())?;
+        sync_backup_dir(dir)?;
+        Ok(())
     }
 
     /// Sync every directory that could have been created by an interrupted keep, even on
@@ -243,11 +269,16 @@ impl StoreDir {
     }
 
     /// Best effort: the build already failed and that error is the one reported.
-    fn remove_temp(&self, temp: &str) {
-        for name in [DATA, MANIFEST] {
-            let _ = rustix::fs::unlinkat(&self.fd, format!("{temp}/{name}"), AtFlags::empty());
+    fn remove_temp(&self, temp: &str, dir: &OwnedFd) {
+        let named = rustix::fs::statat(&self.fd, temp, AtFlags::SYMLINK_NOFOLLOW);
+        if let (Ok(named), Ok(pinned)) = (named, rustix::fs::fstat(dir))
+            && same_inode(&named, &pinned)
+        {
+            for name in [DATA, MANIFEST] {
+                let _ = rustix::fs::unlinkat(dir, name, AtFlags::empty());
+            }
+            let _ = rustix::fs::unlinkat(&self.fd, temp, AtFlags::REMOVEDIR);
         }
-        let _ = rustix::fs::unlinkat(&self.fd, temp, AtFlags::REMOVEDIR);
     }
 
     fn io(&self, source: io::Error) -> BackupError {
@@ -258,7 +289,11 @@ impl StoreDir {
 /// Check the nearest existing directory before creating anything, then use that same
 /// descriptor to create and open each missing component. Existing state paths may resolve
 /// through symlinks, but a name appearing during creation must be an owned directory.
-fn open_owned_parent(store: &Path, uid: u32) -> Result<OwnedFd, BackupError> {
+fn open_owned_parent(
+    store: &Path,
+    uid: u32,
+    check_parent: impl FnOnce(&OwnedFd) -> Result<(), BackupError>,
+) -> Result<OwnedFd, BackupError> {
     let mut ancestor = parent_of(store);
     let mut missing = Vec::new();
     let mut fd = loop {
@@ -271,6 +306,7 @@ fn open_owned_parent(store: &Path, uid: u32) -> Result<OwnedFd, BackupError> {
             Err(e) => return Err(store_io(store, e)),
         }
     };
+    check_parent(&fd)?;
     check_owner(store, ancestor, rustix::fs::fstat(&fd).map_err(|e| store_io(store, e))?.st_uid, uid)?;
     for dir in missing.into_iter().rev() {
         fd = open_or_create_directory(&fd, dir, PATH_DIR_FLAGS | OFlags::NOFOLLOW, 0o777, store, uid)?;

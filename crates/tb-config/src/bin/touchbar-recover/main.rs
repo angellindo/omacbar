@@ -119,6 +119,7 @@ fn restore(id: GenerationId, remove: bool, profile: &Profile) -> Result<(), Stop
     file.look().map_err(|e| not_restored(id, &e))?;
     let done = if remove { file.recover_removing(&id) } else { file.recover(&id) };
     let remove_flag = if remove { " --remove-file" } else { "" };
+    let removing = remove && matches!(generation.kind, GenerationKind::Absent { .. });
     match done {
         Ok(()) => {
             output::restored(&generation, &profile.config, file.last_generation());
@@ -127,13 +128,28 @@ fn restore(id: GenerationId, remove: bool, profile: &Profile) -> Result<(), Stop
             }
             Ok(())
         }
-        Err(ConfigFileError::Changed(_)) => Err(Stop::Conflict(format!(
-            "`{}` changed while generation {id} was being restored; nothing was written and both \
-             versions are kept. Run `touchbar-recover restore {id}{remove_flag}` again to replace the newer file.",
-            profile.config.display()
-        ))),
+        Err(ConfigFileError::Changed(_)) => Err(restore_conflict(profile, id, remove_flag, removing, None)),
+        Err(ConfigFileError::ChangedAfterKeep { generation, .. }) => {
+            Err(restore_conflict(profile, id, remove_flag, removing, Some(generation)))
+        }
         Err(e) => Err(not_restored(id, &e)),
     }
+}
+
+fn restore_conflict(
+    profile: &Profile,
+    id: GenerationId,
+    remove_flag: &str,
+    removing: bool,
+    kept: Option<GenerationId>,
+) -> Stop {
+    let retained = kept.map_or_else(String::new, |id| format!(" Generation {id} was retained."));
+    let action = if removing { "back up and remove the newer file" } else { "replace the newer file" };
+    Stop::Conflict(format!(
+        "`{}` changed while generation {id} was being restored; nothing was written to the config.{retained} \
+         Run `touchbar-recover restore {id}{remove_flag}` again to {action}.",
+        profile.config.display()
+    ))
 }
 
 /// Whether the restored file validates as `touchbard` would load it: its theme source resolved

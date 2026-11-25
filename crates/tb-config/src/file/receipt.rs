@@ -1,10 +1,11 @@
 //! Save receipts are auxiliary outputs. They never write to the generation store.
 
 use std::io;
-use std::os::fd::{AsFd, OwnedFd};
 use std::path::Path;
 
-use rustix::fs::{CWD, Mode, OFlags, Stat, fstat, openat};
+use rustix::fs::{CWD, fstat};
+
+use crate::durable::{is_inside, open_directory, same_inode};
 use sha2::{Digest, Sha256};
 
 use super::disk::write_new_atomically;
@@ -19,7 +20,7 @@ impl ConfigFile {
         let name = path.file_name().ok_or_else(|| invalid("save receipt needs a file name"))?;
         let dir = open_directory(CWD, dir_of(path))?;
         if Some(name) == self.path.file_name()
-            && same_directory(&fstat(&dir)?, &fstat(open_directory(CWD, dir_of(&self.path))?)?)
+            && same_inode(&fstat(&dir)?, &fstat(open_directory(CWD, dir_of(&self.path))?)?)
         {
             return Err(invalid("save receipt would replace the config"));
         }
@@ -38,31 +39,6 @@ impl ConfigFile {
         // cannot redirect the temporary file or the published receipt into the store.
         write_new_atomically(dir, Path::new(name), receipt.to_string().as_bytes(), NEW_FILE_MODE)
     }
-}
-
-fn is_inside(dir: &OwnedFd, store: &Stat) -> io::Result<bool> {
-    let mut dir = dir.try_clone()?;
-    let mut stat = fstat(&dir)?;
-    loop {
-        if same_directory(&stat, store) {
-            return Ok(true);
-        }
-        dir = open_directory(&dir, Path::new(".."))?;
-        let parent = fstat(&dir)?;
-        if same_directory(&stat, &parent) {
-            return Ok(false);
-        }
-        stat = parent;
-    }
-}
-
-fn same_directory(left: &Stat, right: &Stat) -> bool {
-    left.st_dev == right.st_dev && left.st_ino == right.st_ino
-}
-
-fn open_directory(dir: impl AsFd, path: &Path) -> io::Result<OwnedFd> {
-    let flags = OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC;
-    openat(dir, path, flags, Mode::empty()).map_err(Into::into)
 }
 
 fn invalid(message: &str) -> io::Error {

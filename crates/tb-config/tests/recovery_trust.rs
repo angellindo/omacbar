@@ -83,12 +83,20 @@ fn listing_and_verification_refuse_nonprivate_or_hard_linked_generation_members(
         }
         let before = snapshot(&p.dir);
 
-        let list = p.backups().list(&p.config);
-        let detail = match list {
-            Ok(generations) => format!("{generations:?}"),
-            Err(error) => error.to_string(),
-        };
-        assert!(detail.contains(expected), "{detail}");
+        let mut unknown = Vec::new();
+        let list = p.backups().list_with_unreadable(&p.config, |id, why| unknown.push((id, why))).unwrap();
+        assert!(list.iter().any(|g| g.id.to_string() == "1" && g.health == tb_config::Health::Verified));
+        if entry == "config.toml" {
+            assert_eq!(unknown, []);
+            assert!(matches!(&list[0].health, tb_config::Health::Damaged(why) if why.contains(expected)));
+        } else {
+            assert!(list.iter().all(|g| g.id != id));
+            assert!(matches!(unknown.as_slice(), [(found, why)] if *found == id && why.contains(expected)));
+            let output = recover(&p, &["list"]);
+            output.exits(0);
+            assert!(output.stdout.contains(&format!("unreadable generation {id}")));
+            assert!(output.stdout.contains("config unknown") && output.stdout.contains("1  first-write"));
+        }
         let verify = p.backups().verify(&id).unwrap_err().to_string();
         assert!(verify.contains(expected), "{verify}");
         let restore = recover(&p, &["restore", &id.to_string()]);
@@ -268,5 +276,6 @@ fn an_absence_restore_conflict_keeps_remove_file_in_the_retry_command() {
     assert_eq!(output.status.code(), Some(3), "{output:?}");
     let diagnostic = String::from_utf8(output.stderr).unwrap();
     assert!(diagnostic.contains(&format!("`touchbar-recover restore {id} --remove-file`")), "{diagnostic}");
+    assert!(diagnostic.contains("back up and remove the newer file"), "{diagnostic}");
     assert_eq!(snapshot(&p.dir), before);
 }

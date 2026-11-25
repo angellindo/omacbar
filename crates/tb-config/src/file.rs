@@ -4,6 +4,7 @@
 //! also keeps a verified generation of what each write replaces, and refuses paths it could not
 //! keep and restore exactly.
 
+mod directories;
 mod disk;
 mod reasoned;
 mod receipt;
@@ -59,6 +60,12 @@ pub enum ConfigFileError {
     /// it was removed, or it was never read): nothing was written. Holds the version now on disk.
     #[error("the config file changed on disk since it was read; nothing was written")]
     Changed(DiskVersion),
+    /// A change detected by the last check after a verified generation was kept.
+    #[error("the config file changed on disk; it was not replaced and generation {generation} was retained")]
+    ChangedAfterKeep { current: DiskVersion, generation: GenerationId },
+    /// The config path became unsafe or inaccessible after a verified generation was kept.
+    #[error("{source}; generation {generation} was retained")]
+    RefusedAfterKeep { generation: GenerationId, source: Box<Self> },
     /// A write at a symlink is refused (every protected write, and an acknowledged overwrite):
     /// replacing the link would lose it, and writing through it would change a file outside the
     /// config directory. Reads still follow it.
@@ -190,8 +197,8 @@ impl ConfigFile {
 
     /// Reads a candidate, resolves its saved theme source, then validates and accepts both.
     /// Rejection leaves the current config untouched. A missing file gets the default for the
-    /// active theme (`Config::default_for`), written atomically unless another writer created the
-    /// file meanwhile, which is then read instead.
+    /// active theme (`Config::default_for`). If another writer wins before a generation is
+    /// kept, its file is read instead. A conflict after keeping the generation is reported.
     pub fn load_resolved(&mut self, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
         let Some(text) = self.read_or_default(active)? else { return Ok(active.clone()) };
         self.accept_resolved(&text, active)
@@ -225,8 +232,8 @@ impl ConfigFile {
     }
 
     /// Reads and checks the file. A missing file gets the default for `theme`
-    /// (`Config::default_for`) written atomically, unless another writer created it meanwhile.
-    /// On an error the current config is unchanged.
+    /// (`Config::default_for`) written atomically. On an error the current config is unchanged.
+    /// See [`Self::load_resolved`] for conflicts while writing the default.
     pub fn load(&mut self, theme: &BarTheme) -> Result<Loaded, ConfigFileError> {
         let Some(text) = self.read_or_default(theme)? else { return Ok(Loaded::WroteDefault) };
         match parse_valid(&text, BarSize::MACBOOK_PRO, &SpacingRules::STANDARD, theme) {
@@ -287,7 +294,7 @@ impl ConfigFile {
 
     /// Like `save`, but first resolves the candidate's own theme source again (the selected file
     /// is re-read; Omarchy is `active`) and validates against it, as `load_resolved` does.
-    /// Returns the resolved theme. On any error nothing is written and the current config stays.
+    /// Returns the resolved theme. An error leaves the current config in memory unchanged.
     pub fn save_resolved(&mut self, config: Config, active: &BarTheme) -> Result<BarTheme, ConfigFileError> {
         self.save_resolved_for(config, active, Reason::Save)
     }
@@ -319,7 +326,7 @@ impl ConfigFile {
     /// Writes `content` only if the file is `expected`; records it as seen. An overwrite first keeps
     /// the replaced bytes in a `.bak` (a backup that exists while the rename did not happen still
     /// holds the version on disk, so an interruption loses nothing). A protected file first keeps
-    /// a verified generation; any refusal comes before the file or its directory changes.
+    /// a verified generation; a late refusal may leave that generation in the store.
     fn swap(
         &mut self,
         expected: &DiskVersion,

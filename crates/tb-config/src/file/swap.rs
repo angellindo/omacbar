@@ -2,15 +2,18 @@
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::os::fd::AsFd;
+use std::path::{Path, PathBuf};
 
-use super::disk::{self, DirLock, Found, write_atomically, write_backup};
+use rustix::fs::{AtFlags, CWD, Mode, OFlags, openat, unlinkat};
+
+use super::directories::{CreatedDirs, still_named};
+use super::disk::{self, DirLock, Found, Replacement, remove_owned, write_backup};
 use super::{ConfigFile, ConfigFileError, Content, DiskVersion, NEW_FILE_MODE, WriteKind, dir_of, refused};
 use crate::backup::{Backups, GenerationId, Kept, Locked, Reason};
-use crate::durable::create_dir_all_durably;
+use crate::durable::{create_dir_all_durably, directory_prefix};
 
 impl ConfigFile {
-    /// Keep what is being replaced and recheck it after staging the replacement.
     pub(super) fn swap_as(
         &mut self,
         expected: &DiskVersion,
@@ -18,133 +21,235 @@ impl ConfigFile {
         kind: WriteKind,
         reason: Reason,
     ) -> Result<(), ConfigFileError> {
-        // Protected writes never follow the final symlink, even at the initial, unlocked check.
-        let store = if let Some(backups) = &self.protection {
+        let (backup, generation) = if let Some(backups) = &self.protection {
             check_version(self.probe()?.into_version(), expected)?;
-            Some(backups.lock(&self.path)?)
+            let locked = backups.lock(&self.path)?;
+            let protected = Protected { file: self, backups, locked: &locked };
+            let (backup, id) = protected.write(expected, content, kind, reason)?;
+            (backup, Some(id))
         } else {
-            check_version(self.version_now()?, expected)?;
-            None
+            (self.write_unprotected(expected, content, kind)?, None)
         };
-        let dir = dir_of(&self.path);
-        let (lock, found, generation) = if let (Some(backups), Some(locked)) = (&self.protection, &store) {
-            let (lock, found, generation) = self.prepare_protected(backups, locked, expected, reason)?;
-            (lock, Some(found), Some(generation))
-        } else {
-            let lock = create_and_lock(dir)?;
-            check_version(self.version_now()?, expected)?;
-            if kind == WriteKind::Overwrite
-                && fs::symlink_metadata(&self.path).is_ok_and(|m| m.file_type().is_symlink())
-            {
-                return Err(ConfigFileError::Symlink { path: self.path.clone() });
-            }
-            (lock, None, None)
-        };
-        let kept = match (&expected.0, kind) {
-            (Some(bytes), WriteKind::Overwrite) => {
-                Some(write_backup(&self.path, bytes).map_err(|e| io_at(dir, e))?)
-            }
-            _ => None,
-        };
-        let written = self.put(expected, content, found.as_ref());
-        if written.is_err()
-            && let Some(kept) = &kept
-        {
-            // The copy is only a backup if the write replaced the file.
-            let _ = fs::remove_file(kept);
-        }
-        written?;
-        // The rename already happened, so reporting this as a refused save would be wrong.
-        let _ = lock.sync();
         self.seen = DiskVersion(content.bytes().map(<[u8]>::to_vec));
         if kind == WriteKind::Overwrite {
-            self.backup = kept;
+            self.backup = backup;
         }
-        if generation.is_some() {
-            self.last_generation = generation;
-        }
+        self.last_generation = generation;
         Ok(())
     }
 
-    /// The store lock serializes protected first writes while the config directory is absent.
-    /// Keep the absence before creating any config directories, so a failed generation leaves
-    /// an originally absent hierarchy untouched.
-    fn prepare_protected(
+    fn write_unprotected(
         &self,
-        backups: &Backups,
-        locked: &Locked,
         expected: &DiskVersion,
-        reason: Reason,
-    ) -> Result<(DirLock, Found, GenerationId), ConfigFileError> {
+        content: Content<'_>,
+        kind: WriteKind,
+    ) -> Result<Option<PathBuf>, ConfigFileError> {
+        check_version(self.version_now()?, expected)?;
         let dir = dir_of(&self.path);
-        let mut lock = match DirLock::take(dir) {
-            Ok(lock) => Some(lock),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-            Err(e) => return Err(io_at(dir, e)),
-        };
-        let mut found = self.probe()?;
-        // An external writer can create the directory between the first lock attempt and probe.
-        if lock.is_none() && matches!(found, Found::File { .. }) {
-            lock = Some(DirLock::take(dir).map_err(|e| io_at(dir, e))?);
-            found = self.probe()?;
+        create_dir_all_durably(dir, 0o777).map_err(|e| io_at(dir, e))?;
+        let lock = DirLock::take(dir).map_err(|e| io_at(dir, e))?;
+        check_version(self.version_now()?, expected)?;
+        if kind == WriteKind::Overwrite
+            && fs::symlink_metadata(&self.path).is_ok_and(|m| m.file_type().is_symlink())
+        {
+            return Err(ConfigFileError::Symlink { path: self.path.clone() });
         }
-        if found.bytes() != expected.0.as_deref() {
-            return Err(ConfigFileError::Changed(found.into_version()));
-        }
-        let kept = match &found {
-            Found::Absent => Kept::Absent { dir_existed: lock.is_some() },
-            Found::File { bytes, mode } => Kept::File { bytes, mode: *mode },
-        };
-        let id = backups.keep(locked, &self.path, &kept, reason)?;
-        let lock = match lock {
-            Some(lock) => lock,
-            None => create_and_lock(dir)?,
-        };
-        Ok((lock, found, id))
+        let backup = LegacyBackup::keep(CWD, &self.path, expected, kind).map_err(|e| io_at(dir, e))?;
+        let staged = stage(CWD, &self.path, content, None).map_err(|e| io_at(dir, e))?;
+        check_version(self.version_now()?, expected)?;
+        put(CWD, &self.path, staged).map_err(|e| self.io(e))?;
+        let _ = lock.sync();
+        Ok(backup.and_then(LegacyBackup::commit))
     }
 
     pub(super) fn probe(&self) -> Result<Found, ConfigFileError> {
         disk::probe(&self.path).map_err(|why| refused(&self.path, why))
     }
+}
 
-    /// Recheck the backed-up bytes and mode, as well as whether the path is safe to replace,
-    /// immediately before the rename (or removal). Unprotected saves still compare bytes.
-    fn put(
+struct Protected<'a> {
+    file: &'a ConfigFile,
+    backups: &'a Backups,
+    locked: &'a Locked,
+}
+
+impl Protected<'_> {
+    fn write(
         &self,
         expected: &DiskVersion,
         content: Content<'_>,
-        kept: Option<&Found>,
-    ) -> Result<(), ConfigFileError> {
-        let mode = kept.map(|found| match found {
+        kind: WriteKind,
+        reason: Reason,
+    ) -> Result<(Option<PathBuf>, GenerationId), ConfigFileError> {
+        let path = self.file.path();
+        let dir = dir_of(path);
+        let (ancestor, missing) = directory_prefix(dir).map_err(|e| io_at(dir, e))?;
+        self.backups.check_config_directory(dir, &ancestor, missing.is_empty(), self.locked)?;
+        let mut created = CreatedDirs::default();
+        let (lock, kept_absence) = if missing.is_empty() {
+            let fd =
+                openat(&ancestor, ".", OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC, Mode::empty())
+                    .map_err(|e| io_at(dir, e.into()))?;
+            (DirLock::from_dir(fd).map_err(|e| io_at(dir, e))?, None)
+        } else {
+            let recheck = || {
+                self.backups.check_location(path)?;
+                check_version(self.file.probe()?.into_version(), expected)
+            };
+            recheck()?;
+            let id = self.backups.keep(
+                self.locked,
+                path,
+                &Kept::Absent { dir_existed: false },
+                reason,
+                recheck,
+            )?;
+            let open = || {
+                self.backups.check_config_directory(dir, &ancestor, false, self.locked)?;
+                let fd = created.create(ancestor, missing).map_err(|e| io_at(dir, e))?;
+                self.backups.check_config_directory(dir, &fd, true, self.locked)?;
+                DirLock::from_dir(fd).map_err(|e| io_at(dir, e))
+            };
+            (open().map_err(|e| after_keep(e, Some(id)))?, Some(id))
+        };
+        let outcome = self.replace(&lock, expected, content, kind, reason, kept_absence);
+        if outcome.is_ok() {
+            created.keep();
+            let _ = lock.sync();
+        }
+        drop(created);
+        outcome.map(|(backup, id)| (backup.map(|name| dir.join(name)), id))
+    }
+
+    fn replace(
+        &self,
+        lock: &DirLock,
+        expected: &DiskVersion,
+        content: Content<'_>,
+        kind: WriteKind,
+        reason: Reason,
+        kept_absence: Option<GenerationId>,
+    ) -> Result<(Option<PathBuf>, GenerationId), ConfigFileError> {
+        let fd = lock.fd();
+        let path = self.file.path();
+        let name = Path::new(
+            path.file_name().ok_or_else(|| self.file.io(io::Error::from(io::ErrorKind::InvalidInput)))?,
+        );
+        let dir = dir_of(path);
+        let probe = || self.probe_locked(lock, name);
+        let found = probe().map_err(|e| after_keep(e, kept_absence))?;
+        if found.bytes() != expected.0.as_deref() {
+            return Err(after_keep(ConfigFileError::Changed(found.into_version()), kept_absence));
+        }
+        let mode = match &found {
             Found::Absent => NEW_FILE_MODE,
             Found::File { mode, .. } => mode & 0o777,
-        });
-        let recheck = || {
-            #[cfg(test)]
-            crate::recovery_regressions::before_config_replace();
-            if let Some(kept) = kept {
-                let now = self.probe()?;
-                return if now == *kept { Ok(()) } else { Err(ConfigFileError::Changed(now.into_version())) };
-            }
-            check_version(self.version_now()?, expected)
         };
-        match content {
-            Content::Text(text) => write_atomically(&self.path, text.as_bytes(), mode, io_at, recheck),
-            Content::Exact { bytes, mode } => write_atomically(&self.path, bytes, Some(mode), io_at, recheck),
-            Content::Remove => {
-                recheck().and_then(|()| fs::remove_file(&self.path).map_err(|e| io_at(&self.path, e)))
+        let staged =
+            stage(fd, name, content, Some(mode)).map_err(|e| after_keep(io_at(dir, e), kept_absence))?;
+        let backup = LegacyBackup::keep(fd, name, expected, kind).map_err(|e| io_at(dir, e))?;
+        let recheck = || {
+            if let Some(replacement) = &staged {
+                replacement.check_name().map_err(|e| self.file.io(e))?;
             }
+            let now = probe()?;
+            if now == found { Ok(()) } else { Err(ConfigFileError::Changed(now.into_version())) }
+        };
+        let id = if let Some(id) = kept_absence {
+            id
+        } else {
+            let kept = match &found {
+                Found::Absent => Kept::Absent { dir_existed: true },
+                Found::File { bytes, mode } => Kept::File { bytes, mode: *mode },
+            };
+            self.backups.keep(self.locked, self.file.path(), &kept, reason, recheck)?
+        };
+        #[cfg(test)]
+        crate::recovery_regressions::before_config_replace();
+        recheck().map_err(|e| after_keep(e, Some(id)))?;
+        put(fd, name, staged).map_err(|e| after_keep(self.file.io(e), Some(id)))?;
+        Ok((backup.and_then(LegacyBackup::commit), id))
+    }
+
+    fn probe_locked(&self, lock: &DirLock, name: &Path) -> Result<Found, ConfigFileError> {
+        let path = self.file.path();
+        let dir = dir_of(path);
+        let fd = lock.fd();
+        self.backups.check_config_directory(dir, fd, true, self.locked)?;
+        if !still_named(dir, fd).map_err(|e| io_at(dir, e))? {
+            return Err(io_at(dir, io::Error::other("the config directory changed during the write")));
+        }
+        disk::probe_at(fd, name).map_err(|why| refused(path, why))
+    }
+}
+
+fn after_keep(err: ConfigFileError, id: Option<GenerationId>) -> ConfigFileError {
+    match (err, id) {
+        (ConfigFileError::Changed(current), Some(generation)) => {
+            ConfigFileError::ChangedAfterKeep { current, generation }
+        }
+        (source, Some(generation)) => {
+            ConfigFileError::RefusedAfterKeep { generation, source: Box::new(source) }
+        }
+        (source, None) => source,
+    }
+}
+
+fn stage<'a>(
+    dir: rustix::fd::BorrowedFd<'a>,
+    path: &Path,
+    content: Content<'_>,
+    mode: Option<u32>,
+) -> io::Result<Option<Replacement<'a>>> {
+    match content {
+        Content::Text(text) => Replacement::stage(dir, path, text.as_bytes(), mode).map(Some),
+        Content::Exact { bytes, mode } => Replacement::stage(dir, path, bytes, Some(mode)).map(Some),
+        Content::Remove => Ok(None),
+    }
+}
+
+fn put(dir: impl AsFd, path: &Path, staged: Option<Replacement<'_>>) -> io::Result<()> {
+    match staged {
+        Some(staged) => staged.put(path),
+        None => unlinkat(dir, path, AtFlags::empty()).map_err(Into::into),
+    }
+}
+
+struct LegacyBackup<'a> {
+    dir: rustix::fd::BorrowedFd<'a>,
+    entry: Option<(PathBuf, fs::File)>,
+}
+
+impl<'a> LegacyBackup<'a> {
+    fn keep(
+        dir: rustix::fd::BorrowedFd<'a>,
+        path: &Path,
+        expected: &DiskVersion,
+        kind: WriteKind,
+    ) -> io::Result<Option<Self>> {
+        match (&expected.0, kind) {
+            (Some(bytes), WriteKind::Overwrite) => {
+                Ok(Some(Self { dir, entry: Some(write_backup(dir, path, bytes)?) }))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn commit(mut self) -> Option<PathBuf> {
+        self.entry.take().map(|(path, _)| path)
+    }
+}
+
+impl Drop for LegacyBackup<'_> {
+    fn drop(&mut self) {
+        if let Some((path, file)) = &self.entry {
+            remove_owned(self.dir, path, file);
         }
     }
 }
 
 fn check_version(current: DiskVersion, expected: &DiskVersion) -> Result<(), ConfigFileError> {
     if current == *expected { Ok(()) } else { Err(ConfigFileError::Changed(current)) }
-}
-
-fn create_and_lock(dir: &Path) -> Result<DirLock, ConfigFileError> {
-    create_dir_all_durably(dir, 0o777).map_err(|e| io_at(dir, e))?;
-    DirLock::take(dir).map_err(|e| io_at(dir, e))
 }
 
 fn io_at(path: &Path, source: io::Error) -> ConfigFileError {

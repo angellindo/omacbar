@@ -16,7 +16,11 @@ use crate::app::{State, body};
 const SHOWN: usize = 5;
 
 /// What the store holds for this file, newest first, or why it could not be listed.
-pub(crate) type History = Result<Vec<Generation>, String>;
+#[derive(Default)]
+pub(crate) struct History {
+    generations: Vec<Generation>,
+    unreadable: Vec<(GenerationId, String)>,
+}
 
 /// What showing a file does when it is missing.
 #[derive(Clone, Copy)]
@@ -31,12 +35,19 @@ impl State {
     /// Lists the generations of the editor's file again. Reads only.
     pub(crate) fn refresh_history(&mut self) {
         let Some(file) = &self.file else {
-            self.history = Ok(Vec::new());
+            self.history = Ok(History::default());
             return;
         };
-        self.history = file
-            .backups()
-            .map_or_else(|| Ok(Vec::new()), |backups| backups.list(file.path()).map_err(|e| e.to_string()));
+        self.history = file.backups().map_or_else(
+            || Ok(History::default()),
+            |backups| {
+                let mut unreadable = Vec::new();
+                let generations = backups
+                    .list_with_unreadable(file.path(), |id, why| unreadable.push((id, why)))
+                    .map_err(|e| e.to_string())?;
+                Ok(History { generations, unreadable })
+            },
+        );
     }
 
     /// Nothing differs from what the editor last opened or saved, and no reset is pending.
@@ -62,26 +73,33 @@ impl State {
                 let shown = self.show_file(fresh, Missing::Report);
                 self.status = format!("restored {name} from generation {id}{kept}; {shown}");
             }
-            Err(ConfigFileError::Changed(now)) if now.is_absent() => {
-                self.status = format!(
-                    "not restored: {} was removed since it was opened; nothing was written or kept",
-                    self.file_name()
-                );
-                self.refresh_history();
-            }
-            Err(ConfigFileError::Changed(_)) => {
-                self.status = match self.adopt() {
-                    Ok(_) => "not restored: config changed on disk; showing the newer version \
-                              (nothing written or kept)"
-                        .to_owned(),
-                    Err(why) => format!("not restored: config changed on disk: {why}; nothing written"),
-                };
+            Err(ConfigFileError::Changed(now)) => self.restore_conflict(now.is_absent(), None),
+            Err(ConfigFileError::ChangedAfterKeep { current, generation }) => {
+                self.restore_conflict(current.is_absent(), Some(generation));
             }
             Err(e) => {
                 self.status = format!("not restored: {e}");
                 self.refresh_history();
             }
         }
+    }
+    fn restore_conflict(&mut self, removed: bool, kept: Option<GenerationId>) {
+        let kept = kept.map_or_else(
+            || "nothing was written or kept".to_owned(),
+            |id| format!("the attempted restore left the config unchanged and generation {id} was retained"),
+        );
+        if removed {
+            self.status =
+                format!("not restored: {} was removed since it was opened; {kept}", self.file_name());
+        } else {
+            self.status = match self.adopt() {
+                Ok(_) => format!(
+                    "not restored: config changed on disk; showing the newer version ({kept}). Try the restore again."
+                ),
+                Err(why) => format!("not restored: config changed on disk: {why}; {kept}"),
+            };
+        }
+        self.refresh_history();
     }
 }
 
@@ -118,14 +136,25 @@ pub(crate) fn recovery(s: &State) -> El {
         region = region.child(line(s, "recovery-pending", PENDING).mt(4.0));
     }
     match &s.history {
-        Ok(all) if all.is_empty() => region = region.child(line(s, "", "no generation kept yet").mt(4.0)),
-        Ok(all) => {
+        Ok(history) => {
+            let all = &history.generations;
+            if all.is_empty() && history.unreadable.is_empty() {
+                region = region.child(line(s, "", "no generation kept yet").mt(4.0));
+            }
             region = region.children(all.iter().take(SHOWN).map(|g| row(s, g, clean).mt(4.0)));
             if all.len() > SHOWN {
                 let more =
                     format!("{} more generation(s) of this file: `touchbar-recover list`", all.len() - SHOWN);
                 region = region.child(line(s, "recovery-more", &more).mt(4.0));
             }
+            region = region.children(history.unreadable.iter().map(|(id, why)| {
+                line(
+                    s,
+                    &format!("unreadable-{id}"),
+                    &format!("unreadable generation {id} (config unknown): {why}"),
+                )
+                .mt(4.0)
+            }));
         }
         Err(why) => region = region.child(line(s, "recovery-error", &format!("not listed: {why}")).mt(4.0)),
     }

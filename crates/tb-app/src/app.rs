@@ -42,7 +42,7 @@ pub struct State {
     /// instead): a restore is offered only while nothing differs from it or from the last save.
     pub(crate) opened: Config,
     /// The newest generations of the file, as last listed.
-    pub(crate) history: History,
+    pub(crate) history: Result<History, String>,
 }
 
 impl State {
@@ -76,7 +76,7 @@ impl State {
             saving: Saving::default(),
             status: String::new(),
             reset: None,
-            history: Ok(Vec::new()),
+            history: Ok(History::default()),
         };
         match file {
             Some(file) => s.status = s.show_file(file, Missing::WriteDefault),

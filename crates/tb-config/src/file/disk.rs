@@ -6,8 +6,8 @@
 use std::fmt;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::os::fd::AsFd;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -87,7 +87,12 @@ impl From<Errno> for Refused {
 /// symlink (dangling or not), a hard-linked file, a directory, FIFO, socket or device is refused
 /// without being opened, so nothing blocks and nothing outside the path is touched.
 pub(super) fn probe(path: &Path) -> Result<Found, Refused> {
-    let stat = match rustix::fs::statat(CWD, path, AtFlags::SYMLINK_NOFOLLOW) {
+    probe_at(CWD, path)
+}
+
+pub(super) fn probe_at(dir: impl AsFd, path: &Path) -> Result<Found, Refused> {
+    let dir = dir.as_fd();
+    let stat = match rustix::fs::statat(dir, path, AtFlags::SYMLINK_NOFOLLOW) {
         Ok(stat) => stat,
         Err(Errno::NOENT) => return Ok(Found::Absent),
         Err(e) => return Err(e.into()),
@@ -97,7 +102,7 @@ pub(super) fn probe(path: &Path) -> Result<Found, Refused> {
         FileType::RegularFile => {}
         other => return Err(Refused::Unsupported(kind_name(other).to_owned())),
     }
-    let (bytes, stat) = read_regular(path, OFlags::NOFOLLOW)?;
+    let (bytes, stat) = read_regular(dir, path, OFlags::NOFOLLOW)?;
     if stat.st_nlink != 1 {
         return Err(Refused::Unsupported(format!("file with {} names (hard links)", stat.st_nlink)));
     }
@@ -113,16 +118,16 @@ pub(super) fn version_followed(path: &Path) -> Result<DiskVersion, Refused> {
         Err(e) => return Err(e.into()),
     };
     match FileType::from_raw_mode(stat.st_mode) {
-        FileType::RegularFile => Ok(DiskVersion(Some(read_regular(path, OFlags::empty())?.0))),
+        FileType::RegularFile => Ok(DiskVersion(Some(read_regular(CWD, path, OFlags::empty())?.0))),
         other => Err(Refused::Unsupported(kind_name(other).to_owned())),
     }
 }
 
 /// Opens without blocking and reads `path`, checking on the descriptor that it is still a
 /// regular file (it may have been swapped since it was looked at).
-fn read_regular(path: &Path, extra: OFlags) -> Result<(Vec<u8>, Stat), Refused> {
+fn read_regular(dir: impl AsFd, path: &Path, extra: OFlags) -> Result<(Vec<u8>, Stat), Refused> {
     let flags = OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC | OFlags::NOCTTY | extra;
-    let fd = match rustix::fs::openat(CWD, path, flags, Mode::empty()) {
+    let fd = match rustix::fs::openat(dir, path, flags, Mode::empty()) {
         Ok(fd) => fd,
         Err(Errno::LOOP) if extra.contains(OFlags::NOFOLLOW) => return Err(Refused::Symlink),
         Err(e) => return Err(e.into()),
@@ -156,9 +161,23 @@ pub(super) struct DirLock(fs::File);
 
 impl DirLock {
     pub(super) fn take(dir: &Path) -> io::Result<Self> {
-        let handle = fs::File::open(dir)?;
-        handle.lock()?;
-        Ok(Self(handle))
+        let handle = rustix::fs::openat(
+            CWD,
+            dir,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?;
+        Self::from_dir(handle)
+    }
+
+    pub(super) fn from_dir(dir: OwnedFd) -> io::Result<Self> {
+        let file = fs::File::from(dir);
+        file.lock()?;
+        Ok(Self(file))
+    }
+
+    pub(super) fn fd(&self) -> BorrowedFd<'_> {
+        self.0.as_fd()
     }
 
     /// Makes renames and creations in the directory durable.
@@ -172,9 +191,11 @@ impl DirLock {
 /// an existing backup or a symlink at a backup name is never replaced or written through. Its
 /// mode is the replaced file's owner bits plus owner read: never readable by more than the
 /// replaced file was.
-pub(super) fn write_backup(path: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
-    let source = fs::metadata(path)?.permissions().mode();
+pub(super) fn write_backup(dir: impl AsFd, path: &Path, bytes: &[u8]) -> io::Result<(PathBuf, fs::File)> {
+    let dir = dir.as_fd();
+    let source = rustix::fs::statat(dir, path, AtFlags::empty())?.st_mode;
     let mode = (source & 0o600) | 0o400;
+    let flags = OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC;
     let name = file_name(path);
     for n in 0u32.. {
         let backup = if n == 0 {
@@ -182,56 +203,99 @@ pub(super) fn write_backup(path: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
         } else {
             path.with_file_name(format!("{name}.bak.{n}"))
         };
-        match fs::OpenOptions::new().write(true).create_new(true).mode(mode).open(&backup) {
-            Ok(mut file) => {
+        match rustix::fs::openat(dir, &backup, flags, Mode::from_raw_mode(mode)) {
+            Ok(fd) => {
+                let mut file = fs::File::from(fd);
                 let written = file
                     .set_permissions(fs::Permissions::from_mode(mode))
                     .and_then(|()| file.write_all(bytes))
                     .and_then(|()| file.sync_all());
                 if let Err(e) = written {
                     // Best effort: an incomplete backup is worse than none; report the write error.
-                    let _ = fs::remove_file(&backup);
+                    remove_owned(dir, &backup, &file);
                     return Err(e);
                 }
-                return Ok(backup);
+                return Ok((backup, file));
             }
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e),
+            Err(Errno::EXIST) => {}
+            Err(e) => return Err(e.into()),
         }
     }
     Err(io::Error::new(io::ErrorKind::AlreadyExists, "no free backup name"))
 }
 
-/// Writes `bytes` to a temp file next to `path`, syncs it, runs `before_rename` (the last version
-/// check) and renames it over `path`, so a reader sees the old file or the new one, never half of
-/// it. With `mode`, the new file gets exactly those permission bits (not the umask's). On any
-/// failure, including a refusal by `before_rename`, the temp file is removed.
-pub(super) fn write_atomically<E>(
-    path: &Path,
-    bytes: &[u8],
-    mode: Option<u32>,
-    io_at: impl Fn(&Path, io::Error) -> E,
-    before_rename: impl FnOnce() -> Result<(), E>,
-) -> Result<(), E> {
-    let dir = super::dir_of(path);
-    let (temp, file) = create_temp(CWD, path, mode).map_err(|e| io_at(dir, e))?;
-    let written = write_synced(file, bytes)
-        .map_err(|e| io_at(&temp, e))
-        .and_then(|()| before_rename())
-        .and_then(|()| fs::rename(&temp, path).map_err(|e| io_at(path, e)));
-    if written.is_err() {
-        // Best effort: the write already failed, and that error is the one worth reporting.
-        let _ = fs::remove_file(&temp);
+/// A synced replacement in the locked config directory. Drop only removes this attempt's
+/// temporary file, through the same descriptor used to create and publish it.
+pub(super) struct Replacement<'a> {
+    dir: BorrowedFd<'a>,
+    temp: PathBuf,
+    file: OwnedFd,
+}
+
+impl<'a> Replacement<'a> {
+    pub(super) fn stage(
+        dir: BorrowedFd<'a>,
+        path: &Path,
+        bytes: &[u8],
+        mode: Option<u32>,
+    ) -> io::Result<Self> {
+        let (temp, mut file) = create_temp(dir, path, mode)?;
+        let pin = (|| {
+            write_synced(&mut file, bytes)?;
+            #[cfg(test)]
+            crate::recovery_regressions::fail_config_temp()?;
+            let flags = OFlags::PATH | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+            let pinned = rustix::fs::openat(dir, &temp, flags, Mode::empty())?;
+            if !crate::durable::same_inode(&rustix::fs::fstat(&file)?, &rustix::fs::fstat(&pinned)?) {
+                return Err(io::Error::other("the staged config file changed"));
+            }
+            Ok(pinned)
+        })();
+        match pin {
+            // Close the writable descriptor before rename, so the watch observes just the rename.
+            Ok(pinned) => Ok(Self { dir, temp, file: pinned }),
+            Err(e) => {
+                remove_owned(dir, &temp, &file);
+                Err(e)
+            }
+        }
     }
-    written
+
+    pub(super) fn check_name(&self) -> io::Result<()> {
+        let named = rustix::fs::statat(self.dir, &self.temp, AtFlags::SYMLINK_NOFOLLOW)?;
+        let pinned = rustix::fs::fstat(&self.file)?;
+        if !crate::durable::same_inode(&named, &pinned) {
+            return Err(io::Error::other("the staged config file changed"));
+        }
+        Ok(())
+    }
+
+    pub(super) fn put(self, path: &Path) -> io::Result<()> {
+        rustix::fs::renameat(self.dir, &self.temp, self.dir, path).map_err(Into::into)
+    }
+}
+
+impl Drop for Replacement<'_> {
+    fn drop(&mut self) {
+        remove_owned(self.dir, &self.temp, &self.file);
+    }
+}
+
+pub(super) fn remove_owned(dir: BorrowedFd<'_>, path: &Path, file: impl AsFd) {
+    let named = rustix::fs::statat(dir, path, AtFlags::SYMLINK_NOFOLLOW);
+    if let (Ok(named), Ok(pinned)) = (named, rustix::fs::fstat(file))
+        && crate::durable::same_inode(&named, &pinned)
+    {
+        let _ = rustix::fs::unlinkat(dir, path, AtFlags::empty());
+    }
 }
 
 /// Publishes a complete private receipt at a fresh path. Existing files (including a
 /// config, generation or symlink) must never be replaced by an auxiliary write.
 pub(super) fn write_new_atomically(dir: impl AsFd, name: &Path, bytes: &[u8], mode: u32) -> io::Result<()> {
     let dir = dir.as_fd();
-    let (temp, file) = create_temp(dir, name, Some(mode))?;
-    let result = write_synced(file, bytes).and_then(|()| {
+    let (temp, mut file) = create_temp(dir, name, Some(mode))?;
+    let result = write_synced(&mut file, bytes).and_then(|()| {
         rustix::fs::renameat_with(dir, &temp, dir, name, rustix::fs::RenameFlags::NOREPLACE)
             .map_err(io::Error::from)
     });
@@ -241,7 +305,7 @@ pub(super) fn write_new_atomically(dir: impl AsFd, name: &Path, bytes: &[u8], mo
     result
 }
 
-fn write_synced(mut file: fs::File, bytes: &[u8]) -> io::Result<()> {
+fn write_synced(file: &mut fs::File, bytes: &[u8]) -> io::Result<()> {
     file.write_all(bytes)?;
     file.sync_all()
 }

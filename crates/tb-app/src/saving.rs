@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use crate::app::{NO_HOME, State};
 use crate::drafts::Fields;
-use tb_config::{ConfigFileError, DiskVersion, Reason};
+use tb_config::{ConfigFileError, DiskVersion, GenerationId, Reason};
 use tb_core::config::Config;
 use tb_core::{ButtonId, Chord};
 
@@ -129,6 +129,10 @@ impl State {
                 self.saved(None);
             }
             Err(ConfigFileError::Changed(version)) => self.refused_as_changed(version),
+            Err(ConfigFileError::ChangedAfterKeep { current, generation }) => {
+                self.refused_as_changed(current);
+                self.retained_generation(generation);
+            }
             Err(e) => self.not_saved(&e),
         }
     }
@@ -150,6 +154,10 @@ impl State {
                 self.saved(backup);
             }
             Err(ConfigFileError::Changed(now)) => self.keep_draft(now),
+            Err(ConfigFileError::ChangedAfterKeep { current, generation }) => {
+                self.keep_draft(current);
+                self.retained_generation(generation);
+            }
             Err(e) => self.not_saved(&e),
         }
     }
@@ -189,6 +197,11 @@ impl State {
         self.refresh_history();
     }
 
+    fn retained_generation(&mut self, generation: GenerationId) {
+        let _ = write!(self.status, ". Generation {generation} was retained.");
+        self.refresh_history();
+    }
+
     fn not_saved(&mut self, e: &ConfigFileError) {
         let Some(file) = &self.file else { return };
         let shown = file.path().display();
@@ -199,6 +212,9 @@ impl State {
             }
             e => format!("not saved {shown}: {e}"),
         };
+        if matches!(e, ConfigFileError::RefusedAfterKeep { .. }) {
+            self.refresh_history();
+        }
     }
 
     /// A pending reset can hide pre-reset changes even when the shown config is the baseline.
