@@ -1,0 +1,59 @@
+//! Restoring a chosen generation (ADR-0015): one more protected compare-and-swap. It replaces
+//! only the version this config file last saw, first keeps a `recover` generation of what it
+//! replaces, and writes the kept bytes with the kept permission bits.
+
+use super::disk::Found;
+use super::{ConfigFile, ConfigFileError, Content, WriteKind};
+use crate::backup::{BackupError, Backups, GenerationId, Stored};
+
+impl ConfigFile {
+    /// The generation store that protects this file (what a restore can choose from); `None` for
+    /// an unprotected one.
+    pub fn backups(&self) -> Option<&Backups> {
+        self.protection.as_ref()
+    }
+
+    /// Records what is on disk now as the version seen, without parsing it: a missing or invalid
+    /// file is what a restore may replace too. A symlink is followed, as reads do (a later write
+    /// still refuses it).
+    pub fn look(&mut self) -> Result<(), ConfigFileError> {
+        self.seen = self.version_now()?;
+        Ok(())
+    }
+
+    /// Restores generation `id` of this file: exact bytes and permission bits, creating a missing
+    /// file or directory. Refused before anything changes when the generation does not verify,
+    /// belongs to another config, records that no file existed (see [`Self::recover_removing`]),
+    /// or the file is not the version last seen (`Changed`).
+    pub fn recover(&mut self, id: &GenerationId) -> Result<(), ConfigFileError> {
+        self.restore(*id, false)
+    }
+
+    /// Like `recover`, and a generation that records no file is restored by removing the config
+    /// file (after keeping it); its directory is never removed.
+    pub fn recover_removing(&mut self, id: &GenerationId) -> Result<(), ConfigFileError> {
+        self.restore(*id, true)
+    }
+
+    fn restore(&mut self, id: GenerationId, remove: bool) -> Result<(), ConfigFileError> {
+        let backups = self
+            .protection
+            .clone()
+            .ok_or_else(|| ConfigFileError::Unprotected { path: self.path.clone() })?;
+        backups.check_location(&self.path)?;
+        let (_, stored) = backups.stored(id, &self.path)?;
+        let seen = self.seen.clone();
+        match stored {
+            Stored::File { bytes, mode } => {
+                self.swap(&seen, Content::Exact { bytes: &bytes, mode }, WriteKind::Recover)
+            }
+            Stored::Absent if !remove => Err(BackupError::Absence { id }.into()),
+            // Already no file: nothing to replace, so nothing to keep, unless one appeared.
+            Stored::Absent if seen.is_absent() => match self.probe()? {
+                Found::Absent => Ok(()),
+                now @ Found::File { .. } => Err(ConfigFileError::Changed(now.into_version())),
+            },
+            Stored::Absent => self.swap(&seen, Content::Remove, WriteKind::Recover),
+        }
+    }
+}

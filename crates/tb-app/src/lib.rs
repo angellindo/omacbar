@@ -6,6 +6,8 @@ mod diagnostics;
 mod drafts;
 mod panel;
 mod preview;
+mod recovery;
+mod reset;
 mod saving;
 mod shell;
 mod workspace;

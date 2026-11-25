@@ -32,7 +32,9 @@ wrote:
   before the rename, so an interruption leaves either the original file, or the original file and
   its backup, or the new file and its backup. An overwrite at a symlink is refused
   (`ConfigFileError::Symlink`): replacing the link loses it, writing through it edits a file
-  outside the config directory. Ordinary saves never make a backup.
+  outside the config directory. Ordinary saves never make a backup. (ADR-0015: the binaries'
+  protected writes refuse a symlink for every write, and keep a generation of what each write
+  replaces in the user's state directory, besides this `.bak`.)
 - **Configurator.** A refused save from a clean editor shows the newer file if it resolves
   (selected theme included) and writes nothing; if it does not resolve, or was removed, nothing
   changes and the status says why. A dirty editor keeps its draft and offers `reload` (adopt the

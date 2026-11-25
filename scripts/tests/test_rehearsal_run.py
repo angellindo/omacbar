@@ -7,7 +7,13 @@ producing save wrote. The run learns those bytes from the save receipt, the inte
 configurator and the fake share (`TB_SAVE_RECEIPT`, below), never by reading the config after the
 configurator returns. An injected edit, failed save or failed reopen, or a save without a valid
 receipt of its own, is never settled or restored: its bytes survive the run and the cleanup. No
-cargo, no GPU."""
+cargo, no GPU.
+
+Protected writes (integration with TB-48): like the real binaries, the fakes keep a private
+generation in the state directory before every config write and refuse to save over a symlinked
+config (no write through the link, no replacement, no receipt). So a nominal run has four saves
+with receipts and one explicit symlink refusal; the simulator puts a known regular config of its
+own at the link's path and restores the link afterwards. Cleanup keeps every generation."""
 
 from __future__ import annotations
 
@@ -21,18 +27,28 @@ from rehearsal_fixture import THEME_REL, Fixture, state, tree
 FAKE = r'''#!/usr/bin/env python3
 # Fake configurator / daemon that behaves like the normal-flow binaries: the configurator writes
 # defaults when the config is absent, a `--script` run saves the edited label (temp + rename) and
-# the tree lists the status and every label; the daemon presses F5 once, writes one frame and runs
-# the profile-local mark. Every run is logged to FAKE_EVENTS, with the SHA-256 of what a save
-# wrote, which is the producer's own expectation.
+# the tree lists the status and every label of the editor's layout; the daemon presses F5 once,
+# writes one frame and runs the profile-local mark. Every run is logged to FAKE_EVENTS, with the
+# SHA-256 of what a save wrote, which is the producer's own expectation, and the lstat type of the
+# config it found (`config_type`).
+# Protected writes (as the real binaries since TB-48): before any write of the config (first
+# default, save) a generation is kept in <state>/touchbar-customizer/backups/<id>/ (0700 dirs,
+# 0600 files: manifest.toml, and config.toml holding the replaced bytes), <state> being
+# XDG_STATE_HOME when absolute, else HOME/.local/state; the ids are logged as `generations`. A
+# symlinked config is shown but never written through or replaced: a save over it is refused with
+# "not saved <path>: config file `<path>` is a symbolic link; ...", the draft stays in the editor,
+# nothing is written and no receipt is emitted (logged as `refused`).
 # Save receipt (the interface shared with the real configurator): when TB_SAVE_RECEIPT names a
 # path, each confirmed explicit save writes there, by temp + rename, the JSON object
 #   {"config": "<the config path it saved>", "sha256": "<64 lowercase hex>"}
 # hashed from the bytes that save wrote (in memory), never by reading the file back. A failed or
 # refused save writes no receipt.
 # FAKE_INJECT names a one-shot token file whose content picks one injected event (logged with the
-# path and bytes it leaves):
+# path and bytes it leaves, and `original` when another version must survive next to it):
 #   external     the first reopen after a save finds the saved file replaced by another editor
-#   target       the first reopen after a save of a symlinked config finds the old target edited
+#   target       the save over the symlinked config is refused as usual; later, while the daemon
+#                runs on the simulator's regular config, a third party edits the old link target
+#                (the link's original target bytes are logged as `original`)
 #   save-fails   the first save crashes half way, leaving a partial file, exit 1
 #   reopen-fails the first reopen after a save exits 1 before showing anything
 #   second-editor the save over the personal layout (label "Mine") completes with its receipt, then,
@@ -41,12 +57,20 @@ FAKE = r'''#!/usr/bin/env python3
 #                personal layout is logged as `original`
 #   no-receipt   the second save completes but writes no receipt of its own
 #   bad-receipt  the first save completes but its receipt is not a valid one (short hash)
+#   link-saved   an unprotected configurator: the save over the symlinked config replaces the link
+#                with a regular file and writes a valid receipt for it
+#   link-other-refusal the save over the symlinked config is refused for another reason (a theme
+#                issue), without the symbolic-link refusal; nothing written, no receipt
+#   refuse-regular the first save over a regular file is refused with the symbolic-link wording,
+#                nothing written, no receipt
 import hashlib, json, os, re, struct, sys
 from pathlib import Path
 name = Path(sys.argv[0]).name
 home = Path(os.environ["HOME"])
 config = home / ".config/touchbar-customizer/config.toml"
 theme = home / ".local/state/omarchy/current/theme/colors.toml"
+xdg = os.environ.get("XDG_STATE_HOME")
+store = (Path(xdg) if xdg and os.path.isabs(xdg) else home / ".local/state") / "touchbar-customizer/backups"
 args = sys.argv[1:]
 MARK = "# saved by fake\n"
 DEFAULT = 'label = "F1"\n'
@@ -57,7 +81,10 @@ def text(path):
         return path.read_bytes().decode()
     except (OSError, UnicodeDecodeError):
         return None
-event = dict(name=name, args=args, home=str(home), cwd=os.getcwd(),
+def kind(path):
+    return "symlink" if path.is_symlink() else "file" if path.is_file() else "absent" if not os.path.lexists(path) else "other"
+event = dict(name=name, args=args, home=str(home), cwd=os.getcwd(), store=str(store),
+             receipt=os.environ.get("TB_SAVE_RECEIPT"), config_type=kind(config), generations=[],
              theme=theme.read_text() if theme.is_file() else None,
              config=config.read_text(errors="replace") if config.is_file() else None)
 token = Path(os.environ["FAKE_INJECT"]) if os.environ.get("FAKE_INJECT") else None
@@ -68,63 +95,104 @@ def injected(kind, path, data):
 def log():
     with open(os.environ["FAKE_EVENTS"], "a") as f:
         f.write(json.dumps(event) + "\n")
-def replace(path, data):
+def replace(path, data, mode=None):
     tmp = path.with_name(f".{path.name}.fake-tmp")
     tmp.write_bytes(data)
+    if mode is not None:
+        os.chmod(tmp, mode)
     os.replace(tmp, path)
+def keep(reason):
+    # The generation of what the write replaces, kept before the write.
+    store.mkdir(mode=0o700, parents=True, exist_ok=True)
+    ids = [int(p.name) for p in store.iterdir() if p.name.isdigit()]
+    gen = store / str(max(ids, default=0) + 1)
+    gen.mkdir(mode=0o700)
+    old = config.read_bytes() if config.is_file() and not config.is_symlink() else None
+    (gen / "manifest.toml").write_text(f'config = "{config}"\nreason = "{reason}"\nkind = "{"file" if old is not None else "absent"}"\n')
+    os.chmod(gen / "manifest.toml", 0o600)
+    if old is not None:
+        (gen / "config.toml").write_bytes(old)
+        os.chmod(gen / "config.toml", 0o600)
+    event["generations"].append(gen.name)
+def first_default():
+    if not os.path.lexists(config):
+        config.parent.mkdir(parents=True, exist_ok=True)
+        keep("first-write")
+        replace(config, DEFAULT.encode(), 0o600)
 if os.environ.get("FAKE_TOUCH_SESSION"):
     with open(os.environ["FAKE_TOUCH_SESSION"], "ab") as f:
         f.write(b"!")
 if name == "touchbar-customizer":
-    config.parent.mkdir(parents=True, exist_ok=True)
-    if not os.path.lexists(config):
-        config.write_text(DEFAULT)
+    first_default()
     status = "opened config"
+    draft = None
     if value("--script"):
         if inject == "save-fails":
+            keep("save")
             partial = b'label = "Rehe'
             with open(config, "wb") as f:
                 f.write(partial)
             injected("save-fails", config, partial)
             log()
             sys.exit(1)
-        if inject == "target" and config.is_symlink():
-            token.write_text("target:" + os.path.realpath(config))
         base = text(config) or DEFAULT
         saved = (re.sub(r'label = "[^"]*"', 'label = "Rehearsal"', base, count=1) + MARK).encode()
-        events_log = Path(os.environ["FAKE_EVENTS"])
-        nth = 1 + (events_log.read_text().count('"saved_sha256"') if events_log.exists() else 0)
-        replace(config, saved)
-        event["saved_sha256"] = hashlib.sha256(saved).hexdigest()
-        receipt = {"config": str(config), "sha256": event["saved_sha256"]}
-        if inject == "bad-receipt":
-            receipt["sha256"] = receipt["sha256"][:63]
-            injected("bad-receipt", config, saved)
-        if inject == "no-receipt" and nth == 2:
-            injected("no-receipt", config, saved)
-        elif os.environ.get("TB_SAVE_RECEIPT"):
-            replace(Path(os.environ["TB_SAVE_RECEIPT"]), json.dumps(receipt).encode())
-        if inject == "second-editor" and 'label = "Mine"' in base:
-            other = saved.replace(b"width = { span = 1 }", b"width = { span = 2 }", 1)
-            other = other if other != saved else saved + b"# second editor\n"
-            replace(config, other)
-            injected("second-editor", config, other)
-            event["injected"]["original"] = base
-        status = "saved config"
+        refusal = f"not saved {config}: config file `{config}` is a symbolic link; writing it is refused, nothing was written"
+        if config.is_symlink() and inject != "link-saved":
+            draft = saved.decode()
+            event["refused"] = "symlink"
+            event["link"] = os.readlink(config)
+            target = Path(os.path.realpath(config))
+            event["target_bytes"] = target.read_bytes().decode() if target.is_file() else None
+            status = refusal
+            if inject == "target":
+                token.write_text("target:" + str(target))
+            elif inject == "link-other-refusal":
+                event["refused"] = "theme"
+                status = f"not saved {config}: 1 issue(s); fix the selected theme file"
+                injected("link-other-refusal", target, target.read_bytes())
+        elif inject == "refuse-regular":
+            draft = saved.decode()
+            event["refused"] = "symlink-wording"
+            status = refusal
+            injected("refuse-regular", config, config.read_bytes())
+        else:
+            events_log = Path(os.environ["FAKE_EVENTS"])
+            nth = 1 + (events_log.read_text().count('"saved_sha256"') if events_log.exists() else 0)
+            was_link = config.is_symlink()
+            if was_link:  # link-saved: an unprotected save replaces the link
+                config.unlink()
+            else:
+                keep("save")
+            replace(config, saved)
+            event["saved_sha256"] = hashlib.sha256(saved).hexdigest()
+            receipt = {"config": str(config), "sha256": event["saved_sha256"]}
+            if inject == "link-saved" and was_link:
+                injected("link-saved", config, saved)
+            if inject == "bad-receipt":
+                receipt["sha256"] = receipt["sha256"][:63]
+                injected("bad-receipt", config, saved)
+            if inject == "no-receipt" and nth == 2:
+                injected("no-receipt", config, saved)
+            elif os.environ.get("TB_SAVE_RECEIPT"):
+                replace(Path(os.environ["TB_SAVE_RECEIPT"]), json.dumps(receipt).encode())
+            if inject == "second-editor" and 'label = "Mine"' in base:
+                other = saved.replace(b"width = { span = 1 }", b"width = { span = 2 }", 1)
+                other = other if other != saved else saved + b"# second editor\n"
+                replace(config, other)
+                injected("second-editor", config, other)
+                event["injected"]["original"] = base
+            status = "saved config"
     elif (text(config) or "").endswith(MARK):
         if inject == "external":
             other = b'label = "Edited elsewhere"\n# another editor\n'
             replace(config, other)
             injected("external", config, other)
-        elif inject and inject.startswith("target:"):
-            target, other = Path(inject[len("target:"):]), b'label = "Target edited elsewhere"\n'
-            replace(target, other)
-            injected("target", target, other)
         elif inject == "reopen-fails":
             injected("reopen-fails", config, config.read_bytes())
             log()
             sys.exit(1)
-    current = text(config)
+    current = draft if draft is not None else text(config)
     labels = re.findall(r'label = "([^"]*)"', current or "")
     if value("--snap"):
         Path(value("--snap")).write_bytes(b"\x89PNG fake")
@@ -135,8 +203,15 @@ if name == "touchbar-customizer":
                      for i, label in enumerate(labels)]
         Path(value("--tree")).write_text(json.dumps({"elements": elements}))
 else:
+    first_default()
     for _ in sys.stdin:
         pass
+    if inject and inject.startswith("target:"):
+        target, other = Path(inject[len("target:"):]), b'label = "Target edited elsewhere"\n'
+        original = target.read_bytes()
+        replace(target, other)
+        injected("target", target, other)
+        event["injected"]["original"] = original.decode()
     current = text(config) or ""
     if value("--emit"):
         keys = b""
@@ -280,21 +355,60 @@ class Expectations(RunFixture):
         self.assertEqual(p.returncode, 0, f"a nominal run with faithful binaries passes: {p.stdout}{p.stderr}")
         report = self.report_data()
         home = Path(report["home"])
-        self.assertEqual(len(report["scenarios"]), 5)
-        saves = [e["saved_sha256"] for e in self.events()
-                 if e.get("saved_sha256") and Path(e["home"]) == home]
-        self.assertEqual(len(saves), 5, "one save per scenario in the profile")
-        for rec, saved in zip(report["scenarios"], saves):
-            self.assertIn(saved, json.dumps(rec), f"scenario {rec.get('name')} settled with the save's hash")
+        config = home / ".config/touchbar-customizer/config.toml"
+        self.assertEqual([r["name"] for r in report["scenarios"]],
+                         ["absent-no-parents", "absent-with-parents", "commented-0640", "invalid", "symlink"])
+        mine = [e for e in self.events() if Path(e["home"]) == home]
+        saves = [e for e in mine if e.get("saved_sha256")]
+        self.assertEqual(len(saves), 4, "four saves with receipts in the profile, one per regular scenario")
+        for rec, save in zip(report["scenarios"][:4], saves):
+            self.assertEqual(rec.get("expect_config"), save["saved_sha256"],
+                             f"scenario {rec['name']} settled with its save's receipt")
+            self.assertTrue(save["receipt"], "the save got a receipt path")
+        # The fifth attempt, over the symlinked config, is an explicit refusal with no receipt.
+        refused = [e for e in mine if e.get("refused")]
+        self.assertEqual([e["refused"] for e in refused], ["symlink"], refused)
+        link = refused[0]
+        self.assertTrue(link["receipt"], "the refused save had a receipt path of its own")
+        self.assertFalse(os.path.lexists(link["receipt"]), "and nothing was written there")
+        sym = report["scenarios"][4]
+        self.assertNotIn("expect_config", sym, "nothing settled from the refused save")
+        self.assertTrue(sym.get("save_refused") and sym.get("receipt_absent"), sym)
+        # The simulator ran the daemon on a known regular config of the run's own, then put the link back.
+        daemons = [e for e in mine if e["name"] == "touchbard"]
+        self.assertEqual(len(daemons), 1, daemons)
+        self.assertEqual(daemons[0]["config_type"], "file", "the daemon saw a regular config, not the link")
+        self.assertIn("rehearsal-mark", daemons[0]["config"])
+        self.assertEqual(state(config), {"type": "symlink", "link": link["link"]}, "the original link is back")
+        target = Path(os.path.realpath(config))
+        self.assertEqual(target.read_bytes().decode(), link["target_bytes"], "and its target is unchanged")
+        # Generations: one per protected write, private, in the profile's state directory.
+        store = home / ".local/state/touchbar-customizer/backups"
+        self.assertEqual({e["store"] for e in mine}, {str(store)}, "every binary uses the profile's store")
+        kept = [g for e in mine for g in e["generations"]]
+        self.assertGreaterEqual(len(kept), 4, "at least one generation before each save")
+        self.assertEqual(sorted(kept, key=int), sorted((d.name for d in store.iterdir()), key=int))
+        # Cleanup: removes only the run's own unchanged artifacts.
         foreign = home / "left by the daemon.txt"
         self.assertEqual(foreign.read_bytes(), b"not the run's own\n")
         self.assertTrue((home / "keys.bin").is_file())
+        beside = store / "third-party.txt"
+        beside.write_bytes(b"not the run's own either\n")
+        owned = [Path(a["path"]) for a in report["artifacts"]]
+        changed = next(a for a in owned if a.parent.name == "rehearsal-snaps" and a.suffix == ".png")
+        changed.write_bytes(b"\x89PNG changed after the run\n")
+        generations = tree(store)
         c = self.tool("cleanup", "--manifest", self.report)
         self.assertEqual(c.returncode, 0, c.stdout + c.stderr)
+        self.assertEqual(tree(store), generations, "every generation (and a file beside them) is kept as it was")
         self.assertEqual(foreign.read_bytes(), b"not the run's own\n", "a file the run did not own stays")
+        self.assertEqual(changed.read_bytes(), b"\x89PNG changed after the run\n", "a changed artifact stays")
         self.assertFalse((home / "keys.bin").exists(), "the run's own unchanged keys file is removed")
-        self.assertEqual(sorted(x.name for x in home.iterdir()), ["left by the daemon.txt"],
-                         "everything else in the profile was the run's own")
+        self.assertFalse(os.path.lexists(config), "the run's own restored link is removed")
+        left = sorted(str(p.relative_to(home)) for p in home.rglob("*") if not p.is_dir())
+        expected = sorted([foreign.name, str(changed.relative_to(home))]
+                          + [str((store / k).relative_to(home)) for k, v in generations.items() if v["type"] == "file"])
+        self.assertEqual(left, expected, "everything else in the profile was the run's own")
         self.assertOutsideUntouched()
 
     def assertInjectionSurvives(self, kind):
@@ -308,13 +422,26 @@ class Expectations(RunFixture):
         self.assertEqual(state(path).get("bytes"), data, f"{kind}: the bytes at {path} survive the run")
         self.tool("cleanup", "--manifest", self.report)
         self.assertEqual(state(path).get("bytes"), data, f"{kind}: and survive cleanup")
+        if "original" in hit[0]:
+            original = hit[0]["original"].encode()
+            profile = Path(self.report_data()["profile"])
+            held = [q for q in profile.rglob("*") if q.is_file() and not q.is_symlink()
+                    and q != path and q.read_bytes() == original]
+            self.assertTrue(held, f"{kind}: the original is still held in the run's store after cleanup")
         self.assertOutsideUntouched()
+        return hit[0]
 
     def test_an_edit_landing_after_the_save_is_never_restored_over(self):
         self.assertInjectionSurvives("external")
 
     def test_an_edit_of_the_old_link_target_after_the_save_is_never_restored_over(self):
-        self.assertInjectionSurvives("target")
+        # A third party edits the old link target while the simulator's regular config stands in
+        # for the link: the link is never put back over it, and the original target stays stored.
+        hit = self.assertInjectionSurvives("target")
+        self.assertIn("Linked", hit["original"], "the edit replaced the original target layout")
+        daemon = next(e for e in self.events() if "injected" in e)
+        self.assertEqual((daemon["name"], daemon["config_type"]), ("touchbard", "file"),
+                         "the edit landed while the simulator's regular config was in place")
 
     def test_a_failed_save_is_never_settled_or_restored(self):
         self.assertInjectionSurvives("save-fails")
@@ -345,3 +472,17 @@ class SaveReceipt(Expectations):
 
     def test_a_save_with_an_invalid_receipt_is_never_settled_or_restored(self):
         self.assertInjectionSurvives("bad-receipt")
+
+    def assertLinkKept(self):
+        config = Path(self.report_data()["home"]) / ".config/touchbar-customizer/config.toml"
+        self.assertEqual(state(config).get("type"), "symlink", "the link is still the config")
+
+    def test_a_save_that_replaces_the_link_instead_of_refusing_fails_the_run(self):
+        self.assertInjectionSurvives("link-saved")
+
+    def test_a_link_refused_for_another_reason_fails_the_run_and_keeps_the_link(self):
+        self.assertInjectionSurvives("link-other-refusal")
+        self.assertLinkKept()
+
+    def test_a_symlink_refusal_of_a_regular_file_save_fails_the_run(self):
+        self.assertInjectionSurvives("refuse-regular")

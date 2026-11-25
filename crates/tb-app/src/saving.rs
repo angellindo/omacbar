@@ -1,7 +1,7 @@
 //! A baseline tracks actual config differences, and only successful explicit saves update time.
 //! A save refused because the file changed on disk (a conflict, ADR-0013) never loses either
-//! version: a clean editor shows the newer file, a dirty one keeps its draft until the user
-//! reloads or overwrites.
+//! version: a clean editor shows the newer file, and an editor with changes or a pending reset
+//! keeps its draft and offers conflict resolution.
 
 use std::fmt::Write as _;
 use std::io;
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use crate::app::{NO_HOME, State};
 use crate::drafts::Fields;
-use tb_config::{ConfigFile, ConfigFileError, DiskVersion};
+use tb_config::{ConfigFileError, DiskVersion, GenerationId, Reason};
 use tb_core::config::Config;
 use tb_core::{ButtonId, Chord};
 
@@ -119,15 +119,20 @@ impl State {
             self.status = reason;
             return;
         }
+        let reason = self.write_reason(Reason::Save);
         let Some(file) = &mut self.file else { return };
         // The selected theme file may have changed since open: resolve it again; Omarchy is the
         // active theme, never the theme a previously shown config selected.
-        match file.save_resolved(self.config.clone(), &self.active) {
+        match file.save_resolved_for(self.config.clone(), &self.active, reason) {
             Ok(theme) => {
                 self.theme = theme;
                 self.saved(None);
             }
             Err(ConfigFileError::Changed(version)) => self.refused_as_changed(version),
+            Err(ConfigFileError::ChangedAfterKeep { current, generation }) => {
+                self.refused_as_changed(current);
+                self.retained_generation(generation);
+            }
             Err(e) => self.not_saved(&e),
         }
     }
@@ -139,8 +144,9 @@ impl State {
             self.status = reason;
             return;
         }
+        let reason = self.write_reason(Reason::Overwrite);
         let (Some(file), Some(version)) = (&mut self.file, self.saving.conflict.clone()) else { return };
-        match file.save_over_resolved(self.config.clone(), &self.active, &version) {
+        match file.save_over_resolved_for(self.config.clone(), &self.active, &version, reason) {
             Ok(theme) => {
                 // Exactly the theme this overwrite was validated against: no second read.
                 self.theme = theme;
@@ -148,6 +154,10 @@ impl State {
                 self.saved(backup);
             }
             Err(ConfigFileError::Changed(now)) => self.keep_draft(now),
+            Err(ConfigFileError::ChangedAfterKeep { current, generation }) => {
+                self.keep_draft(current);
+                self.retained_generation(generation);
+            }
             Err(e) => self.not_saved(&e),
         }
     }
@@ -160,10 +170,21 @@ impl State {
         };
     }
 
+    /// A write while the default buttons are a pending draft is a factory reset's save.
+    const fn write_reason(&self, otherwise: Reason) -> Reason {
+        if self.reset_pending() { Reason::FactoryReset } else { otherwise }
+    }
+
     fn saved(&mut self, backup: Option<String>) {
         let Some(file) = &self.file else { return };
         let kept = backup.map(|b| format!("; the replaced version is kept in {b}")).unwrap_or_default();
-        self.status = format!("saved config {}{kept}", file.path().display());
+        let before_reset = self
+            .reset
+            .take()
+            .and_then(|_| file.last_generation_path())
+            .map(|g| format!("; the file before the factory reset is kept in {}", g.display()))
+            .unwrap_or_default();
+        self.status = format!("saved config {}{kept}{before_reset}", file.path().display());
         if let Some(path) = &self.saving.receipt
             && let Err(e) = file.write_save_receipt(path)
         {
@@ -173,6 +194,12 @@ impl State {
         self.saving.last_saved = (self.saving.clock)();
         self.saving.saved_this_session = true;
         self.saving.conflict = None;
+        self.refresh_history();
+    }
+
+    fn retained_generation(&mut self, generation: GenerationId) {
+        let _ = write!(self.status, ". Generation {generation} was retained.");
+        self.refresh_history();
     }
 
     fn not_saved(&mut self, e: &ConfigFileError) {
@@ -185,12 +212,15 @@ impl State {
             }
             e => format!("not saved {shown}: {e}"),
         };
+        if matches!(e, ConfigFileError::RefusedAfterKeep { .. }) {
+            self.refresh_history();
+        }
     }
 
-    /// A clean editor has nothing to lose: it shows the newer file instead. A dirty one keeps
-    /// everything it shows and offers the two resolutions.
+    /// A pending reset can hide pre-reset changes even when the shown config is the baseline.
+    /// Preserve its cancel snapshot alongside the usual conflict controls.
     fn refused_as_changed(&mut self, version: DiskVersion) {
-        if self.dirty() {
+        if self.reset_pending() || self.dirty() {
             self.keep_draft(version);
             return;
         }
@@ -214,10 +244,10 @@ impl State {
     /// Reads the file through a fresh `ConfigFile` and, only if it resolves, makes it the editor's
     /// file, config and baseline. A failure changes nothing: the editor's file still remembers the
     /// version it read, so bytes the user never accepted cannot authorize a later save.
-    fn adopt(&mut self) -> Result<String, String> {
+    pub(crate) fn adopt(&mut self) -> Result<String, String> {
         let Some(file) = &self.file else { return Err(NO_HOME.to_owned()) };
         let name = self.file_name();
-        let mut fresh = ConfigFile::new(file.path());
+        let mut fresh = file.reopened();
         let theme = match fresh.reload_resolved(&self.active) {
             Ok(theme) => theme,
             Err(ConfigFileError::Io { source, .. }) if source.kind() == io::ErrorKind::NotFound => {
@@ -234,16 +264,19 @@ impl State {
         self.saving.baseline = Some(self.config.clone());
         self.saving.conflict = None;
         self.file = Some(fresh);
+        self.reset = None;
         self.drafts.clear();
         self.drag = None;
         if self.selected_button().is_none() {
             self.selected = None;
         }
         self.fields = Fields::of(self.selected_button());
+        self.opened = self.config.clone();
+        self.refresh_history();
         Ok(shown)
     }
 
-    fn file_name(&self) -> String {
+    pub(crate) fn file_name(&self) -> String {
         let name = self.file.as_ref().and_then(|f| f.path().file_name());
         name.map_or_else(|| "the config file".to_owned(), |n| n.to_string_lossy().into_owned())
     }

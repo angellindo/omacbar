@@ -1,0 +1,292 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Slice 2 of TB-48: a terminal tool `touchbar-recover` (tb-config [[bin]], no Rune or GPU in its graph, no display needed) lists the generations of the profile's config with store location and health, verifies one, and restores a chosen one byte for byte (comments included) with its permission bits through TB-43 compare-and-swap, first keeping a verified `recover` generation of what it replaces. It restores over an invalid config, into a missing file and a missing directory (recording the absence and whether the directory existed); returning to no file needs --remove-file and keeps the removed file. A file changed while the restore waits, or before its generation is published, is a conflict: exit 3, nothing written or kept, both versions stay, a later run succeeds. Ids that are not a store generation number, generations linked from outside the store, of another config, with edited data, garbled or unknown-format manifests or symlinked data, and a symlinked config are refused before any write, naming the id or path, and damaged generations are kept. An unwritable store or config directory or no room (EFBIG) keep the original and a retry succeeds. Usage errors exit 2 and touch nothing. The store follows absolute XDG_STATE_HOME else HOME. Library `ConfigFile::{look, recover}` + `Reason::Recover` carry the same CAS (Changed after look; Changed(absent) for a removed file, nothing created), and a running `touchbard` on the same isolated profile draws the restored design. Late-conflict amendment (ADR-0015): when the last check finds a change after the `recover` generation was published, restore and --remove-file exit 3 (exit 1 when the path became unsafe) and stderr names the config, the retained id and the exact command to run again (with --remove-file when asked); stdout claims no restore; the other editor's file or link stays, the retained generation is verified, and that command then restores and keeps the other editor's file. The library recover and recover_removing report ChangedAfterKeep with the id and a retry after look succeeds.",
+  "files": [
+    "crates/tb-config/tests/support/generations.rs",
+    "crates/tb-config/tests/support/recovery.rs",
+    "crates/tb-config/tests/recover_terminal.rs",
+    "crates/tb-config/tests/recover_terminal_refusals.rs",
+    "crates/tb-config/tests/config_recover.rs",
+    "crates/tb-daemon/tests/touchbard_recovery.rs",
+    ".scratch/TB-48/contract/recover_graph_check.py",
+    "crates/tb-config/tests/config_late_conflict.rs",
+    "crates/tb-config/tests/recover_terminal_late_conflict.rs",
+    "crates/tb-config/tests/support/late_conflict.rs",
+    "crates/tb-config/tests/support/syscall_pause.py"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "list_names_the_store_and_every_generation_of_this_config_with_its_health",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "list_and_verify_work_without_a_config_a_store_or_a_display_and_create_nothing",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "the_store_follows_home_when_xdg_state_home_is_unset_or_relative",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "restore_brings_back_the_chosen_generation_byte_for_byte_with_its_mode",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "restore_keeps_a_generation_of_the_file_it_replaces",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "restore_works_over_an_invalid_config_and_keeps_its_exact_bytes",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-07",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "restore_into_a_missing_file_creates_it_and_records_the_absence",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-08",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "restore_into_a_missing_directory_creates_it_and_records_that_it_was_missing",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-09",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "returning_to_no_file_needs_remove_file_and_keeps_the_removed_file",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-10",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "a_change_while_restore_waits_is_a_conflict_that_writes_nothing",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-11",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "a_restored_generation_can_be_restored_again_by_a_later_run",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-12",
+      "package": "tb-config",
+      "target": "test:recover_terminal",
+      "test": "usage_errors_exit_2_and_touch_nothing",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-13",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "ids_that_are_not_a_generation_number_are_refused_and_touch_nothing",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-14",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "an_unknown_generation_is_refused_naming_it",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-15",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "a_generation_directory_linked_from_outside_the_store_is_refused",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-16",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "a_generation_of_another_config_is_refused",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-17",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "edited_generation_data_is_reported_damaged_and_never_restored",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-18",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "a_garbled_or_unknown_format_manifest_is_refused_and_kept",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-19",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "generation_data_swapped_for_a_symlink_is_refused",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-20",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "a_symlinked_config_is_listed_but_never_restored_over",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-21",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "an_unwritable_store_refuses_the_restore_and_a_retry_succeeds",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-22",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "an_unwritable_config_directory_keeps_the_original_and_a_retry_succeeds",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-23",
+      "package": "tb-config",
+      "target": "test:recover_terminal_refusals",
+      "test": "no_room_for_the_restored_file_keeps_the_original",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-24",
+      "package": "tb-config",
+      "target": "test:config_recover",
+      "test": "recover_writes_the_chosen_generation_and_keeps_what_it_replaces",
+      "red": "preserve",
+      "symbol": "recover",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-25",
+      "package": "tb-config",
+      "target": "test:config_recover",
+      "test": "a_change_after_look_is_refused_and_both_versions_stay",
+      "red": "preserve",
+      "symbol": "recover",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-26",
+      "package": "tb-config",
+      "target": "test:config_recover",
+      "test": "an_editor_that_saw_a_file_now_removed_gets_changed_and_nothing_is_created",
+      "red": "preserve",
+      "symbol": "recover",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-27",
+      "package": "tb-daemon",
+      "target": "test:touchbard_recovery",
+      "test": "a_running_daemon_draws_the_restored_design",
+      "red": "preserve",
+      "symbol": "recover",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:7e6bf614... on f14be7c (runs kept in slice-2.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-28",
+      "package": "tb-config",
+      "target": "test:config_late_conflict",
+      "test": "a_change_after_a_restore_published_its_generation_is_refused_and_the_generation_retained",
+      "red": "required"
+    },
+    {
+      "id": "QA-29",
+      "package": "tb-config",
+      "target": "test:config_late_conflict",
+      "test": "a_change_after_a_file_removal_published_its_generation_is_refused_and_the_generation_retained",
+      "red": "required"
+    },
+    {
+      "id": "QA-30",
+      "package": "tb-config",
+      "target": "test:recover_terminal_late_conflict",
+      "test": "a_change_before_the_restore_publishes_its_generation_is_a_conflict_that_keeps_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-31",
+      "package": "tb-config",
+      "target": "test:recover_terminal_late_conflict",
+      "test": "a_change_after_the_restore_published_its_generation_exits_3_with_the_id_and_the_retry",
+      "red": "required"
+    },
+    {
+      "id": "QA-32",
+      "package": "tb-config",
+      "target": "test:recover_terminal_late_conflict",
+      "test": "a_change_after_a_file_removal_published_its_generation_exits_3_with_the_id_and_the_retry",
+      "red": "required"
+    },
+    {
+      "id": "QA-33",
+      "package": "tb-config",
+      "target": "test:recover_terminal_late_conflict",
+      "test": "a_config_made_a_symlink_after_the_restore_published_its_generation_is_refused_with_the_id",
+      "red": "required"
+    }
+  ],
+  "checks": [
+    {
+      "id": "recover-graph",
+      "command": [
+        "python3",
+        "-B",
+        ".scratch/TB-48/contract/recover_graph_check.py"
+      ]
+    }
+  ]
+}

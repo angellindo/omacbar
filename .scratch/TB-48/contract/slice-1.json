@@ -1,0 +1,482 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Slice 1 of TB-48: every write of a protected config file (first default from the configurator or the daemon, save, resolved save, acknowledged overwrite) first keeps a private (0700/0600), verified, durable generation of what it replaces (the absence and whether its directory existed, or the exact bytes and permission bits, also of an invalid personal file) in $XDG_STATE_HOME/touchbar-customizer/backups (absolute) or $HOME/.local/state/...; the saved file keeps its bits, a new one is 0600. Reads, validation failures and conflicts found before the generation is published keep nothing; unchanged saves reuse the newest verified generation; generations are never deleted, outlive the process and are listed per config. Symlinked (dangling or not), hard-linked, FIFO, socket and directory config paths, and untrusted stores (open mode, symlinked or swapped backups dir, inside the config directory a restore replaces, a file, unwritable, no room: EFBIG) are refused before any mutation with the original intact and a retry succeeding; damaged generations (edited data, garbled manifest, data symlink) are never verified, reused or deleted; crash leftovers are ignored and kept; concurrent writers in threads or processes lose no version and get unique ids. Both binaries are wired through their production entry with isolated HOME/XDG_STATE_HOME; try-app.sh and rehearsal run give both apps one private store and never touch the caller's state; no Rust test that starts a product binary leaks into the caller's XDG_STATE_HOME (runtime decoy). Integration amendment (with TB-46 save receipts): the rehearsal-run isolation double is a faithful configurator and daemon (generation before every write, receipts, symlink refusal), so the run reaches both binaries by its ordinary route; the check fails if the daemon does not run, and proves the profile HOME and an unhanded, unchanged caller XDG_STATE_HOME decoy from the generations on disk. Late-conflict amendment (ADR-0015): when the last check finds a change after the generation was published, a save or acknowledged overwrite is refused as ChangedAfterKeep (file changed) or RefusedAfterKeep (path made unsafe) naming the retained id: the other editor's file or link is not replaced, the retained generation stays verified and listed holding exactly what the write would have replaced, the attempt is no success, and a retry from the file on disk succeeds; the configurator keeps the draft and both conflict resolutions, names the id and lists it, and its Overwrite then succeeds.",
+  "files": [
+    "crates/tb-config/tests/support/generations.rs",
+    "crates/tb-config/tests/config_generations.rs",
+    "crates/tb-config/tests/config_generation_refusals.rs",
+    "crates/tb-config/tests/config_generation_faults.rs",
+    "crates/tb-daemon/tests/touchbard_generations.rs",
+    "crates/tb-app/tests/configurator_generations.rs",
+    "scripts/tests/test_state_isolation_launcher.py",
+    "scripts/tests/test_state_isolation_rehearsal.py",
+    ".scratch/TB-48/contract/xdg_decoy_check.py",
+    "crates/tb-config/tests/config_late_conflict.rs",
+    "crates/tb-app/tests/configurator_late_conflict.rs",
+    "crates/tb-config/tests/support/late_conflict.rs",
+    "crates/tb-config/tests/support/syscall_pause.py",
+    "crates/tb-config/tests/support/recovery.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "the_first_write_into_a_missing_directory_keeps_an_absent_generation_before_the_default",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "the_first_write_into_an_existing_empty_directory_records_that_the_directory_existed",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "a_save_keeps_the_exact_hand_written_bytes_and_mode_it_replaces_and_keeps_the_file_mode",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "the_store_and_every_generation_are_private_to_the_user",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "a_new_config_file_is_created_private",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "a_resolved_save_and_an_acknowledged_overwrite_keep_generations_and_the_overwrite_backup",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-07",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "an_unchanged_save_reuses_the_newest_verified_generation",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-08",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "reads_keep_no_generation",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-09",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "refused_saves_keep_no_generation_and_leave_the_file",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-10",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "saving_over_an_invalid_personal_file_keeps_its_exact_bytes",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-11",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "generations_outlive_their_config_file_and_are_never_deleted",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-12",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "a_listing_names_only_the_generations_of_that_config",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-13",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "creating_the_store_beside_the_theme_hook_raises_no_theme_switch",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-14",
+      "package": "tb-config",
+      "target": "test:config_generations",
+      "test": "the_store_is_under_an_absolute_xdg_state_home_else_under_home",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-15",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_symlinked_config_is_shown_but_never_written_through_or_replaced",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-16",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_dangling_symlink_is_not_replaced_by_the_first_default",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-17",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_hard_linked_config_is_refused_and_both_names_keep_their_bytes",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-18",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_fifo_at_the_config_path_is_refused_without_blocking",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-19",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_socket_or_a_directory_at_the_config_path_is_refused",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-20",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_store_readable_by_others_is_refused_before_the_file_changes",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-21",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_symlinked_store_swapped_in_after_generations_exist_is_refused_and_loses_nothing",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-22",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_store_inside_the_config_directory_is_refused",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-23",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_store_that_cannot_be_written_aborts_the_save_and_a_retry_succeeds_once_it_can",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-24",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_symlinked_config_directory_or_state_directory_loses_no_version",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-25",
+      "package": "tb-config",
+      "target": "test:config_generation_refusals",
+      "test": "a_store_path_that_is_a_file_is_refused_with_its_path",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-26",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "edited_generation_data_is_reported_damaged_and_never_reused",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-27",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "a_garbled_manifest_is_never_verified_and_never_reused",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-28",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "generation_data_swapped_for_a_symlink_is_damaged_even_with_the_same_bytes",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-29",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "a_half_built_temp_generation_is_ignored_and_kept_while_saves_go_on",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-30",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "a_complete_generation_whose_save_never_renamed_stays_and_the_next_save_succeeds",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-31",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "a_stale_config_temp_from_an_interrupted_save_is_kept_and_skipped",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-32",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "simultaneous_writers_through_one_store_get_unique_ids_and_listings_never_see_half_a_generation",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-33",
+      "package": "tb-config",
+      "target": "test:config_generation_faults",
+      "test": "two_editors_saving_one_version_keep_exactly_one_generation_of_it",
+      "red": "preserve",
+      "symbol": "Backups",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-34",
+      "package": "tb-daemon",
+      "target": "test:touchbard_generations",
+      "test": "the_first_run_keeps_an_absent_generation_under_an_absolute_xdg_state_home",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-35",
+      "package": "tb-daemon",
+      "target": "test:touchbard_generations",
+      "test": "the_first_run_into_an_existing_empty_config_directory_records_that_it_existed",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-36",
+      "package": "tb-daemon",
+      "target": "test:touchbard_generations",
+      "test": "without_an_absolute_xdg_state_home_the_store_is_under_home",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-37",
+      "package": "tb-daemon",
+      "target": "test:touchbard_generations",
+      "test": "the_first_generation_survives_a_restart_untouched",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-38",
+      "package": "tb-daemon",
+      "target": "test:touchbard_generations",
+      "test": "two_daemons_starting_at_once_on_one_profile_keep_exactly_one_generation",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-39",
+      "package": "tb-daemon",
+      "target": "test:touchbard_generations",
+      "test": "an_existing_hand_written_profile_is_drawn_and_left_as_it_was",
+      "red": "preserve",
+      "reason": "Existing profiles stay usable: the daemon draws a hand-written 0640 profile and leaves its bytes and mode; reading keeps no generation (A4)."
+    },
+    {
+      "id": "QA-40",
+      "package": "tb-app",
+      "target": "test:configurator_generations",
+      "test": "the_first_run_keeps_an_absent_generation_before_writing_the_default",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-41",
+      "package": "tb-app",
+      "target": "test:configurator_generations",
+      "test": "a_save_from_the_editor_keeps_the_exact_hand_written_file_and_reopening_keeps_nothing_new",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-42",
+      "package": "tb-app",
+      "target": "test:configurator_generations",
+      "test": "with_room_for_the_copy_a_size_limited_save_goes_through",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-43",
+      "package": "tb-app",
+      "target": "test:configurator_generations",
+      "test": "when_the_copy_cannot_be_written_the_save_is_abandoned_and_the_file_stays",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:a8932ce1... on f3d8ec2 (runs kept in slice-1.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-44",
+      "package": "tb-config",
+      "target": "test:config_late_conflict",
+      "test": "a_change_before_the_save_publishes_its_generation_keeps_nothing",
+      "red": "required"
+    },
+    {
+      "id": "QA-45",
+      "package": "tb-config",
+      "target": "test:config_late_conflict",
+      "test": "a_change_after_the_save_published_its_generation_is_refused_and_the_generation_retained",
+      "red": "required"
+    },
+    {
+      "id": "QA-46",
+      "package": "tb-config",
+      "target": "test:config_late_conflict",
+      "test": "a_change_after_an_overwrite_published_its_generation_is_refused_and_the_generation_retained",
+      "red": "required"
+    },
+    {
+      "id": "QA-47",
+      "package": "tb-config",
+      "target": "test:config_late_conflict",
+      "test": "a_config_made_a_symlink_after_the_save_published_its_generation_is_refused_with_the_generation",
+      "red": "required"
+    },
+    {
+      "id": "QA-48",
+      "package": "tb-app",
+      "target": "test:configurator_late_conflict",
+      "test": "a_change_before_a_save_publishes_its_generation_keeps_nothing_and_keeps_the_draft",
+      "red": "required"
+    },
+    {
+      "id": "QA-49",
+      "package": "tb-app",
+      "target": "test:configurator_late_conflict",
+      "test": "a_change_after_a_save_published_its_generation_names_it_and_keeps_the_draft",
+      "red": "required"
+    },
+    {
+      "id": "QA-50",
+      "package": "tb-app",
+      "target": "test:configurator_late_conflict",
+      "test": "a_change_after_an_overwrite_published_its_generation_names_it_and_keeps_the_draft",
+      "red": "required"
+    },
+    {
+      "id": "QA-51",
+      "package": "tb-app",
+      "target": "test:configurator_late_conflict",
+      "test": "a_config_made_a_symlink_after_a_save_published_its_generation_is_refused_with_the_id",
+      "red": "required"
+    }
+  ],
+  "checks": [
+    {
+      "id": "launcher-state",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_state_isolation_*.py"
+      ]
+    },
+    {
+      "id": "spawn-isolation",
+      "command": [
+        "python3",
+        "-B",
+        ".scratch/TB-48/contract/xdg_decoy_check.py"
+      ]
+    }
+  ]
+}

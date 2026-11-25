@@ -53,7 +53,7 @@ two baselines match and lists every difference otherwise.
 
 | Owner | Authorized target | Entry state | Expected changes | Stop criterion | Return procedure | Evidence (after-comparison) |
 |---|---|---|---|---|---|---|
-| Agent; no hardware, no sudo | A fresh private profile from `mktemp` (0700, outside the repo and the caller's HOME) with a fixture theme; simulator frames and keys files inside it | `git status` recorded; the tool records the persistent session's metadata (never its content) | Only files inside the profile: config scenarios, snapshots, frames, keys file, the profile-local mark | Any scenario, the simulator stage or the session check fails; any refusal | `run` restores each scenario under the config-directory lock with compare-and-swap; afterwards `scripts/rehearsal.py cleanup --manifest <report>` removes only the run's own unchanged artifacts | Report: five scenarios (absent without and with parents, commented 0640, invalid, symlink) restored and verified; F5 pressed once into the keys file, `none` wrote nothing, the mark holds one `x`; session metadata identical |
+| Agent; no hardware, no sudo | A fresh private profile from `mktemp` (0700, outside the repo and the caller's HOME) with a fixture theme; simulator frames and keys files inside it | `git status` recorded; the tool records the persistent session's metadata (never its content) | Only files inside the profile: config scenarios, snapshots, frames, keys file, the profile-local mark | Any unexpected save result or change, simulator failure, or session metadata change | `run` restores changed scenarios under the config-directory lock. `cleanup --manifest <report>` removes the run's own unchanged artifacts and retains generations. | Report: four saves restored and verified (absent without and with parents, commented 0640, invalid). Symlink save refused with no receipt, then the simulator's regular config restored to the original link. F5 emitted once, one local mark, unchanged session metadata. |
 
 ```sh
 nice -n 19 env CARGO_BUILD_JOBS=2 cargo build -p tb-app -p tb-daemon
@@ -73,10 +73,12 @@ refusal (nothing changed), 3 conflict (current version kept in place, original k
 `capture` refuses the caller's HOME, the persistent session and a store inside the tree it would
 replace.
 `run` gives each explicit save a fresh `TB_SAVE_RECEIPT` path inside the rehearsal profile.
-The configurator writes the config path and the SHA-256 of the bytes it saved. The report records
-that digest, and the configurator must still show the edited label on reopen. A failed save or
-reopen, a missing or invalid receipt, or a change to the saved config or the captured link target
-stops the run. The current config and the capture remain available after cleanup.
+After saving a regular config, the configurator writes the config path and the SHA-256 of the
+bytes it saved. The report records that digest and checks the edited label on reopen. The symlink
+scenario requires an explicit refusal, no receipt, and the original link and target unchanged.
+The simulator uses a known regular file at the captured link's path, then restores the link under
+the config-directory lock and reopens the original layout. An unexpected result stops the run and
+keeps the affected config and capture available. The report lists the private generation store.
 
 Two editors and an external edit: the tool half is a conflict (exit 3, both versions kept) and a
 restore that waits for a writer holding the lock. The configurator half is TB-43's sealed Runtime
@@ -235,14 +237,16 @@ rather than reusing old build output.
 
 ### Factory-default layout reset in the configurator
 
-Not implemented in TB-46; it is a follow-up ticket (TB-48). Preconditions it must meet: it changes
-only the draft; it shows the preview before anything is saved; it can be cancelled; and before Save
-it guarantees a recoverable copy of the current file and goes through TB-43's compare-and-swap save.
+In the configurator, **Load default buttons** (TB-48) loads the factory layout into the draft and
+preview, keeping the selected theme source. Cancel restores the previous draft. An explicit Save
+keeps a private, verified generation as a recoverable copy before replacing the file through
+TB-43's compare-and-swap guard.
 
 ### Restoring a personal config copy
 
-Putting back a copy of the user's own config: S0's `restore` on a throwaway profile, or a manual
-copy. It never touches the hardware and never saves over the personal layout from an agent.
+For a personal layout, choose a verified generation in the configurator or use `touchbar-recover`.
+A restore keeps a generation of the file it replaces. S0 uses `rehearsal.py restore` on its
+throwaway profile. These procedures operate on the profile. The physical check is in S2 and S3.
 
 ### Physical return to key mode
 
@@ -253,8 +257,10 @@ Shown only by the firmware key row on the panel.
 
 - **S0** lo corre un agente sin hardware: `scripts/rehearsal.py run` crea un perfil privado
   desechable con un tema de fixtures, prueba cinco escenarios de config (ausente, con comentario y
-  modo 0640, inválido, symlink) y el simulador, restaura con el lock de TB-43 y compara; `cleanup`
-  borra solo lo propio sin cambios. La sesión persistente de `try-app.sh` no se lee ni se toca.
+  modo 0640, inválido, enlace simbólico) y el simulador. Comprueba el rechazo del guardado sobre
+  el enlace sin recibo ni cambios en el destino. Restaura el enlace tras el simulador con el lock
+  de TB-43. `cleanup` borra solo artefactos propios verificados y conserva las generaciones.
+  El ensayo compara únicamente metadatos de la sesión persistente de `try-app.sh`.
 - **S1–S4 y B → A** son solo tuyos: cada etapa tiene responsable, objetivo autorizado, estado de
   entrada, cambios esperados, criterio de parada, retorno y evidencia. La línea base A se vuelve a
   registrar al empezar cada etapa con `rehearsal.py baseline`; B es modo teclas verificado tras TB-28.
@@ -263,4 +269,5 @@ Shown only by the firmware key row on the panel.
   teclas vista en el panel lo demuestra.
 - La compilación de los drivers está fijada por commit y hash y se puede repetir en un directorio
   temporal; solo prueba que compila, nada de carga, enlace ni retorno.
-- El reset de fábrica en el configurador **no** está hecho aquí (TB-48).
+- TB-48 permite cargar y previsualizar el diseño de fábrica, cancelar el borrador y recuperar una
+  generación personal. La vuelta física a la fila de firmware se verifica con S2 y S3.

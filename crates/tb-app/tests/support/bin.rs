@@ -27,6 +27,8 @@ pub fn run(home: &Path, args: &[&std::ffi::OsStr]) {
     let out = Command::new(env!("CARGO_BIN_EXE_touchbar-customizer"))
         .args(args)
         .env("HOME", home)
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .output()
         .unwrap();
     assert!(

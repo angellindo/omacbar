@@ -147,6 +147,25 @@ colour overrides the active theme cannot resolve (e.g. the lock's `red` under a 
 `contrib/omarchy/` contains the optional theme hook a human installs. Standalone diagnostic output
 uses stdout/stderr; only the launcher redirects its current-run logs to the scratch paths above.
 
+### Recover a previous config from a terminal
+
+Before every write of the config, the configurator and the daemon keep a generation of what it
+replaces in `$XDG_STATE_HOME/touchbar-customizer/backups/` (else `~/.local/state/...`; ADR-0015).
+`touchbar-recover` needs no display, GPU or valid config:
+
+```sh
+cargo run -p tb-config --bin touchbar-recover -- list         # store, then: id reason kind ... verified|damaged
+cargo run -p tb-config --bin touchbar-recover -- verify 3     # can generation 3 be restored here?
+cargo run -p tb-config --bin touchbar-recover -- restore 3    # exact bytes and mode back
+cargo run -p tb-config --bin touchbar-recover -- restore 1 --remove-file   # back to "no config file"
+```
+
+A restore first keeps a `recover` generation of the file it replaces (also an invalid one), and
+creates a missing file or directory. It refuses damaged generations, another config's, and a
+symlinked config, changing nothing. Exit codes: 0 done, 1 refused or failed (the config file is
+unchanged), 2 usage, 3 the file changed meanwhile (nothing written; run it again). A running
+`touchbard` draws a restored valid config; an invalid one keeps the last valid design.
+
 ## Doctor and local triage
 
 ```sh

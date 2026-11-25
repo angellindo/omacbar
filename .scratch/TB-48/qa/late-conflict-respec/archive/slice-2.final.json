@@ -1,0 +1,9 @@
+{
+  "ticket": "TB-48",
+  "slice": 2,
+  "seal": "sha256:7e6bf6140e08d7908489f21f784f5ff0a2a68a929707e37a2a899c49a8a82313",
+  "head": "e7a500e80d46399fad60cbb3e61ac28d2a8ad2b9",
+  "at": "2026-11-25T07:55:50Z",
+  "result": "PASS",
+  "log": ".scratch/TB-48/gate/2026-11-25T074922Z-slice-2-final"
+}

@@ -1,14 +1,11 @@
 """`rehearsal.py run`: the whole rehearsal in one fresh private profile.
 
 The profile comes from `tempfile.mkdtemp` (or a new `--home`) and is the only HOME any binary sees;
-the active theme is a copy of a repo fixture. Five config scenarios each go capture → edit+save
-(flow script) → reopen → settle → restore → verify → reopen (valid configs only, after verify so a
-default can never hide an absence). Settle uses the digest in the producing save's receipt and
-expects the captured link's target to stay unchanged. A failed save or reopen, or a config or target
-that is no longer what the save left, stops the run: nothing is settled or restored over those
-bytes, and the scenario's store and manifest are kept. A simulator stage runs the daemon with keys
-to a file inside the profile on a rehearsal-built config whose only command writes a profile-local
-mark. The persistent
+the active theme is a copy of a repo fixture. For four config scenarios, verify the edited save
+against its receipt before restoring. For a symlink, verify the refusal, absence of a receipt,
+and unchanged link and target. The simulator then installs a known regular config in the private
+profile and restores the captured link after running the daemon. Keys go to a file, and the only
+command writes a profile-local mark. The persistent
 launcher session is compared by metadata only (never read) before and after. The report doubles as
 the manifest `cleanup` takes: it lists only outputs whose content was checked against what the
 producing step must leave."""
@@ -117,7 +114,10 @@ class Rehearsal:
     def own(self, path: Path, expected) -> bool:
         """Record `path` as the run's own only if its content is what the step must leave."""
         state = lstat_state(path)
-        good = state["type"] == "file" and expected(path.read_bytes())
+        if state["type"] != "file":
+            return False
+        blob = read_nofollow(path)
+        good = sha256(blob) == state["sha256"] and expected(blob)
         if good:
             self.report["artifacts"].append({"path": str(path), **state})
         return good
@@ -163,14 +163,20 @@ class Rehearsal:
         receipt = receipt_dir / "receipt.json"
         rc, shown = self.snap(f"{name}-edit", ["--script", FLOW, "--at", "mark:end"], receipt=receipt)
         rec["save_exit"], rec["edited_label_shown"] = rc, EDITED in shown
+        if captured["original"]["type"] == "symlink":
+            rec["save_refused"] = any(line.startswith("not saved") and "symbolic link" in line
+                                      for line in shown.splitlines())
+            rec["receipt_absent"] = not os.path.lexists(receipt)
+            if rc != 0 or not rec["save_refused"] or not rec["receipt_absent"]:
+                raise Refused(f"scenario {name}: expected a symbolic-link refusal with no receipt; {kept}")
+            self.verify_original(rec, manifest, original_label)
+            return
         if rc != 0 or EDITED not in shown:
             raise Refused(f"scenario {name}: the save failed (exit {rc}); {kept}")
         try:
             rec["expect_config"] = self.save_digest(receipt, config)
         except Refused as e:
             raise Refused(f"scenario {name}: {e}; {kept}") from e
-        target = captured["target_state"]
-        rec["expect_target"] = expectation(target) if target is not None else None
         if profile.config_state(self.home)[0].get("sha256") != rec["expect_config"]:
             raise Conflict(f"scenario {name}: config differs from the save receipt; {kept}")
         rc, reopened = self.snap(f"{name}-reopen-edited", [])
@@ -179,53 +185,47 @@ class Rehearsal:
         if rc != 0 or EDITED not in reopened or theme_error:
             raise Refused(f"scenario {name}: the reopen failed or did not show the save (exit {rc}); {kept}")
         try:
-            profile.settle(manifest, [], [], rec["expect_config"], rec["expect_target"])
+            profile.settle(manifest, [], [], rec["expect_config"])
             rehearsal_restore.restore(manifest)
         except (Conflict, Refused) as e:
             raise Conflict(f"scenario {name}: {e}") from e
+        self.verify_original(rec, manifest, original_label)
+
+    def verify_original(self, rec: dict, manifest: Path, original_label: str | None) -> None:
         rec["verify"] = profile.verify(manifest)
         if original_label and not rec["verify"]:
-            rc, original = self.snap(f"{name}-reopen-original", [])
+            rc, original = self.snap(f"{rec['name']}-reopen-original", [])
             rec["reopen_original_exit"] = rc
             rec["reopen_original"] = rc == 0 and original_label in original
             rec["verify_after_reopen"] = profile.verify(manifest)
         rec["passed"] = all(v in (True, []) for k, v in rec.items()
                             if k in ("verify", "reopen_original", "verify_after_reopen"))
         if not rec["passed"]:
-            raise Refused(f"scenario {name}: verify after restore failed; store and manifest kept")
+            raise Refused(f"scenario {rec['name']}: original did not verify; store and manifest kept")
         data = read_json(manifest)
         self.report["stores"] += [{**st, "verified": data["verified"]} for st in data["stores"]]
         self.own(manifest, lambda b: True)
 
     def simulator(self) -> None:
         store, manifest = self.root / "stores" / "simulator", self.root / "manifests" / "simulator.json"
-        profile.capture(self.home, store, manifest, allow_caller_home=True)
-        config = self.home / CONFIG_REL
-        tmp = config.with_name(".config.toml.rehearsal-sim")
-        tmp.write_bytes(SIM)
-        os.replace(tmp, config)
+        captured = profile.capture(self.home, store, manifest, allow_caller_home=True)
+        rehearsal_restore.install_simulator_config(captured, SIM)
         keys, mark = self.home / "keys.bin", self.home / "rehearsal-mark"
         p = self.start("touchbard", ["--sim", self.frames, "--emit", keys], stdin=TAPS)
         for _ in range(20):
             if mark.exists():
                 break
             time.sleep(0.1)
-        rec = {"exit": p.returncode, "f5_once": self.own(keys, lambda b: decode_keys(b) == F5_KEYS),
+        rec = {"name": "simulator", "exit": p.returncode, "f5_once": self.own(keys, lambda b: decode_keys(b) == F5_KEYS),
                "mark_once": self.own(mark, lambda b: b == b"x"),
                "frames": sum(self.own(f, lambda b: b.startswith(b"\x89PNG")) for f in sorted(self.frames.glob("*.png")))
                if self.frames.is_dir() else 0}
         self.report["simulator"] = rec
-        captured = read_json(manifest)
-        through = captured["original"]["type"] == "symlink"
-        profile.settle(manifest, [], [], sha256(SIM),  # the run wrote SIM itself
-                       expectation(captured["target_state"]) if through else None)
+        profile.settle(manifest, [], [], sha256(SIM), expectation(captured["target_state"]))
         rehearsal_restore.restore(manifest)
-        rec["verify"] = profile.verify(manifest)
-        rec["passed"] = (rec["exit"] == 0 and rec["f5_once"] and rec["mark_once"]
-                         and rec["frames"] > 0 and not rec["verify"])
-        data = read_json(manifest)
-        self.report["stores"] += [{**st, "verified": data["verified"]} for st in data["stores"]]
-        self.own(manifest, lambda b: True)
+        self.verify_original(rec, manifest, "Linked")
+        rec["restored_link"] = True
+        rec["passed"] = rec["exit"] == 0 and rec["f5_once"] and rec["mark_once"] and rec["frames"] > 0
 
     def prepare(self, step: str) -> None:
         """The tool's own precondition for the next scenario (from the state the last one restored)."""
@@ -253,6 +253,7 @@ class Rehearsal:
         hook_dir = self.home / ".local/state/touchbar-customizer"
         hook_dir.mkdir(mode=0o700)
         self.report["dirs"].append(str(hook_dir))
+        self.report["generation_store"] = str(hook_dir / "backups")
         fixture = (ROOT / "fixtures/omarchy-themes" / self.theme / "colors.toml").read_bytes()
         self.report["dirs"] += [str(self.home / p) for p in (".config", CONFIG_REL.parent)]
         self.report["dirs"] += [str(theme.parents[i]) for i in range(len(THEME_REL.parts) - 1)]

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use rune::tok::TextStyle;
 use rune::{AppSpec, Cx, El, Family, Key, KeyEvent, Tx, el, text};
-use tb_config::{ActiveTheme, ConfigFile, ConfigFileError, default_path};
+use tb_config::{ActiveTheme, Backups, ConfigFile, ConfigFileError, default_path};
 use tb_core::config::Config;
 use tb_core::edit::{add_button, add_button_to_group, add_group, remove_button};
 use tb_core::reorder::{Toward, step_button};
@@ -14,6 +14,8 @@ use tb_render::view::color;
 
 use crate::drafts::Fields;
 use crate::preview::{Dragging, PREVIEW_SCALE};
+use crate::recovery::{History, Missing};
+use crate::reset::BeforeReset;
 use crate::saving::Saving;
 
 /// Logical window size of configurator variant B.
@@ -34,6 +36,13 @@ pub struct State {
     pub(crate) drag: Option<Dragging>,
     pub(crate) saving: Saving,
     pub(crate) status: String,
+    /// The editor before the default buttons were loaded, while that draft is pending.
+    pub(crate) reset: Option<BeforeReset>,
+    /// What the editor showed when it last opened the file (the file, or the default it shows
+    /// instead): a restore is offered only while nothing differs from it or from the last save.
+    pub(crate) opened: Config,
+    /// The newest generations of the file, as last listed.
+    pub(crate) history: Result<History, String>,
 }
 
 impl State {
@@ -42,8 +51,20 @@ impl State {
     /// are created by `ConfigFile`; rejected files remain untouched until a save. A selected theme
     /// file that is missing or malformed blocks saving, so the user's layout is never replaced.
     pub fn open(path: Option<PathBuf>, theme: BarTheme) -> Self {
+        Self::open_file(path.map(ConfigFile::new), theme)
+    }
+
+    /// `open`, but every write of the file (the default created on open included) first keeps a
+    /// verified generation in `backups` (ADR-0015). Without a store there is no file to write.
+    pub fn open_protected(path: Option<PathBuf>, backups: Option<Backups>, theme: BarTheme) -> Self {
+        let file = path.zip(backups).map(|(path, backups)| ConfigFile::protected(path, backups));
+        Self::open_file(file, theme)
+    }
+
+    fn open_file(file: Option<ConfigFile>, theme: BarTheme) -> Self {
         let mut s = Self {
             config: Config::default_for(&theme),
+            opened: Config::default_for(&theme),
             active: theme.clone(),
             theme,
             chord: Chord::Default,
@@ -54,31 +75,61 @@ impl State {
             drag: None,
             saving: Saving::default(),
             status: String::new(),
+            reset: None,
+            history: Ok(History::default()),
         };
-        let Some(path) = path else {
-            NO_HOME.clone_into(&mut s.status);
-            return s;
-        };
-        let mut file = ConfigFile::new(path);
+        match file {
+            Some(file) => s.status = s.show_file(file, Missing::WriteDefault),
+            None => NO_HOME.clone_into(&mut s.status),
+        }
+        s
+    }
+
+    /// Makes `file` the editor's file as startup opens it: a fresh editor showing the file
+    /// resolved against the active theme (or the default with the reason), its generations
+    /// listed. `missing` says whether a missing file gets the default written or is only
+    /// reported. Returns the status that says what is shown.
+    pub(crate) fn show_file(&mut self, mut file: ConfigFile, missing: Missing) -> String {
+        self.config = Config::default_for(&self.active);
+        self.theme = self.active.clone();
+        self.chord = Chord::Default;
+        self.selected = None;
+        self.fields = Fields::default();
+        self.drafts.clear();
+        self.drag = None;
+        self.reset = None;
+        self.saving.baseline = None;
+        self.saving.blocked = None;
+        self.saving.conflict = None;
         let shown = file.path().display().to_string();
-        s.status = match file.load_resolved(&s.theme) {
+        let read = match missing {
+            Missing::WriteDefault => file.load_resolved(&self.active),
+            Missing::Report => file.reload_resolved(&self.active),
+        };
+        let status = match read {
             Ok(resolved) => {
-                s.theme = resolved;
-                s.config = file.config().clone();
-                s.saving.baseline = Some(s.config.clone());
+                self.theme = resolved;
+                self.config = file.config().clone();
+                self.saving.baseline = Some(self.config.clone());
                 format!("editing {shown}")
             }
             Err(ConfigFileError::Theme(e)) => {
-                s.saving.blocked = Some(format!("not saved: {e}; fix the selected theme file and reopen"));
+                self.saving.blocked = Some(format!("not saved: {e}; fix the selected theme file and reopen"));
                 format!("{e}: {shown} is kept unchanged; showing the default, saving is blocked")
             }
             Err(ConfigFileError::Invalid(issues)) => {
-                format!("{shown} has {} issue(s): editing the default; saving replaces it", issues.len())
+                let details = issues.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ");
+                format!(
+                    "{shown} has {} issue(s): editing the default; saving replaces it. {details}",
+                    issues.len()
+                )
             }
             Err(e) => format!("{e}: editing the default; saving replaces it"),
         };
-        s.file = Some(file);
-        s
+        self.opened = self.config.clone();
+        self.file = Some(file);
+        self.refresh_history();
+        status
     }
 
     pub(crate) fn layer(&self) -> Option<&Layer> {
@@ -202,15 +253,18 @@ pub fn on_key(s: &mut State, ev: &KeyEvent, tx: &mut Tx) -> bool {
     s.step_selected(toward)
 }
 
-/// Startup: `$HOME` is read once, here. The config file is `default_path(home)`, drawn in the
+/// Startup: `$HOME` and `$XDG_STATE_HOME` are read once, here. The config file is
+/// `default_path(home)`, protected by the generation store `Backups::locate` names, drawn in the
 /// active Omarchy theme of that home (`ActiveTheme::load`); without `HOME`, the bundled Tokyo
 /// Night and no file.
 fn init() -> State {
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    let state_home = std::env::var_os("XDG_STATE_HOME");
     let theme = home
         .as_deref()
         .map_or_else(BarTheme::omarchy_fallback, |home| ActiveTheme::under_home(home).load().theme);
-    State::open(home.as_deref().map(default_path), theme)
+    let backups = Backups::locate(home.as_deref(), state_home.as_deref()).map(Backups::at);
+    State::open_protected(home.as_deref().map(default_path), backups, theme)
 }
 
 pub fn spec() -> AppSpec<State> {
@@ -232,6 +286,8 @@ pub fn spec() -> AppSpec<State> {
                 s.select(Some(ButtonId::new("f3")));
                 s.add(false);
             }),
+            ("reset", State::reset_factory),
+            ("recovery", State::refresh_history),
             ("issues", |s| {
                 let f3 = ButtonId::new("f3");
                 s.select(Some(f3.clone()));

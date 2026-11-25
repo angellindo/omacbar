@@ -50,6 +50,25 @@ def _still(dir_fd: int, name: str, want: dict, what: str, where: str):
     return check
 
 
+def install_simulator_config(captured: dict, content: bytes) -> None:
+    """Put a known regular file at the captured link's path in the disposable profile."""
+    config, target = Path(captured["config"]), Path(captured["target"])
+    where = f"current kept at {config}, original in {captured['store']}"
+    fd = open_parent(config)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        check_link = _still(fd, config.name, captured["original"], "config", where)
+
+        def check() -> None:
+            check_link()
+            if lstat_state(target) != captured["target_state"]:
+                raise Conflict(f"symlink target changed before starting the simulator; {where}")
+
+        write_whole(fd, config.name, content, 0o600, check)
+    finally:
+        os.close(fd)
+
+
 def restore(manifest: Path) -> None:
     data = read_json(manifest)
     if data.get("kind") != "capture" or data.get("left") is None:

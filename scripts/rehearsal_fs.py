@@ -196,8 +196,8 @@ def write_whole(dir_fd: int, name: str, data: bytes, mode: int,
     comparison: it raises if `name` is no longer what may be replaced), rename, fsync the dir.
     On any failure (or interrupt) the temp file is removed and `name` is untouched."""
     tmp = f".{name}.rehearsal-{os.getpid()}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dir_fd)
     try:
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dir_fd)
         try:
             os.write(fd, data)
             os.fsync(fd)
@@ -218,8 +218,8 @@ def write_whole(dir_fd: int, name: str, data: bytes, mode: int,
 def link_whole(dir_fd: int, name: str, link: str, still: Callable[[], None] = lambda: None) -> None:
     """Replace `name` with a symlink to `link` through a temp link, `still()`, and a rename."""
     tmp = f".{name}.rehearsal-link-{os.getpid()}"
+    os.symlink(link, tmp, dir_fd=dir_fd)
     try:
-        os.symlink(link, tmp, dir_fd=dir_fd)
         still()
         os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
         os.fsync(dir_fd)

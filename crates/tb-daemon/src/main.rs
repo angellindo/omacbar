@@ -25,7 +25,9 @@
 //! display on EOF, failure, SIGHUP, SIGINT or SIGTERM (ADR-0014).
 //!
 //! The saved config under `$HOME/.config/touchbar-customizer/config.toml` supplies the layout
-//! and theme source. Atomic saves are followed live; invalid saves retain the accepted config.
+//! and theme source. On first write it records the absence in the generation store under
+//! `XDG_STATE_HOME` or `$HOME/.local/state` (ADR-0015). Atomic saves are followed live; invalid
+//! saves retain the accepted config.
 
 mod config;
 mod devices;
