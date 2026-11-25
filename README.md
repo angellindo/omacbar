@@ -6,8 +6,9 @@ Fn + Ctrl/Alt/Shift/Super select other layers.
 
 **Proof of concept:** the configurator, layout engine, themed renderer and PNG/window simulator
 run today. Physical pixel-mode display/touch support is **pending**. Building or passing doctor
-does not enable the physical bar. See [hardware findings](docs/research/0001-t1-touch-bar-hardware.md)
-and the [human checklist](docs/hil-checklist.md). Other machines can use the simulator with a
+does not enable the physical bar. See [hardware findings](docs/research/0001-t1-touch-bar-hardware.md),
+the [human checklist](docs/hil-checklist.md) and the staged, reversible
+[hardware runbook](docs/hardware-runbook.md). Other machines can use the simulator with a
 usable Linux desktop/GPU; physical compatibility is not promised.
 
 ## Fresh Arch/Omarchy checkout

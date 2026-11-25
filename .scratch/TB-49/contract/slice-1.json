@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Under a theme without red the first-run lock drops its red fill and the background text paired with it, so the configurator preview and the simulated Fn + Ctrl bar draw it in the idle roles; shipped themes keep the unchanged default and saved layouts keep their bytes. Deliberately supersedes the narrow minimal-theme lock expectation in the prior selected-theme contract (QA-08 and QA-12 minimal_default: fill dropped, text kept) after that contract's functional QA defect D1 measured the label at 1.08:1; that contract's seal, evidence and final record stay as the historical proof for its HEAD and no longer match these files.",
+  "files": [
+    "crates/tb-app/tests/configurator_selected_theme.rs",
+    "crates/tb-app/tests/support/configurator.rs",
+    "crates/tb-app/tests/support/ui.rs",
+    "crates/tb-daemon/tests/selected_theme_agreement.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_external_theme_token_opens_for_editing_and_previews_its_resolved_colour",
+      "red": "preserve",
+      "reason": "Prior regression (selected theme opens and previews); unchanged."
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_external_theme_layout_survives_edit_save_and_reopen_with_the_same_token_and_colour",
+      "red": "preserve",
+      "reason": "Prior regression (edit, save, reopen, daemon path agree); unchanged."
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_missing_selected_theme_names_the_file_and_never_replaces_the_layout",
+      "red": "preserve",
+      "reason": "Prior regression (refusal keeps user bytes); unchanged."
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_malformed_selected_theme_names_the_file_and_the_missing_token_and_never_replaces_the_layout",
+      "red": "preserve",
+      "reason": "Prior regression (theme validation, refusal keeps user bytes); unchanged."
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_selected_theme_removed_after_opening_refuses_the_save_keeps_edits_and_saves_after_repair",
+      "red": "preserve",
+      "reason": "Prior regression (save-time re-resolution); unchanged."
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_selected_theme_malformed_after_opening_refuses_the_save_keeps_edits_and_saves_after_repair",
+      "red": "preserve",
+      "reason": "Prior regression (save-time re-resolution); unchanged."
+    },
+    {
+      "id": "QA-07",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_selected_theme_that_loses_a_used_token_after_opening_refuses_the_save_and_names_the_token",
+      "red": "preserve",
+      "reason": "Prior regression (save-time re-resolution names the lost token); unchanged."
+    },
+    {
+      "id": "QA-08",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_first_run_under_a_theme_without_red_writes_a_default_every_process_accepts",
+      "red": "required"
+    },
+    {
+      "id": "QA-09",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_first_run_under_shipped_omarchy_themes_writes_the_unchanged_default",
+      "red": "preserve",
+      "reason": "Tokyo Night and Catppuccin Latte keep the shipped default bytes and the lock keeps its red fill with background text, on disk and in the preview (Acceptance 2)."
+    },
+    {
+      "id": "QA-10",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "an_invalid_config_following_the_active_theme_still_offers_the_default_and_saving_replaces_it",
+      "red": "preserve",
+      "reason": "Prior regression (invalid-config fallback); unchanged."
+    },
+    {
+      "id": "QA-11",
+      "package": "tb-daemon",
+      "target": "test:selected_theme_agreement",
+      "test": "the_doctor_accepts_the_first_run_default_under_a_theme_without_red",
+      "red": "preserve",
+      "reason": "Prior regression (doctor accepts the first-run default without red); the doctor validates the default either way."
+    },
+    {
+      "id": "QA-12",
+      "package": "tb-daemon",
+      "target": "test:selected_theme_agreement",
+      "test": "the_daemon_first_run_under_a_theme_without_red_writes_a_default_it_accepts_on_reload",
+      "red": "required"
+    },
+    {
+      "id": "QA-13",
+      "package": "tb-daemon",
+      "target": "test:selected_theme_agreement",
+      "test": "the_daemon_draws_an_external_theme_token_from_the_same_home_the_doctor_accepts",
+      "red": "preserve",
+      "reason": "Prior regression (daemon and doctor resolve the selected theme, no rewrite); unchanged."
+    },
+    {
+      "id": "QA-14",
+      "package": "tb-app",
+      "target": "test:configurator_selected_theme",
+      "test": "a_saved_layout_keeps_its_own_lock_colours_and_bytes_on_open",
+      "red": "preserve",
+      "reason": "Saved layouts are user-owned: authored lock colours and a file an earlier build generated without red keep their bytes and colours on open, reopen and the daemon path (Acceptance 2, no migration)."
+    },
+    {
+      "id": "QA-15",
+      "package": "tb-daemon",
+      "target": "test:selected_theme_agreement",
+      "test": "the_simulated_fn_ctrl_layer_draws_the_first_run_lock_in_the_idle_roles_under_a_theme_without_red",
+      "red": "required"
+    }
+  ],
+  "checks": []
+}

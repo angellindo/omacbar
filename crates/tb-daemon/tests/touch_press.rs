@@ -1,5 +1,8 @@
 //! A touch at x hits a button through `tb_core::hit`; the daemon presents that button pressed with
-//! damage = that button's rect only. CPU only (`FlatRenderer`). Every bar rect and x comes from
+//! damage = that button's rect only. The pressed button is always the one the touch landed on,
+//! and only while the touch is over it: sliding off it (onto another button or a gap) shows
+//! nothing pressed, sliding back shows it again, and a touch that landed on no button never
+//! presses one. CPU only (`FlatRenderer`). Every bar rect and x comes from
 //! `tb_core::place` on the default preset.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -111,17 +114,49 @@ fn a_touch_in_the_gap_within_slop_of_f4_presses_f4() {
 }
 
 #[test]
-fn moving_the_press_from_f5_to_f6_presents_both_rects() {
+fn sliding_the_press_from_f5_onto_f6_releases_f5_and_presses_nothing() {
     let theme = BarTheme::omarchy_fallback();
     let (f5, f6) = (rect("f5"), rect("f6"));
     let p = run(vec![down(centre_x(f5)), down(centre_x(f6))]);
 
-    assert_eq!(p.len(), 3);
-    let mut damage = p[2].damage.clone();
-    damage.sort_by_key(|r| r.x);
-    assert_eq!(damage, [f5, f6]);
+    assert_eq!(p.len(), 3, "start, F5 pressed, F5 released");
+    assert_eq!(p[2].damage, [f5], "F6 never changes");
     assert_filled(&p[2].frame, f5, bytes(theme.button_fill), "F5");
-    assert_filled(&p[2].frame, f6, bytes(theme.pressed_fill), "F6");
+    assert_filled(&p[2].frame, f6, bytes(theme.button_fill), "F6");
+    assert_eq!(p[2].frame, p[0].frame, "nothing pressed: the start frame");
+}
+
+#[test]
+fn sliding_back_onto_f5_presses_f5_again() {
+    let theme = BarTheme::omarchy_fallback();
+    let (f5, f6) = (rect("f5"), rect("f6"));
+    let p = run(vec![down(centre_x(f5)), down(centre_x(f6)), down(centre_x(f5))]);
+
+    assert_eq!(p.len(), 4, "start, F5 pressed, released while over F6, pressed again");
+    assert_eq!(p[3].damage, [f5]);
+    assert_filled(&p[3].frame, f5, bytes(theme.pressed_fill), "F5");
+    assert_filled(&p[3].frame, f6, bytes(theme.button_fill), "F6");
+}
+
+#[test]
+fn sliding_the_press_from_f5_onto_a_dead_zone_releases_f5() {
+    let theme = BarTheme::omarchy_fallback();
+    let f5 = rect("f5");
+    assert_eq!(hit(&placed(), 0, &RULES), None, "precondition: x 0 is dead");
+    let p = run(vec![down(centre_x(f5)), down(0)]);
+
+    assert_eq!(p.len(), 3, "start, F5 pressed, F5 released");
+    assert_eq!(p[2].damage, [f5]);
+    assert_filled(&p[2].frame, f5, bytes(theme.button_fill), "F5");
+    assert_eq!(p[2].frame, p[0].frame);
+}
+
+#[test]
+fn a_touch_that_lands_in_a_dead_zone_presses_nothing_when_it_slides_onto_f5() {
+    let f5 = rect("f5");
+    assert_eq!(hit(&placed(), 0, &RULES), None, "precondition: x 0 is dead");
+    let p = run(vec![down(0), down(centre_x(f5)), down(f5.x + 1)]);
+    assert_eq!(p.len(), 1, "only the start present");
 }
 
 #[test]

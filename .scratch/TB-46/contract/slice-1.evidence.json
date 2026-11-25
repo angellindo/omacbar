@@ -1,0 +1,136 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-24T03:35:36Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "cce2d715146007d89e1ed1d9eae08ab25f2ca259",
+      "final": false,
+      "results": {
+        "tests": "FAILED",
+        "runbook": "FAILED"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T033535Z-slice-1"
+    },
+    {
+      "at": "2026-11-24T03:35:59Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "6b07407e0ba3963ef76ef825180edb10530651bc",
+      "final": false,
+      "results": {
+        "tests": "FAILED",
+        "runbook": "FAILED"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T033558Z-slice-1"
+    },
+    {
+      "at": "2026-11-24T03:37:12Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "ddbcb9abc593a8f513fe618ae27755423fbbb672",
+      "final": false,
+      "results": {
+        "tests": "FAILED",
+        "runbook": "FAILED"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T033712Z-slice-1"
+    },
+    {
+      "at": "2026-11-24T04:57:06Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "26ca0790925ccf4ba7cda5fc2a982ea076b1562e",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T044847Z-slice-1-final"
+    },
+    {
+      "at": "2026-11-24T06:55:39Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "26ca0790925ccf4ba7cda5fc2a982ea076b1562e",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T064907Z-slice-1-final"
+    },
+    {
+      "at": "2026-11-24T08:53:50Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "26ca0790925ccf4ba7cda5fc2a982ea076b1562e",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T084930Z-slice-1-final"
+    },
+    {
+      "at": "2026-11-24T10:54:18Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "26ca0790925ccf4ba7cda5fc2a982ea076b1562e",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T104958Z-slice-1-final"
+    },
+    {
+      "at": "2026-11-24T16:16:20Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "26ca0790925ccf4ba7cda5fc2a982ea076b1562e",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T161334Z-slice-1-final"
+    },
+    {
+      "at": "2026-11-24T19:01:26Z",
+      "seal": "sha256:d88da825367756a0186eea7d5dd2bf3bdd5231189e477fdc55361edcc14a4428",
+      "head": "26ca0790925ccf4ba7cda5fc2a982ea076b1562e",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T190102Z-slice-1-final"
+    },
+    {
+      "at": "2026-11-24T21:06:33Z",
+      "seal": "sha256:e7bb6f5acc32356222015d9feabc791153d7c6b89e2d17ea4f59dc59de0d1dd3",
+      "head": "26ca0790925ccf4ba7cda5fc2a982ea076b1562e",
+      "final": false,
+      "results": {
+        "tests": "FAILED",
+        "runbook": "FAILED"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T210617Z-slice-1"
+    },
+    {
+      "at": "2026-11-24T22:46:16Z",
+      "seal": "sha256:e7bb6f5acc32356222015d9feabc791153d7c6b89e2d17ea4f59dc59de0d1dd3",
+      "head": "27643ff24dc7515fb42c131219a2b60e53f8e5bd",
+      "final": true,
+      "results": {
+        "tests": "GREEN",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T224556Z-slice-1-final"
+    },
+    {
+      "at": "2026-11-24T23:09:06Z",
+      "seal": "sha256:c56950dc6a0108868f7e98b6b6d8cc593a04fdbc93f90805ceab2d3ef97b396a",
+      "head": "27643ff24dc7515fb42c131219a2b60e53f8e5bd",
+      "final": false,
+      "results": {
+        "tests": "FAILED",
+        "runbook": "GREEN"
+      },
+      "log": ".scratch/TB-46/gate/2026-11-24T230841Z-slice-1"
+    }
+  ]
+}

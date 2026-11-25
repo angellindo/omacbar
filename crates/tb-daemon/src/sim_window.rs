@@ -22,6 +22,8 @@ const BAR: BarSize = BarSize::MACBOOK_PRO;
 pub struct SimWindow {
     screen: Pixels,
     touches: Sender<Touch>,
+    /// The bar x last sent for the press now down; `None` with no press, or once it is cancelled.
+    pressed_x: Option<u16>,
 }
 
 /// Touches from the simulator window; closes (`Ok(None)`) when the window's state is dropped.
@@ -40,7 +42,7 @@ impl SimWindow {
     /// A window showing nothing yet (its screen is 0 x 0) and its touch source.
     pub fn new() -> (SimWindow, WindowTouches) {
         let (tx, rx) = mpsc::channel();
-        (SimWindow { screen: Pixels::new(), touches: tx }, WindowTouches { touches: rx })
+        (SimWindow { screen: Pixels::new(), touches: tx, pressed_x: None }, WindowTouches { touches: rx })
     }
 
     /// What the window shows: Rune pixels, 0 x 0 until the first frame.
@@ -54,14 +56,43 @@ impl SimWindow {
         move |frame: &Frame| screen.set(frame.width, frame.height, frame.rgba.clone())
     }
 
-    /// A press is a touch at the bar x under it, its release (or cancel) lifts it; moves land
-    /// nothing. The daemon decides what the x hits, as for stdin touches.
+    /// A press is a touch at the bar x under it; moves over the screen slide it and the release
+    /// lifts it there. Leaving the screen, Escape or focus loss (a cancelled drag) cancel it, and
+    /// the rest of that press sends nothing. The daemon decides what each x hits, as for stdin.
     fn on_drag(&mut self, drag: &mut Drag, _tx: &mut Tx) {
-        let touch = match drag.phase {
-            Phase::Down => Touch::Down { x: bar_x(drag.x, drag.w) },
-            Phase::Up => Touch::Up,
-            Phase::Move => return,
-        };
+        let inside = (0.0..drag.w).contains(&drag.x) && (0.0..drag.h).contains(&drag.y);
+        let x = bar_x(drag.x, drag.w);
+        match (drag.phase, self.pressed_x) {
+            (Phase::Down, _) => {
+                self.pressed_x = Some(x);
+                self.send(Touch::Down { x });
+            }
+            (Phase::Move | Phase::Up, Some(_)) if !inside || drag.cancelled() => {
+                self.cancel_press();
+            }
+            (Phase::Move | Phase::Up, Some(last)) => {
+                if x != last {
+                    self.send(Touch::Down { x });
+                }
+                if drag.phase == Phase::Up {
+                    self.pressed_x = None;
+                    self.send(Touch::Up);
+                } else {
+                    self.pressed_x = Some(x);
+                }
+            }
+            (Phase::Move | Phase::Up, None) => {}
+        }
+    }
+
+    /// End the touch even when Rune still holds the drag and will deliver its release later.
+    fn cancel_press(&mut self) {
+        if self.pressed_x.take().is_some() {
+            self.send(Touch::Cancel);
+        }
+    }
+
+    fn send(&self, touch: Touch) {
         // A closed source means the daemon stopped: nobody is left to see the touch.
         let _ = self.touches.send(touch);
     }
@@ -89,6 +120,12 @@ pub fn sim_window_view(w: &SimWindow, _cx: &mut Cx<SimWindow>) -> El {
             .w_full()
             .aspect_ratio(aspect)
             .pixels(&w.screen)
+            .hover_tracks_bounds()
+            .on_hover_change(|s: &mut SimWindow, inside, _| {
+                if !inside {
+                    s.cancel_press();
+                }
+            })
             .on_drag(|s: &mut SimWindow, d: &mut Drag, tx: &mut Tx| s.on_drag(d, tx)),
     )
 }

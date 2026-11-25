@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "A kept renderer (what the daemon holds between frames) and a new renderer (render_frame) must draw the same scene to the same RGBA bytes, exact equality, including glyphs first seen after the first frame (Fn, Fn+Ctrl). Both frozen files are the existing tests at bc3e697, byte for byte, no tolerance.",
+  "files": [
+    "crates/tb-daemon/tests/gpu_renderer_frames.rs",
+    "crates/tb-render/tests/renderer_frames.rs"
+  ],
+  "cases": [
+    { "id": "QA-01", "package": "tb-daemon", "target": "test:gpu_renderer_frames",
+      "test": "the_gpu_renderer_draws_successive_scenes_byte_identical_to_render_frame", "red": "required" },
+    { "id": "QA-02", "package": "tb-render", "target": "test:renderer_frames",
+      "test": "one_renderer_draws_successive_scenes_byte_identical_to_render_frame", "red": "required" },
+    { "id": "QA-03", "package": "tb-render", "target": "test:renderer_frames",
+      "test": "a_scene_of_another_size_gets_a_frame_of_its_size", "red": "preserve",
+      "reason": "Observed green 3/3 at bc3e697 in the pre-seal probe (.scratch/TB-53/qa-spec/logs/probe-renderer-frames-{1,2,3}.log): one glyph set drawn on the first frame, resize keeps the device; the fix must not break it" }
+  ],
+  "checks": []
+}

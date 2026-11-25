@@ -1,6 +1,7 @@
 //! A primary press on the simulator window's `sim-screen` is a `Touch::Down` at the matching bar
-//! x (window x scaled to the 2170 px bar, floored), its release is a `Touch::Up`; moves land
-//! nothing. Driven through a headless `rune::Runtime` of `sim_window_view` (no test opens a
+//! x (window x scaled to the 2170 px bar, floored), its release over the bar is a `Touch::Up`; a
+//! move over the bar to a new bar x slides the touch there (another `Touch::Down`). Ways a press
+//! ends without a lift (leaving the bar, Escape, focus loss) are in `cancelled_touch.rs`. Driven through a headless `rune::Runtime` of `sim_window_view` (no test opens a
 //! window); touches are read from `WindowTouches` after the runtime (and with it the window's
 //! state) is dropped, on a helper thread with a timeout, so a read never blocks a test.
 //! Expected bar x values come from arithmetic: at `SIM_WINDOW` one window point is two bar px.
@@ -9,7 +10,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use rune::{Env, Runtime};
+use rune::{Env, Mods, PhysicalInput, PhysicalKeyCode, Runtime};
 use tb_core::{BarSize, BarTheme, Chord, Rect, SpacingRules, place, presets};
 use tb_daemon::fake::{FlatRenderer, Presented, RecordingDisplay};
 use tb_daemon::{
@@ -100,26 +101,55 @@ fn the_vertical_position_of_a_click_does_not_change_its_bar_x() {
 }
 
 #[test]
-fn moving_a_pressed_pointer_lands_no_touch_until_the_release() {
+fn moving_a_pressed_pointer_slides_the_touch_to_each_new_bar_x() {
     let (mut rt, touches) = window(SIM_WINDOW);
     press(&mut rt, 453.25, 15.0);
     move_to(&mut rt, 600.0, 15.0);
     move_to(&mut rt, 900.0, 20.0);
     release(&mut rt, 900.0, 20.0);
     drop(rt);
+    // 600 pt and 900 pt are bar x 1200 and 1800; the release is where the last move left it.
+    assert_eq!(
+        drain(touches),
+        [Touch::Down { x: 906 }, Touch::Down { x: 1200 }, Touch::Down { x: 1800 }, Touch::Up]
+    );
+}
+
+#[test]
+fn moves_within_one_bar_column_send_no_new_touch() {
+    let (mut rt, touches) = window(SIM_WINDOW);
+    press(&mut rt, 453.25, 15.0);
+    // 453.4 pt and 453.3 pt are 906.8 and 906.6 bar px: still column 906; y does not count.
+    move_to(&mut rt, 453.4, 15.0);
+    move_to(&mut rt, 453.3, 22.0);
+    release(&mut rt, 453.3, 22.0);
+    drop(rt);
     assert_eq!(drain(touches), [Touch::Down { x: 906 }, Touch::Up]);
 }
 
 #[test]
-fn a_release_outside_the_window_still_lifts_the_touch() {
+fn a_release_at_another_bar_x_with_no_move_slides_there_before_the_lift() {
     let (mut rt, touches) = window(SIM_WINDOW);
     press(&mut rt, 453.25, 15.0);
-    move_to(&mut rt, 1200.0, 50.0);
-    rt.pointer_leave();
-    rt.frame(1.0 / 60.0);
-    release(&mut rt, 1200.0, 50.0);
+    release(&mut rt, 600.0, 15.0);
     drop(rt);
-    assert_eq!(drain(touches), [Touch::Down { x: 906 }, Touch::Up]);
+    assert_eq!(drain(touches), [Touch::Down { x: 906 }, Touch::Down { x: 1200 }, Touch::Up]);
+}
+
+#[test]
+fn escape_or_focus_loss_with_nothing_pressed_sends_no_touch() {
+    let (mut rt, touches) = window(SIM_WINDOW);
+    rt.physical_input(PhysicalInput::Key {
+        key: PhysicalKeyCode::Escape,
+        mods: Mods::default(),
+        pressed: true,
+        repeat: false,
+    });
+    rt.frame(1.0 / 60.0);
+    rt.window_focus(false);
+    rt.frame(1.0 / 60.0);
+    drop(rt);
+    assert_eq!(drain(touches), Vec::<Touch>::new());
 }
 
 #[test]

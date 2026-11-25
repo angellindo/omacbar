@@ -1,0 +1,4 @@
+
+# TB-51 prototype only (disposable copy): build against the locally patched Rune pin.
+[patch."https://github.com/anomalyco/rune"]
+rune = { path = "../rune-pin/crates/rune" }

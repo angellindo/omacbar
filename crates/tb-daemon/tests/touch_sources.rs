@@ -8,10 +8,14 @@ use std::sync::mpsc;
 use tb_daemon::fake::ScriptedTouches;
 use tb_daemon::{Event, LineTouches, Touch, TouchError, TouchSource, forward_touches};
 
+/// The line form of a touch; any other kind (none in the line protocol) prints as its debug form.
 fn describe(t: &Touch) -> String {
-    match t {
-        Touch::Down { x } => format!("down {x}"),
-        Touch::Up => "up".to_owned(),
+    if let Touch::Down { x } = t {
+        format!("down {x}")
+    } else if *t == Touch::Up {
+        "up".to_owned()
+    } else {
+        format!("{t:?}")
     }
 }
 

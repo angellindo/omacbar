@@ -97,9 +97,16 @@ The display backend for work without the bar: it writes each screen it shows as 
 the simulator window, shows it live.
 _Avoid_: emulator, mock bar
 
+**Rehearsal profile**:
+A throwaway `HOME` that `scripts/rehearsal.py` creates privately, fills from repo fixtures, uses as
+the only home of the configurator and daemon during a rehearsal, restores and then removes.
+_Avoid_: test home, sandbox, the persistent session (that is `try-app.sh`'s)
+
 **Simulator window**:
 A desktop window that shows the simulator's screen live at the bar's proportions. Pressing the
-primary mouse button on it lands a touch at the matching bar x; releasing the button lifts it.
+primary mouse button on it lands a touch at the matching bar x; moving the pointer over the bar
+slides the touch, and releasing the button lifts it there. Leaving the bar, Escape or the window
+losing focus cancels the touch.
 _Avoid_: preview (that is the configurator's), bar window, emulator
 
 **Daemon**:
@@ -118,6 +125,12 @@ _Avoid_: tap (a touch that lands and lifts on one button), click, pointer
 A touch that lands on a button and lifts while still over it. A tap runs the button's action once,
 when the finger lifts.
 _Avoid_: click, press (a touch presses a button while it is down)
+
+**Cancelled touch**:
+A touch that ends without a lift, so it is never a tap: nothing runs and nothing stays pressed. The
+simulator window cancels a press when the pointer leaves the bar (even if it comes back before the
+release), on Escape and when the window loses focus.
+_Avoid_: aborted touch, interrupted tap
 
 **Fn keyboard**:
 The keyboard that reports the Fn key; its held Fn and modifier keys pick the layer. It is found by
@@ -146,6 +159,10 @@ A save refused because the config file changed on disk (another save, an editor,
 the configurator read it. Nothing is written; the user reloads the file or overwrites it, which
 keeps the replaced file as a backup (ADR-0013).
 _Avoid_: merge, collision, race (for the user-facing refusal)
+
+**Save receipt**:
+The config path and SHA-256 of the bytes written by a confirmed explicit save. A rehearsal requests
+it at a fresh path and uses the digest as the expectation for restoring the captured config.
 
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.

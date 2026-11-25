@@ -16,6 +16,9 @@ How it is wired:
   `Touch::Down { x }` at the matching bar x and its release into `Touch::Up`, sent on a channel
   whose receiving end (`WindowTouches`) is a `TouchSource`. `touchbard` forwards it exactly as it
   forwards stdin lines, so both paths keep one contract. Closing the window closes the source.
+  Pointer moves over the screen slide the touch (`Touch::Down` at each new x); leaving the screen,
+  Escape or focus loss send `Touch::Cancel` (a cancelled touch, TB-44), so a press released
+  anywhere but its landing button runs nothing.
 - **Threads.** winit needs the process's main thread and `GpuRenderer` is not `Send` (Rune's text
   system holds `Rc`s), so with `--sim-window` the window runs on the main thread and the daemon
   (renderer, `Daemon`, its loop) is built and run on a spawned thread. Without the flag the daemon
