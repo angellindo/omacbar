@@ -1,15 +1,15 @@
 //! One owner of the accepted config and its theme; watchers only send notifications.
 
+use std::os::fd::AsFd;
 use std::path::Path;
 use std::sync::mpsc::Sender;
-use std::thread;
 
 use tb_config::{ConfigFile, ConfigFileError, default_path};
 use tb_core::config::{Config, ThemeSource};
 use tb_core::{BarTheme, Layout};
 use tb_daemon::Event;
 
-use crate::{Message, log};
+use crate::{Message, Workers, log};
 
 pub(super) struct ConfigState {
     file: Option<ConfigFile>,
@@ -20,7 +20,12 @@ pub(super) struct ConfigState {
 impl ConfigState {
     /// A failed startup load keeps the default config and active theme. Without HOME the
     /// bundled theme/default layout remain available and no guessed config path is touched.
-    pub(super) fn start(home: Option<&Path>, active: BarTheme, events: &Sender<Message>) -> Self {
+    pub(super) fn start(
+        home: Option<&Path>,
+        active: BarTheme,
+        events: &Sender<Message>,
+        workers: &mut Workers,
+    ) -> Self {
         let mut state = Self {
             file: home.map(|home| ConfigFile::new(default_path(home))),
             theme: active.clone(),
@@ -45,17 +50,21 @@ impl ConfigState {
                     Err(error) => report(file, error),
                 }
                 let events = events.clone();
-                thread::spawn(move || {
+                let stop = workers.stop_reader();
+                if let Err(error) = workers.spawn("config watch", true, move || {
                     loop {
-                        if let Err(error) = watch.next_change() {
-                            log::error(format_args!("{error}; config changes are no longer followed"));
-                            return;
-                        }
-                        if events.send(Message::ConfigChanged).is_err() {
-                            return;
+                        match watch.next_change_until(stop.as_deref().map(AsFd::as_fd)) {
+                            Ok(true) if events.send(Message::ConfigChanged).is_ok() => {}
+                            Ok(_) => return,
+                            Err(error) => {
+                                log::error(format_args!("{error}; config changes are no longer followed"));
+                                return;
+                            }
                         }
                     }
-                });
+                }) {
+                    log::error(format_args!("cannot start config watch: {error}"));
+                }
             }
             Err(error) => log::error(format_args!("{error}; config changes are not followed")),
         }

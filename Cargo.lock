@@ -2693,6 +2693,7 @@ dependencies = [
 name = "tb-daemon"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "png 0.17.16",
  "rune",
  "rustix 1.1.6",

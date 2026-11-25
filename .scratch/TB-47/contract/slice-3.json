@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Protects the touchbard entry path for the opt-in device run: --drm/--touch parse only as opt-in flags and never with the simulator window; a path that is not a /dev/dri/cardN or /dev/input/eventN node is refused before sysfs or the input devices are read; the card is identified in sysfs before it is opened and its opened node confirmed before master; a refused start or digitizer shows nothing and releases the card; each tap acts once; cancel, lost sync, read errors, daemon errors, unplug (Gone) and a failed restore are reported and restore exactly once; a stop signal ends a run with a blocked reader promptly with one restore; commands keep the caller's signal mask; the simulator's flags, frames and default signal actions are unchanged.",
+  "files": [
+    "crates/tb-daemon/src/main/tests.rs",
+    "crates/tb-daemon/src/main/hardware_tests.rs",
+    "crates/tb-daemon/tests/touchbard_hardware.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-301",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::drm_and_touch_are_opt_in_flags_given_at_most_once_and_never_with_the_simulator_window",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-302",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::a_path_that_is_not_a_device_node_is_refused_before_sysfs_or_the_input_devices_are_read",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-303",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::the_display_card_is_identified_in_sysfs_before_any_node_is_opened",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-304",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::an_opened_node_that_is_not_the_identified_card_is_closed_before_master_is_taken",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-305",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::a_refused_display_start_shows_nothing_and_opens_no_digitizer",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-306",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::a_digitizer_that_cannot_be_chosen_or_opened_leaves_the_card_unshown_and_released",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-307",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::the_end_of_the_touches_runs_each_tap_once_and_restores_once",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-308",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::a_cancelled_touch_runs_no_action_leaves_nothing_pressed_and_restores_once",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-309",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::a_touch_read_failure_or_a_daemon_error_restores_once_and_is_reported",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-310",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::an_unplugged_bar_runs_no_action_restores_nothing_on_the_gone_card_and_releases_the_rest",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-311",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::a_failed_restore_still_attempts_every_release_step_and_is_reported",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-312",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::touch_without_drm_drives_the_simulator_and_never_opens_a_card",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-313",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::sighup_sigint_and_sigterm_stop_a_hardware_run_with_a_blocked_reader_and_restore_once",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-314",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::hardware::a_command_tapped_in_a_hardware_run_gets_the_callers_signal_mask",
+      "red": "required",
+      "symbol": "run_hardware"
+    },
+    {
+      "id": "QA-315",
+      "package": "tb-daemon",
+      "target": "test:touchbard_hardware",
+      "test": "an_explicit_device_path_outside_dev_is_refused_with_exit_one_and_left_unchanged",
+      "red": "required"
+    },
+    {
+      "id": "QA-320",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::no_arguments_use_the_default_simulator_directory_and_read_no_keyboard",
+      "red": "preserve",
+      "reason": "Existing flag parsing must not change. Same target as the new entry-path cases, so it cannot compile on the base; proven green there with only the `mod hardware` line removed (QA spec receipt)"
+    },
+    {
+      "id": "QA-321",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::sim_takes_exactly_one_directory",
+      "red": "preserve",
+      "reason": "Existing flag parsing must not change. Same target as the new entry-path cases, so it cannot compile on the base; proven green there with only the `mod hardware` line removed (QA spec receipt)"
+    },
+    {
+      "id": "QA-322",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::keys_is_auto_or_a_path_in_either_order_with_sim",
+      "red": "preserve",
+      "reason": "Existing flag parsing must not change. Same target as the new entry-path cases, so it cannot compile on the base; proven green there with only the `mod hardware` line removed (QA spec receipt)"
+    },
+    {
+      "id": "QA-323",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::sim_window_takes_no_value_and_combines_with_sim_and_keys_in_any_order",
+      "red": "preserve",
+      "reason": "Existing flag parsing must not change. Same target as the new entry-path cases, so it cannot compile on the base; proven green there with only the `mod hardware` line removed (QA spec receipt)"
+    },
+    {
+      "id": "QA-324",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::emit_is_uinput_or_a_path_in_any_order_with_the_other_flags",
+      "red": "preserve",
+      "reason": "Existing flag parsing must not change. Same target as the new entry-path cases, so it cannot compile on the base; proven green there with only the `mod hardware` line removed (QA spec receipt)"
+    },
+    {
+      "id": "QA-325",
+      "package": "tb-daemon",
+      "target": "bin:touchbard",
+      "test": "tests::emit_takes_exactly_one_value_once",
+      "red": "preserve",
+      "reason": "Existing flag parsing must not change. Same target as the new entry-path cases, so it cannot compile on the base; proven green there with only the `mod hardware` line removed (QA spec receipt)"
+    },
+    {
+      "id": "QA-326",
+      "package": "tb-daemon",
+      "target": "test:touchbard_hardware",
+      "test": "the_simulator_still_ends_on_sighup_sigint_and_sigterm_by_their_default_action",
+      "red": "preserve",
+      "reason": "Simulator signal handling is unchanged: the stop-signal blocking is for an explicitly selected device run only"
+    },
+    {
+      "id": "QA-327",
+      "package": "tb-daemon",
+      "target": "test:touchbard_cli",
+      "test": "touchbard_presents_start_press_and_release_as_three_frames",
+      "red": "preserve",
+      "reason": "The default simulator run from stdin touches is unchanged"
+    },
+    {
+      "id": "QA-328",
+      "package": "tb-daemon",
+      "target": "test:touchbard_cli",
+      "test": "touchbard_exits_with_an_error_naming_a_bad_stdin_line",
+      "red": "preserve",
+      "reason": "A bad stdin line still ends the simulator with its reason"
+    },
+    {
+      "id": "QA-329",
+      "package": "tb-daemon",
+      "target": "test:touchbard_cli",
+      "test": "touchbard_rejects_an_unknown_argument_with_usage_and_exit_two",
+      "red": "preserve",
+      "reason": "Unknown flags stay usage errors with exit 2"
+    },
+    {
+      "id": "QA-330",
+      "package": "tb-daemon",
+      "target": "test:touchbard_emit",
+      "test": "a_tap_on_f5_writes_f5_pressed_and_released_to_the_emit_file",
+      "red": "preserve",
+      "reason": "Key actions in the simulator run are unchanged when the action wiring is shared with the device run"
+    }
+  ],
+  "checks": []
+}

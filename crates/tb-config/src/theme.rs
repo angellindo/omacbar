@@ -4,6 +4,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io;
+use std::os::fd::BorrowedFd;
 use std::path::{Path, PathBuf};
 
 use tb_core::BarTheme;
@@ -108,7 +109,12 @@ impl ThemeWatch {
     /// edits inside `current/theme/` are not switches. A watched directory going away →
     /// `WatchEnded` naming it.
     pub fn next_change(&mut self) -> Result<(), ThemeFileError> {
-        self.dirs.next_change().map_err(|e| match e {
+        self.next_change_until(None).map(|_| ())
+    }
+
+    /// Waits for a theme switch or for `stop` to become readable or close. False means stop.
+    pub fn next_change_until(&mut self, stop: Option<BorrowedFd<'_>>) -> Result<bool, ThemeFileError> {
+        self.dirs.next_change_until(stop).map_err(|e| match e {
             WatchFailure::Io { dir, source } => ThemeFileError::Io { path: dir, source },
             WatchFailure::Ended { dir } => ThemeFileError::WatchEnded { dir },
         })

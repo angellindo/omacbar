@@ -16,6 +16,12 @@ pub trait Display {
     fn present(&mut self, frame: &Frame, damage: &[Rect]) -> Result<(), DisplayError>;
 }
 
+impl<D: Display> Display for &mut D {
+    fn present(&mut self, frame: &Frame, damage: &[Rect]) -> Result<(), DisplayError> {
+        (**self).present(frame, damage)
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum DisplayError {
     #[error("frame is {width}x{height} px, not the display's size")]

@@ -92,6 +92,10 @@ _Avoid_: dirty rect (except citing macOS), invalidation, update region
 Where frames go: the Touch Bar via DRM, `/dev/dfr0`, or the simulator (PNG/window).
 _Avoid_: output, sink, driver
 
+**Restore**:
+Returning the Touch Bar card to the inactive presentation it had before the daemon's device run
+and releasing the daemon's display ownership.
+
 **Simulator**:
 The display backend for work without the bar: it writes each screen it shows as a PNG and, with
 the simulator window, shows it live.
@@ -134,7 +138,11 @@ _Avoid_: aborted touch, interrupted tap
 
 **Digitizer**:
 The Touch Bar input device in pixel mode. Its multitouch reports become touches after the daemon
-matches its identity and coordinate range to a verified calibration profile.
+matches its identity and coordinate range to a verified digitizer profile.
+
+**Digitizer profile**:
+The verified digitizer identity and name, with the position axis, exact range and direction
+that map a finger along the bar.
 
 **Fn keyboard**:
 The keyboard that reports the Fn key; its held Fn and modifier keys pick the layer. It is found by
@@ -200,6 +208,9 @@ every issue in the config, updated as the user types.
 _Avoid_: inspector, properties, form
 
 ## Hardware
+
+**Touch Bar card**:
+The Linux DRM card identified as the T1 iBridge's display in pixel mode.
 
 **Key mode**:
 iBridge USB configuration 1: the T1 firmware draws fixed layouts and no custom pixels exist.

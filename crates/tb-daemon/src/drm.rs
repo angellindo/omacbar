@@ -25,7 +25,7 @@ use convert::{Layout, clips, has_area};
 use select::{Target, fb_size, select};
 
 pub use card::CardKms;
-pub use target::{check_touch_bar_card, confirm_touch_bar_node, find_touch_bar_card};
+pub use target::{check_touch_bar_card, confirm_touch_bar_node, find_touch_bar_card, validate_card_path};
 
 /// `EBUSY` and `ENODEV` in `asm-generic/errno-base.h`.
 const EBUSY: i32 = 16;

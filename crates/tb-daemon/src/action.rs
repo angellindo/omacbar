@@ -10,6 +10,7 @@ use std::thread;
 use tb_core::{Action, Button, ButtonId, Chord, Key};
 use thiserror::Error;
 
+use crate::stop_signals::CommandSignalMask;
 use crate::uinput::EmitError;
 
 /// Presses keys on a virtual keyboard: the device, a record file, or a fake in tests.
@@ -121,11 +122,19 @@ impl Runner {
 /// starts before the command: when it cannot start, the command is not started either.
 pub struct ShSpawner {
     report: Report,
+    command_mask: Option<CommandSignalMask>,
 }
 
 impl ShSpawner {
     pub fn new(report: Report) -> Self {
-        Self { report }
+        Self { report, command_mask: None }
+    }
+
+    /// Restores the caller’s signal mask in each command child.
+    #[must_use]
+    pub fn with_stop_signals(mut self, stop: Option<&crate::StopSignals>) -> Self {
+        self.command_mask = stop.map(crate::StopSignals::command_mask);
+        self
     }
 }
 
@@ -139,13 +148,12 @@ impl Spawner for ShSpawner {
                 reap(child, line, &report);
             }
         })?;
-        let child = Command::new("sh")
-            .arg("-c")
-            .arg(run)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .process_group(0)
-            .spawn()?;
+        let mut command = Command::new("sh");
+        command.arg("-c").arg(run).stdin(Stdio::null()).stdout(Stdio::null()).process_group(0);
+        if let Some(mask) = &self.command_mask {
+            mask.apply(&mut command);
+        }
+        let child = command.spawn()?;
         // The thread waits on the channel until it gets the child, so the send cannot fail; if it
         // ever did, the child comes back and is reaped here rather than left a zombie.
         if let Err(mpsc::SendError(child)) = handover.send(child) {

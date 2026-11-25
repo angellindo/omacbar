@@ -1,0 +1,39 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-25T05:54:34Z",
+      "seal": "sha256:ebfd3c65a9f210a3a0f4bde59b596b878db0c653179dc2188bf39dc80def7a43",
+      "head": "5ce810b05e42b70e72ad180233df6406d988dd22",
+      "final": false,
+      "results": {
+        "QA-301": "RED_MISSING_SYMBOL",
+        "QA-302": "RED_MISSING_SYMBOL",
+        "QA-303": "RED_MISSING_SYMBOL",
+        "QA-304": "RED_MISSING_SYMBOL",
+        "QA-305": "RED_MISSING_SYMBOL",
+        "QA-306": "RED_MISSING_SYMBOL",
+        "QA-307": "RED_MISSING_SYMBOL",
+        "QA-308": "RED_MISSING_SYMBOL",
+        "QA-309": "RED_MISSING_SYMBOL",
+        "QA-310": "RED_MISSING_SYMBOL",
+        "QA-311": "RED_MISSING_SYMBOL",
+        "QA-312": "RED_MISSING_SYMBOL",
+        "QA-313": "RED_MISSING_SYMBOL",
+        "QA-314": "RED_MISSING_SYMBOL",
+        "QA-320": "COMPILE_ERROR",
+        "QA-321": "COMPILE_ERROR",
+        "QA-322": "COMPILE_ERROR",
+        "QA-323": "COMPILE_ERROR",
+        "QA-324": "COMPILE_ERROR",
+        "QA-325": "COMPILE_ERROR",
+        "QA-315": "RED_BEHAVIOR",
+        "QA-326": "GREEN",
+        "QA-327": "GREEN",
+        "QA-328": "GREEN",
+        "QA-329": "GREEN",
+        "QA-330": "GREEN"
+      },
+      "log": ".scratch/TB-47/gate/2026-11-25T055429Z-slice-3"
+    }
+  ]
+}

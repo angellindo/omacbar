@@ -1,0 +1,489 @@
+{
+  "version": 1,
+  "mode": "text",
+  "reason": "Protects what the docs tell a human about the opt-in touchbard device run: ADR-0014 records legacy KMS over atomic, sysfs card identity before open, DRM master ownership, an inactive-only prior state, that a KMS success is only a submitted frame because the driver discards flush/clear results, and the options not taken; docs/hil-checklist.md gains a device-run section with the TB-28/TB-9 seat and ownership preconditions, --drm/--touch as opt-in with VERIFIED_DIGITIZERS empty until TB-45, TB-10 display vs TB-45 digitizer evidence, source-only facts vs unobserved ones, refusal of an active foreign state, an attempted and reported restore, no promise after SIGKILL/unplug/power loss, the hardware-runbook return and human evidence afterwards; GLOSSARY.md defines Touch Bar card, Digitizer profile and Restore. Checks match meaning per paragraph, item or row, not exact wording. Checks named preserve-* guard text already written (ADR-0014 digitizer/signal/unsafe decisions, Digitizer and Cancelled touch) and the privacy rules; the rest were red at base 01dbc59.",
+  "files": [
+    "scripts/tests/test_opt_in_device_docs.py"
+  ],
+  "cases": [],
+  "checks": [
+    {
+      "id": "visual",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "scripts/tests/test_opt_in_device_docs.py",
+        "--dump"
+      ]
+    },
+    {
+      "id": "checklist-section",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_names_the_device_run_and_links_its_decision"
+      ]
+    },
+    {
+      "id": "checklist-preconditions",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_states_the_seat_and_ownership_preconditions_from_tb28_and_tb9"
+      ]
+    },
+    {
+      "id": "checklist-opt-in-flags",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_describes_drm_and_touch_as_separate_opt_in_selections"
+      ]
+    },
+    {
+      "id": "checklist-tb10-vs-tb45",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_splits_display_evidence_for_tb10_from_digitizer_evidence_for_tb45"
+      ]
+    },
+    {
+      "id": "checklist-source-vs-observed",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_separates_facts_read_in_the_driver_source_from_what_nobody_has_observed"
+      ]
+    },
+    {
+      "id": "checklist-submitted-only",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_says_a_successful_present_is_only_a_submitted_frame"
+      ]
+    },
+    {
+      "id": "checklist-foreign-state-refused",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_says_the_daemon_refuses_a_card_someone_else_already_shows"
+      ]
+    },
+    {
+      "id": "checklist-restore-reported",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_says_restore_is_attempted_and_its_failure_reported"
+      ]
+    },
+    {
+      "id": "checklist-no-promise-after-kill",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_promises_nothing_after_sigkill_unplug_or_power_loss"
+      ]
+    },
+    {
+      "id": "checklist-runbook-return",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_links_the_return_to_key_mode_of_the_hardware_runbook"
+      ]
+    },
+    {
+      "id": "checklist-human-evidence",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_checklist_asks_the_human_for_evidence_after_the_run"
+      ]
+    },
+    {
+      "id": "adr-legacy-kms",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_chooses_legacy_kms_over_atomic"
+      ]
+    },
+    {
+      "id": "adr-sysfs-identity-and-master",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_identifies_the_card_in_sysfs_before_opening_and_takes_master"
+      ]
+    },
+    {
+      "id": "adr-inactive-prior-state",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_accepts_only_an_inactive_prior_state_and_restores_it"
+      ]
+    },
+    {
+      "id": "adr-submitted-only",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_records_that_kms_success_only_means_submitted"
+      ]
+    },
+    {
+      "id": "adr-considered-options",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_lists_the_options_it_did_not_take"
+      ]
+    },
+    {
+      "id": "glossary-touch-bar-card",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_glossary_defines_the_touch_bar_card"
+      ]
+    },
+    {
+      "id": "glossary-digitizer-profile",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_glossary_defines_the_digitizer_profile"
+      ]
+    },
+    {
+      "id": "glossary-restore",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_glossary_defines_restore_of_the_prior_presentation"
+      ]
+    },
+    {
+      "id": "preserve-adr-unsafe-boundaries",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_keeps_unsafe_confined_to_the_three_device_boundaries"
+      ]
+    },
+    {
+      "id": "preserve-adr-sigwait",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_keeps_the_sigwait_thread_and_no_signal_handler"
+      ]
+    },
+    {
+      "id": "preserve-adr-digitizer-grab-tb45",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_keeps_the_digitizer_grab_after_a_verified_profile_and_tb45_owning_it"
+      ]
+    },
+    {
+      "id": "preserve-adr-success-path-hil",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_adr_keeps_the_success_path_as_hardware_only"
+      ]
+    },
+    {
+      "id": "preserve-glossary-digitizer-cancel",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_glossary_keeps_digitizer_and_cancelled_touch"
+      ]
+    },
+    {
+      "id": "preserve-no-private-data",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_no_host_paths_serials_or_fixed_device_nodes"
+      ]
+    },
+    {
+      "id": "preserve-no-unverified-ids-ranges",
+      "command": [
+        "python3",
+        "-I",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-v",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_opt_in_device_docs.py",
+        "-k",
+        "test_no_uncited_usb_ids_or_unverified_digitizer_ranges"
+      ]
+    }
+  ]
+}
