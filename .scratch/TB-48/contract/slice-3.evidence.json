@@ -68,6 +68,190 @@
         "recover-graph": "GREEN"
       },
       "log": ".scratch/TB-48/gate/2026-11-24T203119Z-slice-3"
+    },
+    {
+      "at": "2026-11-24T20:42:12Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "fd7bc50a10ceddd7df8fe9de7334feb7921dfba6",
+      "final": true,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "GREEN",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "GREEN",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-24T204209Z-slice-3-final"
+    },
+    {
+      "at": "2026-11-24T23:21:56Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "095d464d6d1186b4057857f64dda78718069c951",
+      "final": true,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "GREEN",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "GREEN",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-24T232152Z-slice-3-final"
+    },
+    {
+      "at": "2026-11-24T23:30:12Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "095d464d6d1186b4057857f64dda78718069c951",
+      "final": true,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "GREEN",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "GREEN",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-24T233008Z-slice-3-final"
+    },
+    {
+      "at": "2026-11-25T00:07:25Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "b1ce152a99570786fc43456eeba3196bfd12e6df",
+      "final": true,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "GREEN",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "GREEN",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-25T000721Z-slice-3-final"
+    },
+    {
+      "at": "2026-11-25T01:02:11Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "b0de64b16c7ae075d876db1039cf83ae641be384",
+      "final": false,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "GREEN",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "GREEN",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-25T010154Z-slice-3"
+    },
+    {
+      "at": "2026-11-25T02:15:51Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "995c21ea6dc75b2fbb58f5ab023708fda41d252f",
+      "final": true,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "GREEN",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "GREEN",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-25T021547Z-slice-3-final"
+    },
+    {
+      "at": "2026-11-25T03:20:00Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "995c21ea6dc75b2fbb58f5ab023708fda41d252f",
+      "final": true,
+      "results": {
+        "QA-01": "COMPILE_ERROR",
+        "QA-02": "COMPILE_ERROR",
+        "QA-03": "COMPILE_ERROR",
+        "QA-04": "COMPILE_ERROR",
+        "QA-05": "COMPILE_ERROR",
+        "QA-06": "COMPILE_ERROR",
+        "QA-07": "COMPILE_ERROR",
+        "QA-08": "COMPILE_ERROR",
+        "QA-09": "COMPILE_ERROR",
+        "QA-10": "COMPILE_ERROR",
+        "QA-11": "COMPILE_ERROR",
+        "QA-12": "COMPILE_ERROR",
+        "QA-13": "COMPILE_ERROR",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-25T031958Z-slice-3-final"
+    },
+    {
+      "at": "2026-11-25T04:03:23Z",
+      "seal": "sha256:70e1d531fdd442622e72b85c376369638da24de10af98d83d57f9ba59c58beb9",
+      "head": "995c21ea6dc75b2fbb58f5ab023708fda41d252f",
+      "final": true,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "GREEN",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "GREEN",
+        "QA-13": "GREEN",
+        "recover-graph": "GREEN"
+      },
+      "log": ".scratch/TB-48/gate/2026-11-25T040320Z-slice-3-final"
     }
   ]
 }

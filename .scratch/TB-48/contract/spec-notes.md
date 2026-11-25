@@ -408,3 +408,38 @@ frame of the saved file). never_red empty. Clippy `-D warnings` clean on the new
 provenance proven after `cargo clean -p tb-app -p tb-config -p tb-daemon` (test executable, and
 both round-trip binaries, built in this run from this checkout). Peak 71 °C, no thermal pause
 (the run waited ~4 min for the shared lock held by another ticket's job).
+
+# Integration amendment of slice 1 (TB-46 + TB-48, candidate b0de64b)
+
+Seal `sha256:0f6f66b3…`, its manifest, evidence, these notes, and the final records of slices 1–4
+(PASS on b1ce152) are archived byte for byte in `.scratch/TB-48/qa/integration-respec/archive/`
+(`SHA256SUMS`). Those finals stay valid for b1ce152. New slice 1 seal: `sha256:8e999ff4…`.
+Slices 2–4 are not re-sealed: manifests, frozen files and seals unchanged.
+
+Superseded, and only this: `scripts/tests/test_state_isolation_rehearsal.py` (check `launcher-state`).
+Its fake configurator wrote a default and returned an empty tree. With TB-46's receipts, the
+integrated `run` stops at the first save without a label or a receipt, before `touchbard` starts,
+so the check could not see the daemon at all. The double is now a faithful configurator and daemon:
+a generation before every config write, `TB_SAVE_RECEIPT` for each confirmed save, an explicit
+symlink refusal with no receipt, F5 / frame / mark from the daemon. The run must pass by its
+ordinary route; the daemon must run exactly once, in the simulator stage, on the run's regular
+config, with its keys file and mark in the profile; every binary gets the profile as HOME and no
+`XDG_STATE_HOME` (the caller's decoy is never handed down); the generations it kept are on disk
+(0700 / 0600) in `<profile home>/.local/state/touchbar-customizer/backups` and nowhere else; the
+decoy and the caller's HOME stay unchanged. The 43 cargo cases, `spawn-isolation`, the launcher
+tests and every other frozen file are byte-identical; the manifest changed only in `reason`.
+
+A new seal needs a new red run: it ran under the gate on f3d8ec2 (the slice 1 contract commit
+before the implementation, the same base as the 0f6f66b3 red run), with the sealed frozen files
+overlaid, in an isolated checkout with its own target. Results and green: `.scratch/TB-48/integration/qa-amend/RECEIPT.md`.
+
+## Environment changes in theme-fixture tests (scope only)
+
+TB-48 added `.env_remove("XDG_STATE_HOME")` (with a one-line comment) to the spawn sites in
+`crates/tb-app/tests/{active_theme_snap.rs,support/bin.rs}` and
+`crates/tb-daemon/tests/{selected_theme_agreement.rs,touchbard_theme.rs,touchbard_theme_live.rs}`.
+Scope: the binary started by the test keeps its generations under the test's temp HOME instead of
+the caller's state directory. It changes no input, theme fixture or expectation. In the
+integration, `git diff 3285da1 b0de64b` over those files plus `configurator_selected_theme.rs`
+removes 0 lines and adds 7 `env_remove` lines. Against b1ce152, the only removals (including two
+`assert` lines) are exactly TB-46's own changes already on 3285da1. No assertion was dropped.
