@@ -42,7 +42,7 @@ use std::sync::mpsc::{self, Sender};
 use std::thread;
 
 use std::sync::Arc;
-use tb_config::ActiveTheme;
+use tb_config::{ActiveTheme, Backups};
 use tb_core::{BarSize, BarTheme};
 
 use config::ConfigState;
@@ -162,13 +162,17 @@ impl From<Event> for Message {
 /// Startup config and theme under HOME, followed while running; both modes share the coordinator.
 fn run(args: Args) -> Result<(), String> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = home.as_deref();
+    let state_home = std::env::var_os("XDG_STATE_HOME");
+    let backups = Backups::locate(home, state_home.as_deref()).map(Backups::at);
     if args.drm.is_some() || args.touch.is_some() {
         let stop = block_stop_signals().map_err(|e| format!("cannot block stop signals: {e}"))?;
         let workers = Workers::new().map_err(|e| format!("cannot create stop pipe: {e}"))?;
         let devices = Devices::real(workers.stop_reader());
         return run_hardware_with(
             args,
-            home.as_deref(),
+            home,
+            backups,
             || GpuRenderer::new().map_err(|e| e.to_string()),
             devices,
             Some(stop),
@@ -176,14 +180,14 @@ fn run(args: Args) -> Result<(), String> {
         );
     }
     if args.window {
-        return run_with_window(args, home.as_deref());
+        return run_with_window(args, home, backups);
     }
     let renderer = GpuRenderer::new().map_err(|e| e.to_string())?;
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir).map_err(|e| e.to_string())?;
     let (tx, rx) = mpsc::channel();
     let mut workers = Workers::default();
-    let theme = follow_keys_and_theme(args.keys, home.as_deref(), &tx, &mut workers);
-    let config = ConfigState::start(home.as_deref(), theme, &tx, &mut workers);
+    let theme = follow_keys_and_theme(args.keys, home, &tx, &mut workers);
+    let config = ConfigState::start(home, backups, theme, &tx, &mut workers);
     let actions = actions(args.emit, None);
     let touches =
         thread::spawn(move || forward_until_ended(&mut LineTouches::new(std::io::stdin().lock()), &tx));
@@ -193,7 +197,7 @@ fn run(args: Args) -> Result<(), String> {
 
 /// `run` with the simulator window as the touch source. winit needs the main thread for the
 /// window and `GpuRenderer` is not `Send`, so the daemon is built and run on another thread.
-fn run_with_window(args: Args, home: Option<&Path>) -> Result<(), String> {
+fn run_with_window(args: Args, home: Option<&Path>, backups: Option<Backups>) -> Result<(), String> {
     let (window, mut touches) = SimWindow::new();
     let display = SimDisplay::new(BarSize::MACBOOK_PRO, args.sim_dir)
         .map_err(|e| e.to_string())?
@@ -201,7 +205,7 @@ fn run_with_window(args: Args, home: Option<&Path>) -> Result<(), String> {
     let (tx, rx) = mpsc::channel();
     let mut workers = Workers::default();
     let theme = follow_keys_and_theme(args.keys, home, &tx, &mut workers);
-    let config = ConfigState::start(home, theme, &tx, &mut workers);
+    let config = ConfigState::start(home, backups, theme, &tx, &mut workers);
     let actions = actions(args.emit, None);
     let app = sim_window_app(window);
     let handle = app.handle();

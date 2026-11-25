@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc;
 
+use tb_config::Backups;
 use tb_core::BarSize;
 use tb_daemon::{
     CardKms, DrmDisplay, EvdevTouches, Kms, LineTouches, NodeId, SceneRenderer, SimDisplay, StopRead,
@@ -91,9 +92,12 @@ where
     K: Kms,
     T: TouchSource + Send + 'static,
 {
+    // The sealed fake supplies a private HOME, including in its owned subprocesses.
+    let backups = Backups::locate(home, None).map(Backups::at);
     run_hardware_with(
         args,
         home,
+        backups,
         || Ok(renderer),
         devices,
         stop,
@@ -114,6 +118,7 @@ pub(super) struct HardwareInput<S> {
 pub(super) fn run_hardware_with<R, K, T>(
     args: Args,
     home: Option<&Path>,
+    backups: Option<Backups>,
     make_renderer: impl FnOnce() -> Result<R, String>,
     devices: Devices<K, T>,
     stop: Option<StopSignals>,
@@ -155,7 +160,7 @@ where
             start_touches(lines, &tx, &mut workers, true)?;
         }
         let theme = follow_keys_and_theme(args.keys, home, &tx, &mut workers);
-        let config = ConfigState::start(home, theme, &tx, &mut workers);
+        let config = ConfigState::start(home, backups, theme, &tx, &mut workers);
         drop(tx);
         if let Some(display) = &mut drm {
             run_daemon(renderer, display, config, action_runner, rx)
