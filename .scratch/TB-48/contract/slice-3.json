@@ -1,31 +1,147 @@
 {
   "version": 1,
   "mode": "behavior",
-  "reason": "Slice 3 of TB-48: loading the default buttons (`reset-factory`) in the configurator is a draft: only the editor and its preview change; the file bytes, its mode and the generation store stay as they were, and `reset-notice` says the theme source is kept (Omarchy or the selected theme file's path). `reset-cancel` brings back exactly the shown layer, the selection, the selected button's field text and other buttons' pending edits. Save and Ctrl+S after a reset keep one verified `factory-reset` generation of the exact replaced bytes and permission bits (kept on the new file) and the status names its path; a save refused as a conflict writes and keeps nothing, keeps the draft and still offers cancel. Scene `reset` shows the draft. Regression of the plan's section 4: after a restore, `touchbar-recover` says whether the restored file validates with its theme source or why the daemon would not accept it (parser diagnostic for invalid TOML, theme file error for a missing selected theme), while the exact restore still succeeds and nothing else is written; restoring an absence with --remove-file never recreates the file.",
+  "reason": "Slice 3 of TB-48: loading the default buttons (`reset-factory`) in the configurator is a draft: only the editor and its preview change; the file bytes, its mode and the generation store stay as they were, and `reset-notice` says the theme source is kept (Omarchy or the selected theme file's path). `reset-cancel` brings back exactly the shown layer, the selection, the selected button's field text and other buttons' pending edits. Save and Ctrl+S after a reset keep one verified `factory-reset` generation of the exact replaced bytes and permission bits (kept on the new file) and the status names its path; a save refused as a conflict before its generation is published writes and keeps nothing, keeps the draft and still offers cancel. Scene `reset` shows the draft. Regression of the plan's section 4: after a restore, `touchbar-recover` says whether the restored file validates with its theme source or why the daemon would not accept it (parser diagnostic for invalid TOML, theme file error for a missing selected theme), while the exact restore still succeeds and nothing else is written; restoring an absence with --remove-file never recreates the file. Late-conflict amendment (ADR-0015): a factory reset's save refused after its `factory-reset` generation was published names the retained id, never says a file was kept before a saved reset, keeps the reset draft, both conflict resolutions and `reset-cancel`, which brings back the draft from before the reset and writes nothing; the library save_resolved_for(FactoryReset) reports ChangedAfterKeep with the id.",
   "files": [
     "crates/tb-app/tests/configurator_factory_reset.rs",
     "crates/tb-config/tests/recover_terminal_validation.rs",
     "crates/tb-config/tests/support/generations.rs",
     "crates/tb-config/tests/support/recovery.rs",
     "crates/tb-app/tests/support/configurator.rs",
-    "crates/tb-app/tests/support/ui.rs"
+    "crates/tb-app/tests/support/ui.rs",
+    "crates/tb-config/tests/config_late_conflict.rs",
+    "crates/tb-app/tests/configurator_late_conflict.rs",
+    "crates/tb-config/tests/support/late_conflict.rs",
+    "crates/tb-config/tests/support/syscall_pause.py"
   ],
   "cases": [
-    { "id": "QA-01", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "loading_default_buttons_changes_only_the_draft_and_the_preview", "red": "required" },
-    { "id": "QA-02", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "the_reset_notice_says_the_omarchy_theme_source_is_kept", "red": "required" },
-    { "id": "QA-03", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "the_reset_notice_names_the_selected_theme_file_it_keeps", "red": "required" },
-    { "id": "QA-04", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "cancel_brings_back_the_layer_selection_and_pending_edits_exactly", "red": "required" },
-    { "id": "QA-05", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "save_after_a_reset_keeps_a_verified_factory_reset_generation_and_names_its_path", "red": "required" },
-    { "id": "QA-06", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "ctrl_s_after_a_reset_keeps_a_verified_factory_reset_generation_and_names_its_path", "red": "required" },
-    { "id": "QA-07", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "a_conflict_on_reset_save_keeps_the_newer_file_the_draft_and_cancel", "red": "required" },
-    { "id": "QA-08", "package": "tb-app", "target": "test:configurator_factory_reset", "test": "the_reset_scene_shows_the_factory_draft", "red": "required" },
-    { "id": "QA-09", "package": "tb-config", "target": "test:recover_terminal_validation", "test": "a_restored_valid_config_is_reported_valid_with_its_omarchy_theme_source", "red": "required" },
-    { "id": "QA-10", "package": "tb-config", "target": "test:recover_terminal_validation", "test": "a_restored_valid_config_names_the_theme_file_it_validates_with", "red": "required" },
-    { "id": "QA-11", "package": "tb-config", "target": "test:recover_terminal_validation", "test": "a_restored_file_that_is_not_toml_is_restored_and_the_parser_diagnostic_is_shown", "red": "required" },
-    { "id": "QA-12", "package": "tb-config", "target": "test:recover_terminal_validation", "test": "a_restored_config_whose_theme_file_is_missing_is_restored_and_says_why_the_daemon_refuses_it", "red": "required" },
-    { "id": "QA-13", "package": "tb-config", "target": "test:recover_terminal_validation", "test": "restoring_an_absence_with_remove_file_never_recreates_the_file", "red": "preserve", "reason": "Slice 2 already removes the file for an absence; the new check after a restore must never write a default or anything else in its place" }
+    {
+      "id": "QA-01",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "loading_default_buttons_changes_only_the_draft_and_the_preview",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "the_reset_notice_says_the_omarchy_theme_source_is_kept",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "the_reset_notice_names_the_selected_theme_file_it_keeps",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "cancel_brings_back_the_layer_selection_and_pending_edits_exactly",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "save_after_a_reset_keeps_a_verified_factory_reset_generation_and_names_its_path",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "ctrl_s_after_a_reset_keeps_a_verified_factory_reset_generation_and_names_its_path",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-07",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "a_conflict_on_reset_save_keeps_the_newer_file_the_draft_and_cancel",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-08",
+      "package": "tb-app",
+      "target": "test:configurator_factory_reset",
+      "test": "the_reset_scene_shows_the_factory_draft",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-09",
+      "package": "tb-config",
+      "target": "test:recover_terminal_validation",
+      "test": "a_restored_valid_config_is_reported_valid_with_its_omarchy_theme_source",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-10",
+      "package": "tb-config",
+      "target": "test:recover_terminal_validation",
+      "test": "a_restored_valid_config_names_the_theme_file_it_validates_with",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-11",
+      "package": "tb-config",
+      "target": "test:recover_terminal_validation",
+      "test": "a_restored_file_that_is_not_toml_is_restored_and_the_parser_diagnostic_is_shown",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-12",
+      "package": "tb-config",
+      "target": "test:recover_terminal_validation",
+      "test": "a_restored_config_whose_theme_file_is_missing_is_restored_and_says_why_the_daemon_refuses_it",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:70e1d531... on 5889053 (runs kept in slice-3.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-13",
+      "package": "tb-config",
+      "target": "test:recover_terminal_validation",
+      "test": "restoring_an_absence_with_remove_file_never_recreates_the_file",
+      "red": "preserve",
+      "reason": "Slice 2 already removes the file for an absence; the new check after a restore must never write a default or anything else in its place"
+    },
+    {
+      "id": "QA-14",
+      "package": "tb-config",
+      "target": "test:config_late_conflict",
+      "test": "a_change_after_a_factory_reset_save_published_its_generation_is_refused_and_the_generation_retained",
+      "red": "required"
+    },
+    {
+      "id": "QA-15",
+      "package": "tb-app",
+      "target": "test:configurator_late_conflict",
+      "test": "a_change_after_a_factory_reset_save_published_its_generation_keeps_the_reset_cancellable",
+      "red": "required"
+    }
   ],
   "checks": [
-    { "id": "recover-graph", "command": ["python3", "-B", ".scratch/TB-48/contract/recover_graph_check.py"] }
+    {
+      "id": "recover-graph",
+      "command": [
+        "python3",
+        "-B",
+        ".scratch/TB-48/contract/recover_graph_check.py"
+      ]
+    }
   ]
 }

@@ -473,3 +473,108 @@ Correction of this amendment, same day: under the first new seal (`sha256:9d570b
 ecd1a04) every `--final` failed in `check.sh` because clippy `doc_markdown` flagged `SUN_LEN` in
 the new helper's doc comment. Backticks added, nothing else changed; re-sealed and re-run red on
 f3d8ec2. The failed finals stay in the evidence.
+
+# Late-conflict amendment of slices 1–4 (integrated branch, candidate e7a500e)
+
+## Why
+
+ADR-0015 says that a change the last check finds **after** the generation was kept returns
+`ChangedAfterKeep` (file changed) or `RefusedAfterKeep` (path made unsafe or failed) with the retained
+id, and that neither the configurator nor `touchbar-recover` treats it as a success. The sealed
+manifests said otherwise: slice 1 "reads and refused saves keep nothing", slice 2 "a file changed
+while the restore waits is a conflict: … nothing written or kept", slice 3 "a save refused as a
+conflict writes and keeps nothing", slice 4 "over a file changed … it writes and keeps nothing".
+QA's verdict on e7a500e: the late behaviour meets the ticket's own Acceptance (no version is lost.
+The other editor's file is never replaced, and the generation that was already published, verified
+and durable stays as it is). Deleting that generation would contradict "never deleted", so the
+contracts are amended. They are not bent to match what the product does. The five PASS records at
+e7a500e were not taken as proof: none of them drove a change after publication. The new cases do.
+
+Superseded, and only this: the four sentences quoted above now say "before the generation is
+published", and each reason gains one amendment sentence. Every earlier case, frozen file and check
+is byte-identical (all 26 pre-existing frozen files are also byte-identical at 25230e9).
+
+## How a late conflict is made without a product hook
+
+`crates/tb-config/tests/support/syscall_pause.py` starts the program under a seccomp
+user-notification filter. The filter reports `rename*`, `mkdir*`, `fsync` and `fdatasync` calls and
+lets every one through (`SECCOMP_USER_NOTIF_FLAG_CONTINUE`). It needs no privilege beyond
+`no_new_privs`, no Rust `unsafe` and no product change. Once the test has armed it (`armed` file), it
+holds exactly one call:
+
+- `stage`: `mkdirat(<store>/.tmp-*)`. The generation is not published yet, and the write's last
+  check before publishing runs after this call.
+- `publish`: the first `fsync(<store>)` after a `.tmp-*` directory was renamed into `<store>` under a
+  numeric id. The generation is published and the config is not replaced yet.
+
+While the call is held, the parent test acts as the other editor and makes one change: a
+temp+rename edit, a chmod, or a symlink put in place of the file. It then resumes the program.
+`support/late_conflict.rs` is the Rust driver. Every case asserts the step it was held at, and after
+a publication it asserts the published id, so a program that never reaches the step fails ("never
+reached") and can never pass vacuously. The library and the configurator run in a child process:
+the test binary itself, with one `#[ignore]`d helper that is inert without its env (the precedent
+is QA-42/43 of slice 1). `touchbar-recover` is the real binary. Requirements: x86_64 Linux ≥ 5.5 and
+`python3`. Inside the usual `bwrap` wrapper it works unchanged.
+
+## New cases (all `required`)
+
+| Slice | Ids | Layer | What each pins |
+|---|---|---|---|
+| 1 | QA-44..47 | library `save`, `save_over` | stage chmod → `Changed`, no generation, no temp; publish → `ChangedAfterKeep` / `RefusedAfterKeep` (symlink) naming the id; the editor's config in memory is unchanged; the other editor's file or link stays; the retained generation is listed and verified and holds the exact replaced bytes with the right reason; a retry from disk saves and keeps the other editor's file |
+| 1 | QA-48..51 | configurator Save, Overwrite | stage: "not saved … changed on disk", no "retained", draft kept, both resolutions; publish: the status names `generation <id> was retained`, `recover-<id>` is listed, the draft and `conflict-reload/overwrite` are kept, and Overwrite then saves (`saved config`, clean); symlink: "not saved", "symbolic link", the id, draft kept, link and target untouched |
+| 2 | QA-28..29 | library `recover`, `recover_removing` | `ChangedAfterKeep` with the id; the file is neither replaced nor removed; a retry after `look` restores or removes and keeps the other editor's file |
+| 2 | QA-30..33 | `touchbar-recover restore [--remove-file]` | stage: exit 3, no "retained", no generation, no temp, and the same command then restores; publish: exit 3, stderr names the config, ``generation <id> was retained`` and the exact retry `` `touchbar-recover restore <id>[ --remove-file]` `` ("remove" for an absence), stdout claims no restore, `verify <id>` → 0, and the printed command restores (or removes, directory kept) and keeps the other editor's file; symlink: exit 1, the id, "symbolic link", link and target untouched |
+| 3 | QA-14 | library `save_resolved_for(FactoryReset)` | `ChangedAfterKeep` with the id, generation reason `factory-reset` |
+| 3 | QA-15 | configurator factory reset + Save | status names the id and never says "before the factory reset is kept"; the reset draft, both resolutions and `reset-cancel` remain; Cancel brings back the draft from before the reset and writes nothing; one generation only |
+| 4 | QA-15..16 | configurator restore (`recover-<id>`) | "not restored", "changed on disk", the id, the newer file shown clean, and tapping again gives "restored"; symlink: "not restored", the id, link kept |
+
+Pre-publication conflicts are pinned at every layer (QA-44, QA-48, QA-32 at stage; the earlier
+QA-10 of slice 2 and the slice 3/4 conflict cases at the unlocked look) and keep nothing.
+
+**Aborted vs saved reset.** The amendment pins the message, not the recovery row label. At the time of
+the conflict the status says "not saved", names the retained id and never uses the saved-reset
+wording. Later, the row of that generation may still read "before factory reset". That is true (it
+holds the file from before a reset attempt), and restoring it brings the personal file back. A
+different label is allowed but not required. No product change is needed.
+
+## Earlier cases under the new seals
+
+Every case that was `required` is now `preserve` and cites the seal and base it was seen red on
+(slice 1 a8932ce1 on f3d8ec2; slice 2 7e6bf614 on f14be7c; slice 3 70e1d531 on 5889053; slice 4
+4402224f on fd7bc50). Those runs stay in `slice-N.evidence.json`. Seals, manifests, evidence, final
+records and these notes as they stood are archived in `.scratch/TB-48/qa/late-conflict-respec/archive/`
+(`SHA256SUMS`, `ARCHIVED-FROM`). The original `preserve` cases (slice 1 QA-39, slice 3 QA-13) keep
+their reasons. Re-running those unchanged tests red on four old bases would rebuild four trees and
+prove nothing new: the test bytes and the bases are the ones already proven. Instead, their
+preservation under each new seal is the gate run at e7a500e below.
+
+## Red and green history (gate-written evidence)
+
+- Seals fbf85e29 (s1), 3b0f3b7a (s2), 0b7ce8e7 (s3), 6942a867 (s4), run 1 on **25230e9** (the
+  review baseline before e7a500e): a clone with its own reflinked target and the sealed frozen files
+  overlaid (only the 5 new files differ), `cargo clean -p` of the 5 workspace crates first. All 18
+  new cases were RED_BEHAVIOR and never_red was empty. The red reasons were the defects themselves:
+  plain `Changed` or `Symlink` without an id at the library; "nothing was written and both versions
+  are kept" with no id at exit 3, and exit 1 without the id at the CLI; GUI status without the id;
+  at stage, the baseline still published a generation (`Save`/`Recover` listed). `spawn-isolation`
+  FAILED on that base only because the new library suite (which includes `support/recovery.rs`) is
+  red there. Clippy on that run rejected one `clone_on_copy` in `config_late_conflict.rs`. Fixed,
+  nothing else changed, slices 1–3 re-sealed (slice 4 does not freeze that file and keeps 6942a867).
+- Seals **97ffc0e4 (s1), 28ea7e67 (s2), b31de79f (s3)**, run 1 on 25230e9 under the same
+  conditions: 16 new cases RED_BEHAVIOR, same reasons, never_red empty. Clippy `-D warnings` clean
+  on the three new targets there and at e7a500e.
+- Preservation runs under the four current seals at e7a500e: see
+  `.scratch/TB-48/qa/late-conflict-respec/RECEIPT.md`.
+
+## What each direct gate proves, and what it does not
+
+Proves: the real library, the real configurator state machine (headless Runtime with real taps)
+and the real `touchbar-recover` binary, interrupted at the two points the product's own ordering
+defines. Not proven here (left for review or a later ticket):
+- the reuse path (an unchanged save that reuses a verified generation, so nothing is renamed) and a
+  first write after a kept absence, under a late conflict. The implementer's
+  `src/recovery_regressions.rs` covers them with the cfg(test) hook, which is not frozen;
+- `RefusedAfterKeep` from an I/O failure or from `Unsupported` (FIFO, hard link) after publication.
+  Only the symlink cause is driven;
+- Ctrl+S (same `save()` path as the Save control) and the daemon's first write;
+- the windowed configurator on a real display and the physical bar (HIL, unchanged).

@@ -1,12 +1,15 @@
 {
   "version": 1,
   "mode": "behavior",
-  "reason": "Slice 4 of TB-48: recovery in the configurator and the isolated end-to-end round trip. The editor shows the generation store's full path as text (`backups-location`), lists the newest five generations of this config newest first (`recover-<id>`; another config's are never listed; one kept before a factory reset says \"before factory reset\"; an absence and a damaged copy are listed with why and never restored) and points to `touchbar-recover list` for the rest (`recovery-more`). Tapping a listed generation restores its exact bytes and permission bits through the guarded write, keeps the replaced file as a verified `recover` generation, shows the restored file (an invalid one with its issues) and names the kept path; it survives a reopen and can be undone. A restore is refused with a reason while there are unsaved changes or a pending factory reset, and over a file changed or removed on disk it writes and keeps nothing (TB-43 conflict rules). The default buttons, the personal restore and `key-row-return` (a pointer to docs/hardware-runbook.md, Physical return to key mode, which the editor never performs; layout and copies stay) are separate labelled controls; every control is reachable and restore works at 1200x760, 1200x500, 900x600 and 640x400; scene `recovery`. Check `round-trip`: the real `touchbar-customizer` (four --script sessions) and `touchbard --sim` share one temp HOME and XDG_STATE_HOME, no display: reset+cancel writes nothing, reset+save keeps the seeded commented 0640 file as generation 1 and the daemon's next frame equals a fresh daemon's frame of the saved file, reopen lists it, restore brings bytes and 0640 back, keeps the factory file as generation 2 and the daemon's frame equals its first.",
+  "reason": "Slice 4 of TB-48: recovery in the configurator and the isolated end-to-end round trip. The editor shows the generation store's full path as text (`backups-location`), lists the newest five generations of this config newest first (`recover-<id>`; another config's are never listed; one kept before a factory reset says \"before factory reset\"; an absence and a damaged copy are listed with why and never restored) and points to `touchbar-recover list` for the rest (`recovery-more`). Tapping a listed generation restores its exact bytes and permission bits through the guarded write, keeps the replaced file as a verified `recover` generation, shows the restored file (an invalid one with its issues) and names the kept path; it survives a reopen and can be undone. A restore is refused with a reason while there are unsaved changes or a pending factory reset, and over a file changed or removed on disk before its generation is published it writes and keeps nothing (TB-43 conflict rules). The default buttons, the personal restore and `key-row-return` (a pointer to docs/hardware-runbook.md, Physical return to key mode, which the editor never performs; layout and copies stay) are separate labelled controls; every control is reachable and restore works at 1200x760, 1200x500, 900x600 and 640x400; scene `recovery`. Check `round-trip`: the real `touchbar-customizer` (four --script sessions) and `touchbard --sim` share one temp HOME and XDG_STATE_HOME, no display: reset+cancel writes nothing, reset+save keeps the seeded commented 0640 file as generation 1 and the daemon's next frame equals a fresh daemon's frame of the saved file, reopen lists it, restore brings bytes and 0640 back, keeps the factory file as generation 2 and the daemon's frame equals its first. Late-conflict amendment (ADR-0015): a restore refused after its `recover` generation was published says not restored, names the retained id and lists it, shows the newer file (or keeps the link when the path became unsafe), and tapping the restore again restores.",
   "files": [
     "crates/tb-app/tests/configurator_recovery.rs",
     "crates/tb-app/tests/support/configurator.rs",
     "crates/tb-app/tests/support/ui.rs",
-    ".scratch/TB-48/contract/round_trip_check.py"
+    ".scratch/TB-48/contract/round_trip_check.py",
+    "crates/tb-app/tests/configurator_late_conflict.rs",
+    "crates/tb-config/tests/support/late_conflict.rs",
+    "crates/tb-config/tests/support/syscall_pause.py"
   ],
   "cases": [
     {
@@ -14,97 +17,125 @@
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "the_backups_location_is_shown_as_readable_text",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-02",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "the_newest_five_generations_are_listed_newest_first_and_the_rest_point_to_the_terminal",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-03",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "five_generations_are_all_listed_and_nothing_more_is_claimed",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-04",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "restoring_a_chosen_generation_brings_back_its_exact_bytes_and_mode_and_keeps_the_replaced_file",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-05",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "a_restore_is_listed_and_undone_after_the_configurator_reopens",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-06",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "a_factory_reset_generation_is_labelled_and_restores_the_personal_file",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-07",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "restore_is_refused_while_there_are_unsaved_changes_or_a_pending_reset",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-08",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "a_restore_over_a_file_changed_on_disk_keeps_the_newer_file_and_shows_it",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-09",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "a_restore_after_the_file_was_removed_writes_nothing_and_says_so",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-10",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "damaged_and_absent_generations_are_shown_with_why_and_never_restored",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-11",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "restoring_a_file_that_does_not_validate_is_exact_and_says_so",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-12",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "the_default_buttons_the_personal_restore_and_the_key_row_return_are_separate_and_labelled",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-13",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "every_recovery_control_is_reachable_and_restore_works_at_the_required_window_sizes",
-      "red": "required"
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
     },
     {
       "id": "QA-14",
       "package": "tb-app",
       "target": "test:configurator_recovery",
       "test": "the_recovery_scene_shows_the_location_and_the_generations",
+      "red": "preserve",
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+    },
+    {
+      "id": "QA-15",
+      "package": "tb-app",
+      "target": "test:configurator_late_conflict",
+      "test": "a_change_after_a_restore_published_its_generation_names_it_and_shows_the_newer_file",
+      "red": "required"
+    },
+    {
+      "id": "QA-16",
+      "package": "tb-app",
+      "target": "test:configurator_late_conflict",
+      "test": "a_config_made_a_symlink_after_a_restore_published_its_generation_is_refused_with_the_id",
       "red": "required"
     }
   ],
