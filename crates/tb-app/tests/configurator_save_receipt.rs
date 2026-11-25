@@ -168,3 +168,39 @@ fn a_protected_save_refuses_a_symlink_without_a_receipt_or_generation() {
     assert!(!home.join("receipt.json").exists());
     assert!(!home.join(".local/state/touchbar-customizer/backups").exists());
 }
+
+#[test]
+fn the_configurator_reports_a_committed_save_even_when_its_receipt_is_refused() {
+    use support::configurator::{fixture, runtime, theme};
+    use tb_config::{Backups, ConfigFile, GenerationKind, Loaded};
+
+    let profile = bin::fresh_dir("save-receipt", "store-alias");
+    fs::set_permissions(&profile, fs::Permissions::from_mode(0o700)).unwrap();
+    let path = tb_config::default_path(&profile);
+    let store = profile.join("state/backups");
+    let backups = Backups::at(&store);
+    let mut file = ConfigFile::protected(&path, backups.clone());
+    assert_eq!(file.load(&theme()).unwrap(), Loaded::WroteDefault);
+    let id = *file.last_generation().unwrap();
+    let generation = backups.verify(&id).unwrap();
+    assert_eq!(generation.kind, GenerationKind::Absent { dir_existed: false });
+
+    fs::write(&path, to_toml(&fixture()).unwrap()).unwrap();
+    let alias = profile.join("receipt-alias");
+    symlink(store.join(id.to_string()), &alias).unwrap();
+    let receipt = alias.join("config.toml");
+    let mut state = tb_app::State::open_protected(Some(path.clone()), Some(backups.clone()), theme());
+    state.set_save_receipt(Some(receipt.clone()));
+    let mut rt = runtime(state, tb_app::WINDOW);
+    operate(&mut rt, "row-a");
+    edit(&mut rt, "field-label", "Rehearsal");
+    operate(&mut rt, "save");
+
+    let status = words(&rt, "status");
+    assert!(status.starts_with("saved config "), "{status}");
+    assert!(status.contains("Could not write the save receipt"), "{status}");
+    assert!(status.contains("generation store"), "{status}");
+    assert!(fs::read_to_string(&path).unwrap().contains("label = \"Rehearsal\""));
+    assert!(!receipt.exists());
+    assert_eq!(backups.verify(&id).unwrap(), generation);
+}

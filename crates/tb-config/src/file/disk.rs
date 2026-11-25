@@ -6,6 +6,7 @@
 use std::fmt;
 use std::fs;
 use std::io::{self, Read, Write};
+use std::os::fd::AsFd;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -46,9 +47,26 @@ pub(super) fn version_at(path: &Path) -> io::Result<DiskVersion> {
 }
 
 /// What is at the config path, for a protected read or write.
+#[derive(PartialEq, Eq)]
 pub(super) enum Found {
     Absent,
     File { bytes: Vec<u8>, mode: u32 },
+}
+
+impl Found {
+    pub(super) fn bytes(&self) -> Option<&[u8]> {
+        match self {
+            Self::Absent => None,
+            Self::File { bytes, .. } => Some(bytes),
+        }
+    }
+
+    pub(super) fn into_version(self) -> DiskVersion {
+        match self {
+            Self::Absent => DiskVersion::ABSENT,
+            Self::File { bytes, .. } => DiskVersion(Some(bytes)),
+        }
+    }
 }
 
 /// Why a protected read or write refuses the path.
@@ -83,7 +101,7 @@ pub(super) fn probe(path: &Path) -> Result<Found, Refused> {
     if stat.st_nlink != 1 {
         return Err(Refused::Unsupported(format!("file with {} names (hard links)", stat.st_nlink)));
     }
-    Ok(Found::File { bytes, mode: stat.st_mode & 0o777 })
+    Ok(Found::File { bytes, mode: stat.st_mode & 0o7777 })
 }
 
 /// The version at `path` for a protected read: like [`version_at`] (a symlink is followed, a
@@ -115,8 +133,9 @@ fn read_regular(path: &Path, extra: OFlags) -> Result<(Vec<u8>, Stat), Refused> 
         return Err(Refused::Unsupported(kind_name(kind).to_owned()));
     }
     let mut bytes = Vec::new();
-    fs::File::from(fd).read_to_end(&mut bytes).map_err(Refused::Io)?;
-    Ok((bytes, stat))
+    let mut file = fs::File::from(fd);
+    file.read_to_end(&mut bytes).map_err(Refused::Io)?;
+    Ok((bytes, rustix::fs::fstat(file)?))
 }
 
 fn kind_name(kind: FileType) -> &'static str {
@@ -195,7 +214,7 @@ pub(super) fn write_atomically<E>(
     before_rename: impl FnOnce() -> Result<(), E>,
 ) -> Result<(), E> {
     let dir = super::dir_of(path);
-    let (temp, file) = create_temp(path, mode).map_err(|e| io_at(dir, e))?;
+    let (temp, file) = create_temp(CWD, path, mode).map_err(|e| io_at(dir, e))?;
     let written = write_synced(file, bytes)
         .map_err(|e| io_at(&temp, e))
         .and_then(|()| before_rename())
@@ -209,14 +228,15 @@ pub(super) fn write_atomically<E>(
 
 /// Publishes a complete private receipt at a fresh path. Existing files (including a
 /// config, generation or symlink) must never be replaced by an auxiliary write.
-pub(super) fn write_new_atomically(path: &Path, bytes: &[u8], mode: u32) -> io::Result<()> {
-    let (temp, file) = create_temp(path, Some(mode))?;
+pub(super) fn write_new_atomically(dir: impl AsFd, name: &Path, bytes: &[u8], mode: u32) -> io::Result<()> {
+    let dir = dir.as_fd();
+    let (temp, file) = create_temp(dir, name, Some(mode))?;
     let result = write_synced(file, bytes).and_then(|()| {
-        rustix::fs::renameat_with(CWD, &temp, CWD, path, rustix::fs::RenameFlags::NOREPLACE)
+        rustix::fs::renameat_with(dir, &temp, dir, name, rustix::fs::RenameFlags::NOREPLACE)
             .map_err(io::Error::from)
     });
     if result.is_err() {
-        let _ = fs::remove_file(temp);
+        let _ = rustix::fs::unlinkat(dir, temp, AtFlags::empty());
     }
     result
 }
@@ -236,29 +256,27 @@ static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 /// Creates a new temp file `.<file name>.<pid>.<n>.tmp` next to `path`: same filesystem (so
 /// `rename` is atomic). It is created exclusively, so no other save (this process or another)
 /// can write into it; a name already taken (a stale temp) is skipped.
-fn create_temp(path: &Path, mode: Option<u32>) -> io::Result<(PathBuf, fs::File)> {
+fn create_temp(dir: impl AsFd, path: &Path, mode: Option<u32>) -> io::Result<(PathBuf, fs::File)> {
+    let dir = dir.as_fd();
     let name = file_name(path);
+    let flags = OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC;
+    let permissions = Mode::from_raw_mode(if mode.is_some() { 0o600 } else { 0o666 });
     loop {
         let n = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
         let temp = path.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        if mode.is_some() {
-            // Private while it is written; it gets its final bits before the rename.
-            options.mode(0o600);
-        }
-        match options.open(&temp) {
-            Ok(file) => {
+        match rustix::fs::openat(dir, &temp, flags, permissions) {
+            Ok(fd) => {
+                let file = fs::File::from(fd);
                 if let Some(mode) = mode
                     && let Err(e) = file.set_permissions(fs::Permissions::from_mode(mode))
                 {
-                    let _ = fs::remove_file(&temp);
+                    let _ = rustix::fs::unlinkat(dir, &temp, AtFlags::empty());
                     return Err(e);
                 }
                 return Ok((temp, file));
             }
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e),
+            Err(Errno::EXIST) => {}
+            Err(e) => return Err(e.into()),
         }
     }
 }

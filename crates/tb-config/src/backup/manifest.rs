@@ -41,6 +41,10 @@ pub(super) enum Kind {
 }
 
 impl Manifest {
+    pub(super) fn has_empty_hash(&self) -> bool {
+        blake3::hash(&[]).to_hex().as_str() == self.blake3
+    }
+
     /// The kind it records, or why the fields contradict each other.
     pub(super) fn kind(&self) -> Result<GenerationKind, String> {
         if self.format != FORMAT {

@@ -3,7 +3,7 @@
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
-use tb_config::{Generation, GenerationId, GenerationKind};
+use tb_config::{Generation, GenerationId, GenerationKind, ThemeFileError};
 
 use super::describe;
 
@@ -18,7 +18,13 @@ fn say(message: impl Display) {
 }
 
 /// The store, the config, one line per generation (newest first), then incomplete temps.
-pub fn listing(store: &Path, config: &Path, generations: &[Generation], incomplete: &[String]) {
+pub fn listing(
+    store: &Path,
+    config: &Path,
+    generations: &[Generation],
+    unreadable: &[(GenerationId, String)],
+    incomplete: &[String],
+) {
     say(format_args!("store: {}", store.display()));
     say(format_args!("config: {}", config.display()));
     if generations.is_empty() {
@@ -26,6 +32,9 @@ pub fn listing(store: &Path, config: &Path, generations: &[Generation], incomple
     }
     for generation in generations {
         say(line(generation));
+    }
+    for (id, why) in unreadable {
+        say(format_args!("unreadable generation {id} (config unknown): {why}"));
     }
     for temp in incomplete {
         say(format_args!("incomplete: {temp} (an interrupted write left it; not a generation, kept)"));
@@ -66,7 +75,15 @@ pub fn restored(generation: &Generation, config: &Path, kept: Option<&Generation
             generation.len
         )),
         GenerationKind::Absent { .. } => {
-            say(format_args!("removed {} as generation {} records", config.display(), generation.id));
+            if kept.is_some() {
+                say(format_args!("removed {} as generation {} records", config.display(), generation.id));
+            } else {
+                say(format_args!(
+                    "{} is already absent as generation {} records",
+                    config.display(),
+                    generation.id
+                ));
+            }
             say("touchbard and touchbar-customizer write the default config when they start without one");
         }
     }
@@ -79,6 +96,8 @@ pub fn restored(generation: &Generation, config: &Path, kept: Option<&Generation
 pub enum Verdict {
     /// Valid with the Omarchy source; the active theme's colours file it was checked against.
     ValidOmarchy(PathBuf),
+    /// Valid with the bundled theme when the active Omarchy colours could not be loaded.
+    ValidOmarchyFallback(ThemeFileError),
     /// Valid with the selected theme file at this path.
     ValidThemeFile(PathBuf),
     /// Not accepted: the library's diagnostics, one per issue.
@@ -91,6 +110,10 @@ pub fn checked(verdict: &Verdict) {
             "the restored config is valid with the Omarchy theme source (active theme {}); \
              touchbard draws it once it reloads the file",
             colors.display()
+        )),
+        Verdict::ValidOmarchyFallback(why) => say(format_args!(
+            "the restored config is valid with the Omarchy theme source using the bundled Tokyo Night \
+             fallback ({why}); touchbard draws it once it reloads the file"
         )),
         Verdict::ValidThemeFile(path) => say(format_args!(
             "the restored config is valid with the theme file {}; touchbard draws it once it reloads the file",

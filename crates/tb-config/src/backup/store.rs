@@ -8,12 +8,17 @@ use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rustix::fs::{AtFlags, CWD, Dir, FileType, Mode, OFlags, RenameFlags};
+use rustix::fs::{AtFlags, CWD, Dir, FileType, Mode, OFlags, RenameFlags, Stat};
 use rustix::io::Errno;
 
 use super::manifest::Manifest;
 use super::{BackupError, GenerationId, GenerationKind, Health};
 use crate::durable::parent_of;
+
+#[cfg(test)]
+use crate::recovery_regressions::sync_backup_dir;
+#[cfg(not(test))]
+use rustix::fs::fsync as sync_backup_dir;
 
 /// Name of the kept bytes inside a generation.
 pub(super) const DATA: &str = "config.toml";
@@ -22,12 +27,16 @@ pub(super) const MANIFEST: &str = "manifest.toml";
 const DIR_FLAGS: OFlags =
     OFlags::RDONLY.union(OFlags::DIRECTORY).union(OFlags::NOFOLLOW).union(OFlags::CLOEXEC);
 
+const PATH_DIR_FLAGS: OFlags = OFlags::PATH.union(OFlags::DIRECTORY).union(OFlags::CLOEXEC);
+
 /// One generation as read back from the store.
 pub(super) enum Inspected {
     /// No generation directory by that name.
     Missing,
     /// The manifest cannot be read or contradicts itself, so it names no config.
     Unreadable(String),
+    /// Its directory or manifest is untrusted, so the manifest cannot name a config.
+    Untrusted(String),
     Read {
         manifest: Manifest,
         kind: GenerationKind,
@@ -45,25 +54,44 @@ pub(super) struct StoreDir {
 impl StoreDir {
     /// Opens an existing store for reading; `None` when there is none yet.
     pub fn open(path: &Path) -> Result<Option<Self>, BackupError> {
-        match rustix::fs::openat(CWD, path, DIR_FLAGS, Mode::empty()) {
-            Ok(fd) => Ok(Some(Self { path: path.to_path_buf(), fd })),
+        let parent = parent_of(path);
+        let fd = match rustix::fs::openat(CWD, parent, PATH_DIR_FLAGS, Mode::empty()) {
+            Ok(fd) => fd,
+            Err(Errno::NOENT) => return Ok(None),
+            Err(e) => return Err(store_io(path, e)),
+        };
+        let name = path.file_name().ok_or_else(|| store_io(path, Errno::INVAL))?;
+        match rustix::fs::openat(&fd, name, DIR_FLAGS, Mode::empty()) {
+            Ok(store) => {
+                let uid = rustix::process::geteuid().as_raw();
+                check_owner(
+                    path,
+                    parent,
+                    rustix::fs::fstat(&fd).map_err(|e| store_io(path, e))?.st_uid,
+                    uid,
+                )?;
+                Self::checked(path, store, uid).map(Some)
+            }
             Err(Errno::NOENT) => Ok(None),
             Err(e) => Err(refusal(path, e)),
         }
     }
 
-    /// Creates the store if needed (0700, every new directory durable) and opens it for
-    /// writing, refusing a store this user cannot trust: a symlink, not a directory, owned by
-    /// another user, open to other users, or under a parent owned by another user.
+    /// Creates the private store if needed, refusing untrusted directories as on reads.
     pub fn open_for_write(path: &Path) -> Result<Self, BackupError> {
         let uid = rustix::process::geteuid().as_raw();
         let parent = open_owned_parent(path, uid)?;
         let fd = open_or_create_directory(&parent, path, DIR_FLAGS, 0o700, path, uid)?;
+        Self::checked(path, fd, uid)
+    }
+
+    fn checked(path: &Path, fd: OwnedFd, uid: u32) -> Result<Self, BackupError> {
         let stat = rustix::fs::fstat(&fd).map_err(|e| store_io(path, e))?;
-        if stat.st_mode & 0o077 != 0 {
+        check_owner(path, path, stat.st_uid, uid)?;
+        if let Err(why) = private_mode(&stat) {
             return Err(BackupError::Unsafe {
                 path: path.to_path_buf(),
-                why: format!("its mode {:o} lets other users in", stat.st_mode & 0o777),
+                why,
                 fix: format!("run `chmod 700 {}`", path.display()),
             });
         }
@@ -118,12 +146,28 @@ impl StoreDir {
             Err(Errno::NOENT) => return Inspected::Missing,
             Err(e) => return Inspected::Unreadable(format!("cannot open it: {}", io::Error::from(e))),
         };
-        let manifest = match read_regular_at(dir.as_fd(), MANIFEST) {
-            Ok(bytes) => String::from_utf8(bytes)
-                .map_err(|e| e.to_string())
-                .and_then(|text| toml::from_str::<Manifest>(&text).map_err(|e| e.to_string())),
-            Err(why) => Err(why),
+        let stat = match rustix::fs::fstat(&dir) {
+            Ok(stat) => stat,
+            Err(e) => {
+                return Inspected::Unreadable(format!(
+                    "cannot inspect its directory: {}",
+                    io::Error::from(e)
+                ));
+            }
         };
+        if let Err(why) = private_member(&stat) {
+            return Inspected::Untrusted(format!("generation directory: {why}"));
+        }
+        let (manifest_file, stat) = match open_regular_at(dir.as_fd(), MANIFEST) {
+            Ok(entry) => entry,
+            Err(why) => return Inspected::Unreadable(format!("{MANIFEST}: {why}")),
+        };
+        if let Err(why) = private_file(&stat) {
+            return Inspected::Untrusted(format!("{MANIFEST}: {why}"));
+        }
+        let manifest = read_bytes(manifest_file)
+            .and_then(|bytes| String::from_utf8(bytes).map_err(|e| e.to_string()))
+            .and_then(|text| toml::from_str::<Manifest>(&text).map_err(|e| e.to_string()));
         let manifest = match manifest {
             Ok(manifest) => manifest,
             Err(why) => return Inspected::Unreadable(format!("{MANIFEST}: {why}")),
@@ -152,7 +196,7 @@ impl StoreDir {
                 write_new_at(dir.as_fd(), DATA, bytes)?;
             }
             write_new_at(dir.as_fd(), MANIFEST, manifest.as_bytes())?;
-            rustix::fs::fsync(&dir)?;
+            sync_backup_dir(&dir)?;
             rustix::fs::renameat_with(
                 &self.fd,
                 temp.as_str(),
@@ -166,7 +210,24 @@ impl StoreDir {
             self.remove_temp(&temp);
             return Err(e);
         }
-        rustix::fs::fsync(&self.fd).map_err(io::Error::from)
+        self.sync()
+    }
+
+    /// Sync every directory that could have been created by an interrupted keep, even on
+    /// retries that see it already present. Only owned ancestors can contain entries we made.
+    pub fn sync(&self) -> io::Result<()> {
+        let uid = rustix::process::geteuid().as_raw();
+        let mut dir = self.fd.try_clone()?;
+        loop {
+            sync_backup_dir(&dir)?;
+            let stat = rustix::fs::fstat(&dir)?;
+            let parent = rustix::fs::openat(&dir, "..", PATH_DIR_FLAGS, Mode::empty())?;
+            let above = rustix::fs::fstat(&parent)?;
+            if above.st_uid != uid || above.st_dev != stat.st_dev || above.st_ino == stat.st_ino {
+                return Ok(());
+            }
+            dir = rustix::fs::openat(&parent, ".", DIR_FLAGS, Mode::empty())?;
+        }
     }
 
     fn make_temp(&self) -> io::Result<String> {
@@ -198,11 +259,10 @@ impl StoreDir {
 /// descriptor to create and open each missing component. Existing state paths may resolve
 /// through symlinks, but a name appearing during creation must be an owned directory.
 fn open_owned_parent(store: &Path, uid: u32) -> Result<OwnedFd, BackupError> {
-    let flags = OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC;
     let mut ancestor = parent_of(store);
     let mut missing = Vec::new();
     let mut fd = loop {
-        match rustix::fs::openat(CWD, ancestor, flags, Mode::empty()) {
+        match rustix::fs::openat(CWD, ancestor, PATH_DIR_FLAGS, Mode::empty()) {
             Ok(fd) => break fd,
             Err(Errno::NOENT) => {
                 missing.push(ancestor);
@@ -213,7 +273,7 @@ fn open_owned_parent(store: &Path, uid: u32) -> Result<OwnedFd, BackupError> {
     };
     check_owner(store, ancestor, rustix::fs::fstat(&fd).map_err(|e| store_io(store, e))?.st_uid, uid)?;
     for dir in missing.into_iter().rev() {
-        fd = open_or_create_directory(&fd, dir, flags | OFlags::NOFOLLOW, 0o777, store, uid)?;
+        fd = open_or_create_directory(&fd, dir, PATH_DIR_FLAGS | OFlags::NOFOLLOW, 0o777, store, uid)?;
     }
     Ok(fd)
 }
@@ -228,23 +288,18 @@ fn open_or_create_directory(
 ) -> Result<OwnedFd, BackupError> {
     let name = dir.file_name().ok_or_else(|| store_io(store, Errno::INVAL))?;
     let open = || rustix::fs::openat(parent, name, flags, Mode::empty());
-    let (fd, needs_sync) = match open() {
-        Ok(fd) => (fd, false),
+    let fd = match open() {
+        Ok(fd) => fd,
         Err(Errno::NOENT) => {
             match rustix::fs::mkdirat(parent, name, Mode::from_raw_mode(mode)) {
                 Ok(()) | Err(Errno::EXIST) => {}
                 Err(e) => return Err(store_io(store, e)),
             }
-            (open().map_err(|e| refusal(dir, e))?, true)
+            open().map_err(|e| refusal(dir, e))?
         }
         Err(e) => return Err(refusal(dir, e)),
     };
     check_owner(store, dir, rustix::fs::fstat(&fd).map_err(|e| store_io(store, e))?.st_uid, uid)?;
-    if needs_sync {
-        let sync =
-            rustix::fs::openat(parent, ".", DIR_FLAGS, Mode::empty()).map_err(|e| store_io(store, e))?;
-        rustix::fs::fsync(&sync).map_err(|e| store_io(store, e))?;
-    }
     Ok(fd)
 }
 
@@ -293,12 +348,20 @@ fn check_data(
         return Err(format!("its manifest names generation {}", manifest.id));
     }
     match kind {
+        GenerationKind::Absent { .. } if !manifest.has_empty_hash() => {
+            Err("the hash of an absence must be the BLAKE3 hash of empty bytes".to_owned())
+        }
         GenerationKind::Absent { .. } => match rustix::fs::statat(dir, DATA, AtFlags::SYMLINK_NOFOLLOW) {
             Err(Errno::NOENT) => Ok(None),
             _ => Err(format!("an absence holds a {DATA}")),
         },
         GenerationKind::File => {
-            let bytes = read_regular_at(dir, DATA).map_err(|why| format!("{DATA}: {why}"))?;
+            let bytes = (|| {
+                let (file, stat) = open_regular_at(dir, DATA)?;
+                private_file(&stat)?;
+                read_bytes(file)
+            })()
+            .map_err(|why| format!("{DATA}: {why}"))?;
             if bytes.len() as u64 != manifest.len {
                 return Err(format!("{DATA} has {} bytes, the manifest says {}", bytes.len(), manifest.len));
             }
@@ -311,7 +374,7 @@ fn check_data(
 }
 
 /// Reads a regular file inside `dir` without following a symlink or blocking on a FIFO.
-fn read_regular_at(dir: BorrowedFd<'_>, name: &str) -> Result<Vec<u8>, String> {
+fn open_regular_at(dir: BorrowedFd<'_>, name: &str) -> Result<(File, Stat), String> {
     let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC | OFlags::NOCTTY;
     let fd = match rustix::fs::openat(dir, name, flags, Mode::empty()) {
         Ok(fd) => fd,
@@ -323,9 +386,37 @@ fn read_regular_at(dir: BorrowedFd<'_>, name: &str) -> Result<Vec<u8>, String> {
     if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
         return Err("is not a regular file".to_owned());
     }
+    Ok((File::from(fd), stat))
+}
+
+fn read_bytes(mut file: File) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    File::from(fd).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     Ok(bytes)
+}
+
+fn private_mode(stat: &Stat) -> Result<(), String> {
+    if stat.st_mode & 0o077 != 0 {
+        Err(format!("its mode {:o} lets other users in", stat.st_mode & 0o777))
+    } else {
+        Ok(())
+    }
+}
+
+fn private_member(stat: &Stat) -> Result<(), String> {
+    let uid = rustix::process::geteuid().as_raw();
+    if stat.st_uid != uid {
+        return Err(format!("belongs to uid {}, expected uid {uid}", stat.st_uid));
+    }
+    private_mode(stat)
+}
+
+fn private_file(stat: &Stat) -> Result<(), String> {
+    private_member(stat)?;
+    if stat.st_nlink != 1 {
+        return Err(format!("has {} names (hard links), expected one", stat.st_nlink));
+    }
+    Ok(())
 }
 
 /// Creates `name` in `dir` exclusively (0600, whatever the umask), writes and syncs it.

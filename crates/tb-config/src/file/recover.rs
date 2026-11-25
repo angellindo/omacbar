@@ -2,6 +2,7 @@
 //! only the version this config file last saw, first keeps a `recover` generation of what it
 //! replaces, and writes the kept bytes with the kept permission bits.
 
+use super::disk::Found;
 use super::{ConfigFile, ConfigFileError, Content, WriteKind};
 use crate::backup::{BackupError, Backups, GenerationId, Stored};
 
@@ -39,6 +40,7 @@ impl ConfigFile {
             .protection
             .clone()
             .ok_or_else(|| ConfigFileError::Unprotected { path: self.path.clone() })?;
+        backups.check_location(&self.path)?;
         let (_, stored) = backups.stored(id, &self.path)?;
         let seen = self.seen.clone();
         match stored {
@@ -47,10 +49,10 @@ impl ConfigFile {
             }
             Stored::Absent if !remove => Err(BackupError::Absence { id }.into()),
             // Already no file: nothing to replace, so nothing to keep, unless one appeared.
-            Stored::Absent if seen.is_absent() => {
-                let now = self.version_now()?;
-                if now.is_absent() { Ok(()) } else { Err(ConfigFileError::Changed(now)) }
-            }
+            Stored::Absent if seen.is_absent() => match self.probe()? {
+                Found::Absent => Ok(()),
+                now @ Found::File { .. } => Err(ConfigFileError::Changed(now.into_version())),
+            },
             Stored::Absent => self.swap(&seen, Content::Remove, WriteKind::Recover),
         }
     }

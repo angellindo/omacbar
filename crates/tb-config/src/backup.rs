@@ -160,16 +160,30 @@ impl Backups {
 
     /// Every generation of `config`, newest first, each checked against its manifest. A store
     /// that does not exist yet lists nothing; generations whose manifest cannot be read name no
-    /// config and are not listed (they stay in the store).
+    /// config and are not listed (they stay in the store). An untrusted directory or manifest
+    /// is reported without using it to identify a config.
     pub fn list(&self, config: &Path) -> Result<Vec<Generation>, BackupError> {
+        self.list_with_unreadable(config, |_, _| ())
+    }
+
+    /// Also reports store entries whose manifest cannot tell which config they represent.
+    /// These ids are diagnostic only and do not belong to the requested config's history.
+    pub fn list_with_unreadable(
+        &self,
+        config: &Path,
+        mut unreadable: impl FnMut(GenerationId, String),
+    ) -> Result<Vec<Generation>, BackupError> {
         let Some(store) = StoreDir::open(&self.dir)? else { return Ok(Vec::new()) };
         let config = absolute(config);
         let mut out = Vec::new();
         for id in store.ids()?.into_iter().rev() {
-            if let Inspected::Read { manifest, kind, health, .. } = store.inspect(id)
-                && manifest.config == config
-            {
-                out.push(generation(id, &manifest, kind, health));
+            match store.inspect(id) {
+                Inspected::Read { manifest, kind, health, .. } if manifest.config == config => {
+                    out.push(generation(id, &manifest, kind, health));
+                }
+                Inspected::Unreadable(why) => unreadable(id, why),
+                Inspected::Untrusted(why) => return Err(self.damaged(id, why)),
+                _ => {}
             }
         }
         Ok(out)
@@ -219,9 +233,9 @@ impl Backups {
         let store = StoreDir::open(&self.dir)?.ok_or_else(not_found)?;
         match store.inspect(id) {
             Inspected::Missing => Err(not_found()),
-            Inspected::Unreadable(why) | Inspected::Read { health: Health::Damaged(why), .. } => {
-                Err(self.damaged(id, why))
-            }
+            Inspected::Unreadable(why)
+            | Inspected::Untrusted(why)
+            | Inspected::Read { health: Health::Damaged(why), .. } => Err(self.damaged(id, why)),
             Inspected::Read { manifest, kind, health, data } => {
                 Ok((generation(id, &manifest, kind, health), manifest, data))
             }
@@ -274,6 +288,8 @@ impl Backups {
         let manifest = describe(&config, kept, reason);
         let ids = store.ids()?;
         if let Some(id) = newest_same(store, &ids, &manifest) {
+            // Read-back can see a prior rename whose directory sync failed.
+            store.sync().map_err(io_err)?;
             return Ok(id);
         }
         let id = GenerationId(ids.last().map_or(1, |last| last.0.saturating_add(1)));

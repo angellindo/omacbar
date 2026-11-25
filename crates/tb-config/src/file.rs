@@ -6,25 +6,23 @@
 
 mod disk;
 mod reasoned;
+mod receipt;
 mod recover;
+mod swap;
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use sha2::{Digest, Sha256};
 use tb_core::config::{Config, ConfigError, ConfigIssue, ThemeSource, parse, parse_valid, to_toml, validate};
 use tb_core::{BarSize, BarTheme, SpacingRules};
 use thiserror::Error;
 
 use crate::ThemeFileError;
-use crate::backup::{BackupError, Backups, GenerationId, Kept, Locked, Reason};
-use crate::durable::{create_dir_all_durably, parent_of};
+use crate::backup::{BackupError, Backups, GenerationId, Reason};
+use crate::durable::parent_of;
 pub use disk::DiskVersion;
-use disk::{
-    DirLock, Found, Refused, version_at, version_followed, write_atomically, write_backup,
-    write_new_atomically,
-};
+use disk::{Refused, version_at, version_followed};
 
 /// Permission bits of a config file a protected write creates: it is personal.
 const NEW_FILE_MODE: u32 = 0o600;
@@ -190,20 +188,6 @@ impl ConfigFile {
         self.backup.as_deref()
     }
 
-    /// Publishes a receipt immediately after a successful explicit save. The recorded version
-    /// is the buffer passed to the swap, so another writer cannot change the reported digest.
-    pub fn write_save_receipt(&self, path: &Path) -> io::Result<()> {
-        let bytes = self.seen.0.as_deref().ok_or_else(|| io::Error::other("no saved config bytes"))?;
-        let config = self.path.to_str().ok_or_else(|| io::Error::other("config path is not UTF-8"))?;
-        let receipt = serde_json::json!({"config": config, "sha256": format!("{:x}", Sha256::digest(bytes))});
-        if path.file_name() == self.path.file_name()
-            && dir_of(path).canonicalize()? == dir_of(&self.path).canonicalize()?
-        {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "save receipt would replace the config"));
-        }
-        write_new_atomically(path, receipt.to_string().as_bytes(), NEW_FILE_MODE)
-    }
-
     /// Reads a candidate, resolves its saved theme source, then validates and accepts both.
     /// Rejection leaves the current config untouched. A missing file gets the default for the
     /// active theme (`Config::default_for`), written atomically unless another writer created the
@@ -343,128 +327,6 @@ impl ConfigFile {
         kind: WriteKind,
     ) -> Result<(), ConfigFileError> {
         self.swap_as(expected, content, kind, kind.reason())
-    }
-
-    /// `swap`, keeping the generation under `reason`.
-    fn swap_as(
-        &mut self,
-        expected: &DiskVersion,
-        content: Content<'_>,
-        kind: WriteKind,
-        reason: Reason,
-    ) -> Result<(), ConfigFileError> {
-        let io_at = |at: &Path, source| ConfigFileError::Io { path: at.to_path_buf(), source };
-        // Unlocked first look: a stale save must not even create a removed directory.
-        let current = self.version_now()?;
-        if current != *expected {
-            return Err(ConfigFileError::Changed(current));
-        }
-        // A protected write locks the store before it looks at or creates the directory, so
-        // `dir_existed` is decided while no other protected writer can create it (ADR-0015).
-        // Order: store lock, then directory lock, for every protected write.
-        let store = match &self.protection {
-            Some(backups) => {
-                backups.check_location(&self.path)?;
-                // A path that cannot be kept is refused before the store is created.
-                disk::probe(&self.path).map_err(|r| refused(&self.path, r))?;
-                Some(backups.lock(&self.path)?)
-            }
-            None => None,
-        };
-        let dir = dir_of(&self.path);
-        let dir_existed = dir.is_dir();
-        create_dir_all_durably(dir, 0o777).map_err(|e| io_at(dir, e))?;
-        let lock = DirLock::take(dir).map_err(|e| io_at(dir, e))?;
-        let current = self.version_now()?;
-        if current != *expected {
-            return Err(ConfigFileError::Changed(current));
-        }
-        let (mode, generation) = match (&self.protection, &store) {
-            (Some(backups), Some(locked)) => {
-                let (mode, id) = self.keep_generation(backups, locked, expected, dir_existed, reason)?;
-                (Some(mode), Some(id))
-            }
-            _ if kind == WriteKind::Overwrite
-                && fs::symlink_metadata(&self.path).is_ok_and(|m| m.file_type().is_symlink()) =>
-            {
-                return Err(ConfigFileError::Symlink { path: self.path.clone() });
-            }
-            _ => (None, None),
-        };
-        let kept = match (&current.0, kind) {
-            (Some(bytes), WriteKind::Overwrite) => {
-                Some(write_backup(&self.path, bytes).map_err(|e| io_at(dir, e))?)
-            }
-            _ => None,
-        };
-        let written = self.put(expected, content, mode);
-        if written.is_err()
-            && let Some(kept) = &kept
-        {
-            // Nothing was replaced, so the copy of the unreplaced file is not a backup of anything.
-            let _ = fs::remove_file(kept);
-        }
-        written?;
-        // Best effort: the rename is done; durability of the directory entry is a bonus.
-        let _ = lock.sync();
-        self.seen = DiskVersion(content.bytes().map(<[u8]>::to_vec));
-        if kind == WriteKind::Overwrite {
-            self.backup = kept;
-        }
-        if generation.is_some() {
-            self.last_generation = generation;
-        }
-        Ok(())
-    }
-
-    /// Under the directory lock, after any generation is kept: puts `content` at the path (an
-    /// atomic write with `mode`, or a removal), right after a last re-compare that narrows the
-    /// window for editors that take no lock.
-    fn put(
-        &self,
-        expected: &DiskVersion,
-        content: Content<'_>,
-        mode: Option<u32>,
-    ) -> Result<(), ConfigFileError> {
-        let io_at = |at: &Path, source| ConfigFileError::Io { path: at.to_path_buf(), source };
-        let protected = self.protection.is_some();
-        let recheck = || match version(&self.path, protected) {
-            Ok(now) if now == *expected => Ok(()),
-            Ok(now) => Err(ConfigFileError::Changed(now)),
-            Err(e) => Err(e),
-        };
-        match content {
-            Content::Text(text) => write_atomically(&self.path, text.as_bytes(), mode, io_at, recheck),
-            Content::Exact { bytes, mode } => write_atomically(&self.path, bytes, Some(mode), io_at, recheck),
-            Content::Remove => {
-                recheck().and_then(|()| fs::remove_file(&self.path).map_err(|e| io_at(&self.path, e)))
-            }
-        }
-    }
-
-    /// Under the directory lock: looks at the path without following a symlink, and keeps a
-    /// verified generation of what is there (exact bytes and bits, or the absence). Returns the
-    /// bits the new file gets (the replaced file's, or private for a new one) and the generation.
-    fn keep_generation(
-        &self,
-        backups: &Backups,
-        locked: &Locked,
-        expected: &DiskVersion,
-        dir_existed: bool,
-        reason: Reason,
-    ) -> Result<(u32, GenerationId), ConfigFileError> {
-        let found = disk::probe(&self.path).map_err(|r| refused(&self.path, r))?;
-        let (kept, now, mode) = match &found {
-            Found::Absent => (Kept::Absent { dir_existed }, DiskVersion::ABSENT, NEW_FILE_MODE),
-            Found::File { bytes, mode } => {
-                (Kept::File { bytes, mode: *mode }, DiskVersion(Some(bytes.clone())), *mode)
-            }
-        };
-        if now != *expected {
-            return Err(ConfigFileError::Changed(now));
-        }
-        let id = backups.keep(locked, &self.path, &kept, reason)?;
-        Ok((mode, id))
     }
 
     /// The version on disk now, read as this file reads (protected: regular files only).

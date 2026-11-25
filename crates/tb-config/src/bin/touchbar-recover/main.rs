@@ -102,9 +102,12 @@ fn run(command: &Command, profile: &Profile) -> Result<(), Stop> {
 }
 
 fn list(backups: &Backups, profile: &Profile) -> Result<(), Stop> {
-    let generations = backups.list(&profile.config).map_err(|e| Stop::Refused(e.to_string()))?;
+    let mut unreadable = Vec::new();
+    let generations = backups
+        .list_with_unreadable(&profile.config, |id, why| unreadable.push((id, why)))
+        .map_err(|e| Stop::Refused(e.to_string()))?;
     let incomplete = backups.incomplete().map_err(|e| Stop::Refused(e.to_string()))?;
-    output::listing(&profile.store, &profile.config, &generations, &incomplete);
+    output::listing(&profile.store, &profile.config, &generations, &unreadable, &incomplete);
     Ok(())
 }
 
@@ -115,6 +118,7 @@ fn restore(id: GenerationId, remove: bool, profile: &Profile) -> Result<(), Stop
     let mut file = ConfigFile::protected(&profile.config, backups);
     file.look().map_err(|e| not_restored(id, &e))?;
     let done = if remove { file.recover_removing(&id) } else { file.recover(&id) };
+    let remove_flag = if remove { " --remove-file" } else { "" };
     match done {
         Ok(()) => {
             output::restored(&generation, &profile.config, file.last_generation());
@@ -125,7 +129,7 @@ fn restore(id: GenerationId, remove: bool, profile: &Profile) -> Result<(), Stop
         }
         Err(ConfigFileError::Changed(_)) => Err(Stop::Conflict(format!(
             "`{}` changed while generation {id} was being restored; nothing was written and both \
-             versions are kept. Run `touchbar-recover restore {id}` again to replace the newer file.",
+             versions are kept. Run `touchbar-recover restore {id}{remove_flag}` again to replace the newer file.",
             profile.config.display()
         ))),
         Err(e) => Err(not_restored(id, &e)),
@@ -138,9 +142,13 @@ fn restore(id: GenerationId, remove: bool, profile: &Profile) -> Result<(), Stop
 fn check_restored(profile: &Profile) -> output::Verdict {
     let active = ActiveTheme::under_home(&profile.home);
     let mut file = ConfigFile::new(&profile.config);
-    match file.reload_resolved(&active.load().theme) {
+    let loaded = active.load();
+    match file.reload_resolved(&loaded.theme) {
         Ok(_) => match &file.config().theme {
-            ThemeSource::Omarchy => output::Verdict::ValidOmarchy(active.colors_path().to_path_buf()),
+            ThemeSource::Omarchy => match loaded.fallback {
+                Some(why) => output::Verdict::ValidOmarchyFallback(why),
+                None => output::Verdict::ValidOmarchy(active.colors_path().to_path_buf()),
+            },
             ThemeSource::File { path } => output::Verdict::ValidThemeFile(PathBuf::from(path)),
         },
         Err(ConfigFileError::Invalid(issues)) => {

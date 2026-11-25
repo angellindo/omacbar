@@ -8,6 +8,9 @@ mod file;
 mod theme;
 mod watch;
 
+#[cfg(test)]
+mod recovery_regressions;
+
 pub use backup::{BackupError, Backups, Generation, GenerationId, GenerationKind, Health, Reason};
 pub use file::{ConfigFile, ConfigFileError, DiskVersion, Loaded, default_path};
 pub use theme::{ActiveTheme, LoadedTheme, ThemeFileError, ThemeWatch};

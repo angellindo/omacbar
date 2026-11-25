@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use rune::{El, col};
+use tb_config::DiskVersion;
 use tb_core::config::{Config, ThemeSource};
 use tb_core::{ButtonId, Chord};
 
@@ -16,6 +17,7 @@ use crate::shell::words;
 /// What the editor held when the default buttons were loaded.
 pub(crate) struct BeforeReset {
     config: Config,
+    conflict: Option<DiskVersion>,
     chord: Chord,
     selected: Option<ButtonId>,
     fields: Fields,
@@ -29,6 +31,8 @@ impl State {
         if self.reset.is_none() {
             self.reset = Some(BeforeReset {
                 config: self.config.clone(),
+                // An overwrite offered for the previous draft does not apply to the preset.
+                conflict: self.saving.conflict.take(),
                 chord: self.chord,
                 selected: self.selected.clone(),
                 fields: std::mem::take(&mut self.fields),
@@ -48,6 +52,7 @@ impl State {
     pub(crate) fn reset_cancel(&mut self) {
         let Some(before) = self.reset.take() else { return };
         self.config = before.config;
+        self.saving.conflict = before.conflict;
         self.chord = before.chord;
         self.selected = before.selected;
         self.fields = before.fields;
