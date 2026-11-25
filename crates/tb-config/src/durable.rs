@@ -1,6 +1,8 @@
 //! Directory helpers shared by the config file and the generation store: create a hierarchy so
 //! it survives a crash, and resolve a path through the symlinks of its existing ancestors.
 
+pub(crate) mod mounts;
+
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder, File};
 use std::io;

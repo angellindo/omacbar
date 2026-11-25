@@ -5,7 +5,8 @@ use std::path::Path;
 
 use rustix::fs::{CWD, fstat};
 
-use crate::durable::{is_inside, open_directory, same_inode};
+use crate::durable::mounts::Mounts;
+use crate::durable::{directory_prefix, is_inside, open_directory, same_inode};
 use sha2::{Digest, Sha256};
 
 use super::disk::write_new_atomically;
@@ -25,13 +26,15 @@ impl ConfigFile {
             return Err(invalid("save receipt would replace the config"));
         }
         if let Some(backups) = self.backups() {
-            match open_directory(CWD, backups.dir()) {
-                Ok(store) if is_inside(&dir, &fstat(&store)?)? => {
-                    return Err(invalid("save receipt would write inside the generation store"));
-                }
-                Ok(_) => {}
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e),
+            let (store, missing) = directory_prefix(backups.dir())?;
+            let mounts = Mounts::read()?;
+            let inside = missing.is_empty() && is_inside(&dir, &fstat(&store)?)?;
+            let store = mounts.tree(&store, &missing)?;
+            if inside || store.contains(&mounts.tree(&dir, &[])?) {
+                return Err(invalid("save receipt would write inside the generation store"));
+            }
+            if mounts.tree(&dir, &[name.to_os_string()])?.contains(&store) {
+                return Err(invalid("save receipt would occupy the generation store's path"));
             }
         }
         let receipt = serde_json::json!({"config": config, "sha256": format!("{:x}", Sha256::digest(bytes))});

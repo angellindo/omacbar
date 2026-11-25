@@ -100,6 +100,7 @@ impl Drop for Profile {
         SYNC_FAULT.take();
         EDIT.take();
         TEMP_FAULT.take();
+        write_identity::MOUNTS.take();
         let _ = fs::remove_dir_all(&self.root);
     }
 }
@@ -501,3 +502,6 @@ fn a_conflicting_absence_restore_keeps_the_config_and_reports_the_generation_bef
     assert!(p.config.parent().unwrap().is_dir());
     assert_eq!(retry.backups().unwrap().list(&p.config).unwrap().len(), 3);
 }
+
+#[path = "write_identity_regressions.rs"]
+pub(crate) mod write_identity;

@@ -2,6 +2,7 @@
 //! anchored to its file descriptor (`openat`, `mkdirat`, `renameat`), so a directory or symlink
 //! swapped in under its path afterwards is never read from or written into.
 
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -78,11 +79,14 @@ impl StoreDir {
     /// Creates the private store if needed, refusing untrusted directories as on reads.
     pub fn open_for_write(
         path: &Path,
-        check_parent: impl FnOnce(&OwnedFd) -> Result<(), BackupError>,
+        mut check_parent: impl FnMut(&OwnedFd, &[OsString]) -> Result<(), BackupError>,
     ) -> Result<Self, BackupError> {
         let uid = rustix::process::geteuid().as_raw();
-        let parent = open_owned_parent(path, uid, check_parent)?;
-        let fd = open_or_create_directory(&parent, path, DIR_FLAGS, 0o700, path, uid)?;
+        let parent = open_owned_parent(path, uid, &mut check_parent)?;
+        let name = path.file_name().ok_or_else(|| store_io(path, Errno::INVAL))?;
+        let fd = open_or_create_directory(&parent, path, DIR_FLAGS, 0o700, path, uid, || {
+            check_parent(&parent, &[name.to_os_string()])
+        })?;
         Self::checked(path, fd, uid)
     }
 
@@ -292,7 +296,7 @@ impl StoreDir {
 fn open_owned_parent(
     store: &Path,
     uid: u32,
-    check_parent: impl FnOnce(&OwnedFd) -> Result<(), BackupError>,
+    mut check_parent: impl FnMut(&OwnedFd, &[OsString]) -> Result<(), BackupError>,
 ) -> Result<OwnedFd, BackupError> {
     let mut ancestor = parent_of(store);
     let mut missing = Vec::new();
@@ -306,10 +310,17 @@ fn open_owned_parent(
             Err(e) => return Err(store_io(store, e)),
         }
     };
-    check_parent(&fd)?;
     check_owner(store, ancestor, rustix::fs::fstat(&fd).map_err(|e| store_io(store, e))?.st_uid, uid)?;
+    let mut remaining = std::iter::once(store)
+        .chain(missing.iter().copied())
+        .map(|path| path.file_name().map(OsString::from).ok_or_else(|| store_io(path, Errno::INVAL)))
+        .collect::<Result<Vec<_>, _>>()?;
     for dir in missing.into_iter().rev() {
-        fd = open_or_create_directory(&fd, dir, PATH_DIR_FLAGS | OFlags::NOFOLLOW, 0o777, store, uid)?;
+        fd =
+            open_or_create_directory(&fd, dir, PATH_DIR_FLAGS | OFlags::NOFOLLOW, 0o777, store, uid, || {
+                check_parent(&fd, &remaining)
+            })?;
+        remaining.pop();
     }
     Ok(fd)
 }
@@ -321,12 +332,14 @@ fn open_or_create_directory(
     mode: u32,
     store: &Path,
     uid: u32,
+    before_create: impl FnOnce() -> Result<(), BackupError>,
 ) -> Result<OwnedFd, BackupError> {
     let name = dir.file_name().ok_or_else(|| store_io(store, Errno::INVAL))?;
     let open = || rustix::fs::openat(parent, name, flags, Mode::empty());
     let fd = match open() {
         Ok(fd) => fd,
         Err(Errno::NOENT) => {
+            before_create()?;
             match rustix::fs::mkdirat(parent, name, Mode::from_raw_mode(mode)) {
                 Ok(()) | Err(Errno::EXIST) => {}
                 Err(e) => return Err(store_io(store, e)),

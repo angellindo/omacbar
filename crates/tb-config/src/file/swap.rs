@@ -84,7 +84,7 @@ impl Protected<'_> {
         let path = self.file.path();
         let dir = dir_of(path);
         let (ancestor, missing) = directory_prefix(dir).map_err(|e| io_at(dir, e))?;
-        self.backups.check_config_directory(dir, &ancestor, missing.is_empty(), self.locked)?;
+        self.backups.check_config_directory(dir, &ancestor, &missing, self.locked)?;
         let mut created = CreatedDirs::default();
         let (lock, kept_absence) = if missing.is_empty() {
             let fd =
@@ -105,9 +105,9 @@ impl Protected<'_> {
                 recheck,
             )?;
             let open = || {
-                self.backups.check_config_directory(dir, &ancestor, false, self.locked)?;
+                self.backups.check_config_directory(dir, &ancestor, &missing, self.locked)?;
                 let fd = created.create(ancestor, missing).map_err(|e| io_at(dir, e))?;
-                self.backups.check_config_directory(dir, &fd, true, self.locked)?;
+                self.backups.check_config_directory(dir, &fd, &[], self.locked)?;
                 DirLock::from_dir(fd).map_err(|e| io_at(dir, e))
             };
             (open().map_err(|e| after_keep(e, Some(id)))?, Some(id))
@@ -175,7 +175,7 @@ impl Protected<'_> {
         let path = self.file.path();
         let dir = dir_of(path);
         let fd = lock.fd();
-        self.backups.check_config_directory(dir, fd, true, self.locked)?;
+        self.backups.check_config_directory(dir, fd, &[], self.locked)?;
         if !still_named(dir, fd).map_err(|e| io_at(dir, e))? {
             return Err(io_at(dir, io::Error::other("the config directory changed during the write")));
         }
