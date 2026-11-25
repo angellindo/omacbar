@@ -13,8 +13,10 @@ mod support {
 }
 
 use std::fs::{self, OpenOptions, Permissions};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt, symlink};
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::{FileTypeExt, OpenOptionsExt, PermissionsExt, symlink};
 use std::os::unix::net::UnixListener;
+use std::path::Path;
 use std::sync::mpsc::channel;
 use std::thread;
 use std::time::Duration;
@@ -126,11 +128,25 @@ const fn libc_nonblock() -> i32 {
     0o4000
 }
 
+/// Binds a Unix socket at `path` itself. `bind` takes at most 108 bytes (SUN_LEN) and the profile
+/// lives under cargo's temp dir, which a checkout at a long path pushes past that; so the socket is
+/// bound through `/proc/self/fd/<n>/<name>`, a short name for the same directory held open.
+fn bind_at(path: &Path) -> UnixListener {
+    let dir = fs::File::open(path.parent().unwrap()).unwrap();
+    let short = Path::new("/proc/self/fd").join(dir.as_raw_fd().to_string()).join(path.file_name().unwrap());
+    UnixListener::bind(short).unwrap()
+}
+
 #[test]
 fn a_socket_or_a_directory_at_the_config_path_is_refused() {
     let p = Profile::new(SUITE, "socket");
     fs::create_dir_all(p.config.parent().unwrap()).unwrap();
-    let _listener = UnixListener::bind(&p.config).unwrap();
+    let _listener = bind_at(&p.config);
+    assert!(
+        fs::symlink_metadata(&p.config).unwrap().file_type().is_socket(),
+        "no socket at {}",
+        p.config.display()
+    );
     let before = snapshot(&p.dir);
     let (config, store) = (p.config.clone(), p.store.clone());
     let socket = within_wait(move || ConfigFile::protected(&config, Backups::at(&store)).load(&theme()));

@@ -443,3 +443,28 @@ the caller's state directory. It changes no input, theme fixture or expectation.
 integration, `git diff 3285da1 b0de64b` over those files plus `configurator_selected_theme.rs`
 removes 0 lines and adds 7 `env_remove` lines. Against b1ce152, the only removals (including two
 `assert` lines) are exactly TB-46's own changes already on 3285da1. No assertion was dropped.
+
+# Amendment of slice 1: QA-19 socket setup below SUN_LEN (integrated branch, base 27a5519)
+
+Seal `sha256:8e999ff4…`, its manifest, evidence, these notes and the frozen
+`config_generation_refusals.rs` are archived locally byte for byte (`SHA256SUMS`) in
+`.scratch/TB-48/qa/sunlen-respec/archive/`; no final record existed for that seal on this branch.
+Slices 2–4 and TB-46 slice 1 are not re-sealed.
+
+Superseded, and only this: the setup of QA-19
+(`a_socket_or_a_directory_at_the_config_path_is_refused`, `config_generation_refusals.rs`). It
+bound the socket with `UnixListener::bind(<config path>)`; the path sits under
+`CARGO_TARGET_TMPDIR`, so a checkout at a long path with the default `target/` gives more than 108
+bytes and `bind` panics ("path must be shorter than SUN_LEN") before any product code runs. That
+made `check.sh` red on such a checkout and made QA-19's result depend on where the target dir is.
+Now `bind_at` opens the config directory and binds `/proc/self/fd/<n>/config.toml`: a short name
+for the same directory, so the socket is created at the config path itself and the product sees
+exactly the same path as before. A new assertion checks that the config path is a socket before
+the load. The refusal (`ConfigFileError::Unsupported`), the unchanged snapshot of the profile
+(config, store, originals) and the directory half of the case are byte-identical. The manifest,
+every other frozen file and every other case are unchanged.
+
+A product that accepts a socket at the config path keeps QA-19 red: with `probe` and
+`version_followed` treating a socket as absent, the load returns `Ok(WroteDefault)` and the
+`is_unsupported` assertion fails. The new seal's red run is on f3d8ec2 (the slice 1 contract
+commit), as for the earlier seals.
