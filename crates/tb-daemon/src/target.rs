@@ -104,6 +104,20 @@ impl SysfsDir {
         Ok(PathBuf::from(OsStr::from_bytes(link.to_bytes())))
     }
 
+    pub(crate) fn read_usb_id(&self, name: &str) -> Result<String, TargetError> {
+        let id = self.read(name)?;
+        if id.len() != 4 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(TargetError::Io {
+                path: self.path.join(name),
+                source: io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "expected a four-digit hexadecimal USB ID",
+                ),
+            });
+        }
+        Ok(id)
+    }
+
     pub(crate) fn read_hex(&self, name: &str) -> Result<u16, TargetError> {
         u16::from_str_radix(&self.read(name)?, 16).map_err(|source| TargetError::Io {
             path: self.path.join(name),

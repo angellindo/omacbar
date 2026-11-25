@@ -16,9 +16,9 @@
 //!
 //! A tap runs its button's action (ADR-0011, ADR-0012). `--emit uinput` presses keys on a
 //! virtual keyboard named `touchbard`; `--emit PATH` writes the same `input_event` records to
-//! PATH instead. Without `--emit`, or when the keyboard cannot be made, the reason is logged and
-//! each tapped key action logs that nothing was pressed. Commands run through `sh -c`, detached;
-//! their failures are logged. No action failure stops the bar.
+//! a regular file. If emission is unavailable, the reason is logged and each tapped key action
+//! logs that nothing was pressed. Commands run through `sh -c`, detached. Their failures are
+//! logged. No action failure stops the bar.
 //!
 //! `--drm auto|PATH` uses the validated Touch Bar card instead of the simulator. `--touch
 //! auto|PATH` uses the validated digitizer instead of stdin. A hardware run restores the

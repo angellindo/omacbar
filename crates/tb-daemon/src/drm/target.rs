@@ -16,8 +16,8 @@ const CARD_PREFIX: &str = "/dev/dri/card";
 const DRI_DIR: &str = "/dev/dri";
 
 /// `auto`: the one Touch Bar card among `sysfs/class/drm/card*`. Connector (`cardN-*`) and render
-/// (`renderD*`) entries are never considered; a card that is not the T1 bar is skipped without
-/// opening anything. No match is `NotFound`, more than one is `Ambiguous` (never a guess).
+/// (`renderD*`) entries are never considered. Known foreign and unbound cards are skipped.
+/// Indeterminate identity aborts discovery. No match is `NotFound`; multiple matches are `Ambiguous`.
 pub fn find_touch_bar_card(sysfs: &Path) -> Result<PathBuf, TargetError> {
     let class = sysfs.join("class/drm");
     let entries =
@@ -26,8 +26,17 @@ pub fn find_touch_bar_card(sysfs: &Path) -> Result<PathBuf, TargetError> {
     for entry in entries {
         let entry = entry.map_err(|source| TargetError::Io { path: class.clone(), source })?;
         let Some(name) = entry.file_name().to_str().map(str::to_owned) else { continue };
-        if is_card_name(&name) && identify(sysfs, &name).is_ok() {
-            found.push(Path::new(DRI_DIR).join(&name));
+        if !is_card_name(&name) {
+            continue;
+        }
+        match identify(sysfs, &name) {
+            Ok(_) => found.push(Path::new(DRI_DIR).join(&name)),
+            Err(
+                TargetError::Unbound { .. }
+                | TargetError::WrongDriver { .. }
+                | TargetError::WrongDevice { .. },
+            ) => {}
+            Err(error) => return Err(error),
         }
     }
     found.sort();
@@ -99,9 +108,9 @@ fn identify(sysfs: &Path, name: &str) -> Result<SysfsDir, TargetError> {
         return Err(TargetError::WrongDriver { driver });
     }
     let usb = interface.child("..")?;
-    let vendor = usb.read("idVendor")?;
-    let product = usb.read("idProduct")?;
-    if (vendor.as_str(), product.as_str()) != (T1_VENDOR, T1_PRODUCT) {
+    let vendor = usb.read_usb_id("idVendor")?;
+    let product = usb.read_usb_id("idProduct")?;
+    if !vendor.eq_ignore_ascii_case(T1_VENDOR) || !product.eq_ignore_ascii_case(T1_PRODUCT) {
         return Err(TargetError::WrongDevice { vendor, product });
     }
     Ok(card)

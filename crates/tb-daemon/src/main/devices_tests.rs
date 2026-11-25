@@ -9,6 +9,9 @@ use super::*;
 use tb_daemon::NodeId;
 use tb_daemon::fake::{FlatRenderer, KmsCall, KmsStep, RecordingKms};
 
+#[path = "devices_tests/regressions.rs"]
+mod regressions;
+
 #[test]
 fn drm_without_a_digitizer_presents_and_restores_at_stdin_eof() {
     let root = fake_card("stdin-eof");
@@ -79,22 +82,35 @@ fn fake_card(label: &str) -> PathBuf {
 }
 
 fn run_drm_with_stdin(root: &Path, kms: RecordingKms, input: PipeReader) -> Result<(), String> {
+    let args = parse_args(["--drm", "auto"].map(str::to_owned).into_iter()).unwrap();
+    run_with_devices(root, args, Some(kms), input, None)
+}
+
+fn run_with_devices(
+    root: &Path,
+    args: Args,
+    kms: Option<RecordingKms>,
+    input: impl AsFd + Send + 'static,
+    stop: Option<StopSignals>,
+) -> Result<(), String> {
     let devices = Devices::<_, LineTouches<io::Cursor<Vec<u8>>>> {
         sysfs: root.join("sys"),
         input_devices: root.join("unused"),
         open_card: Box::new(move |path| {
             assert_eq!(path, Path::new("/dev/dri/card1"));
-            Ok((kms, NodeId { major: 226, minor: 1, char_device: true }))
+            Ok((
+                kms.expect("startup must not open a card"),
+                NodeId { major: 226, minor: 1, char_device: true },
+            ))
         }),
         open_touch: Box::new(|_| panic!("--drm without --touch must read stdin")),
     };
-    let args = parse_args(["--drm", "auto"].map(str::to_owned).into_iter()).unwrap();
     run_hardware_with(
         args,
         Some(&root.join("home")),
         || Ok(FlatRenderer),
         devices,
-        None,
+        stop,
         HardwareInput { stdin: input, workers: Workers::new().unwrap(), join_digitizer: false },
     )
 }

@@ -149,7 +149,9 @@ where
         if let Some(touch) = digitizer {
             start_touches(touch, &tx, &mut workers, join_digitizer)?;
         } else {
-            let lines = LineTouches::new(BufReader::new(StopRead(stdin, workers.stop_reader())));
+            let stdin = StopRead::inherited(stdin, workers.stop_reader())
+                .map_err(|e| format!("cannot prepare stdin: {e}"))?;
+            let lines = LineTouches::new(BufReader::new(stdin));
             start_touches(lines, &tx, &mut workers, true)?;
         }
         let theme = follow_keys_and_theme(args.keys, home, &tx, &mut workers);

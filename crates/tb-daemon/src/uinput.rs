@@ -5,6 +5,7 @@
 use std::ffi::c_int;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use rustix::ioctl::{IntegerSetter, NoArg, Opcode, Setter, ioctl, opcode};
@@ -74,9 +75,11 @@ impl<W: Write> VirtualKeyboard<W> {
 }
 
 impl VirtualKeyboard<File> {
-    /// Writes the records to `path`, created or truncated (`--emit PATH`); no directory is made.
+    /// Writes records to a regular file, created or truncated (`--emit PATH`); no directory is made.
     pub fn record_to(path: &Path) -> Result<Self, EmitError> {
-        File::create(path).map(Self::new).map_err(|source| EmitError::Open { path: path.to_owned(), source })
+        open_recording(path)
+            .map(Self::new)
+            .map_err(|source| EmitError::Open { path: path.to_owned(), source })
     }
 
     /// Creates the uinput keyboard `touchbard`, able to press every [`Key`] (`--emit uinput`).
@@ -90,6 +93,22 @@ impl VirtualKeyboard<File> {
         set_up(&file).map_err(|e| EmitError::Setup(e.into()))?;
         Ok(Self::new(file))
     }
+}
+
+fn open_recording(path: &Path) -> io::Result<File> {
+    // A FIFO can block in open before the daemon can handle a stop. Inspect the opened file
+    // before truncating it, so replacing the path cannot redirect the check to another inode.
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "recording requires a regular file"));
+    }
+    file.set_len(0)?;
+    Ok(file)
 }
 
 /// `UI_SET_EVBIT`, `UI_SET_KEYBIT` per key, `UI_DEV_SETUP`, `UI_DEV_CREATE` on an open `/dev/uinput`.

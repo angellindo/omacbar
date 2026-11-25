@@ -24,7 +24,7 @@ tb-config.workspace = true
 tb-render.workspace = true
 rune.workspace = true
 # `mm`: the KMS dumb-buffer mapping (ADR-0014); rustix 1.1.6 is already locked.
-rustix = { workspace = true, features = ["event", "mm"] }
+rustix = { workspace = true, features = ["event", "mm", "net", "pipe"] }
 thiserror.workspace = true
 
 [dev-dependencies]
