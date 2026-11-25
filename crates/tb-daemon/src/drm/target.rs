@@ -38,6 +38,11 @@ pub fn find_touch_bar_card(sysfs: &Path) -> Result<PathBuf, TargetError> {
     }
 }
 
+/// Checks only the spelling of a card path, without reading sysfs.
+pub fn validate_card_path(card: &Path) -> Result<(), TargetError> {
+    card_name(card).map(drop)
+}
+
 /// An explicit `card`: it must be lexically `/dev/dri/card<digits>` (checked before sysfs is read)
 /// and sysfs must name it the Touch Bar card. Returns `card` unchanged.
 pub fn check_touch_bar_card(sysfs: &Path, card: &Path) -> Result<PathBuf, TargetError> {

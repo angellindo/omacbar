@@ -22,3 +22,10 @@ capabilities without querying a device's unique identifier. [Linux v6.15 evdev i
 Tests exercise discovery, calibration and MT-B reports with synthetic inputs and the descriptor
 boundary with an ordinary file. Verifying the real ioctl success path and orientation requires
 the T1 hardware.
+
+Device runs block SIGHUP, SIGINT and SIGTERM before GPU initialization or worker creation.
+A dedicated `sigwait` thread receives those signals, so no signal handler touches daemon state.
+Closing a shutdown pipe wakes the daemon's file-descriptor readers and inotify watches so they
+can release their descriptors. The `stop_signals.rs` boundary uses libc for masking, waiting
+and waking the signal thread. Only a tapped command's child restores the caller's original
+signal mask before exec.

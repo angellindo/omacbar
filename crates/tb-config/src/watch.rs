@@ -8,10 +8,11 @@
 use std::ffi::OsString;
 use std::io;
 use std::mem::MaybeUninit;
-use std::os::fd::OwnedFd;
+use std::os::fd::{BorrowedFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
+use rustix::event::{PollFd, PollFlags, poll};
 use rustix::fs::inotify::{self, CreateFlags, ReadFlags, Reader, WatchFlags};
 
 use crate::file::{ConfigFile, ConfigFileError, dir_of};
@@ -43,7 +44,12 @@ impl ConfigWatch {
     /// Changes read together count once. Other files in the directory and deletions are not
     /// changes. The directory going away ends the watch (`WatchEnded`).
     pub fn next_change(&mut self) -> Result<(), ConfigFileError> {
-        self.dirs.next_change().map_err(|e| match e {
+        self.next_change_until(None).map(|_| ())
+    }
+
+    /// Waits for a config change or for `stop` to become readable or close. False means stop.
+    pub fn next_change_until(&mut self, stop: Option<BorrowedFd<'_>>) -> Result<bool, ConfigFileError> {
+        self.dirs.next_change_until(stop).map_err(|e| match e {
             WatchFailure::Io { dir, source } => ConfigFileError::Io { path: dir, source },
             WatchFailure::Ended { dir } => ConfigFileError::WatchEnded { dir },
         })
@@ -98,15 +104,27 @@ impl DirWatch {
     /// Blocks until one of the watched names changed; changes read together count once. A queue
     /// overflow may have dropped such a change, so it counts as one. A watched directory going
     /// away ends the watch, naming it.
-    pub(crate) fn next_change(&mut self) -> Result<(), WatchFailure> {
+    pub(crate) fn next_change_until(&mut self, stop: Option<BorrowedFd<'_>>) -> Result<bool, WatchFailure> {
+        let io_error = |e| WatchFailure::Io {
+            dir: self.dirs.first().map(|w| w.dir.clone()).unwrap_or_default(),
+            source: io::Error::from(e),
+        };
         let mut buf = [MaybeUninit::<u8>::uninit(); EVENT_BUFFER];
         let mut reader = Reader::new(&self.inotify, &mut buf);
         let mut changed = false;
         loop {
-            let event = reader.next().map_err(|e| WatchFailure::Io {
-                dir: self.dirs.first().map(|w| w.dir.clone()).unwrap_or_default(),
-                source: io::Error::from(e),
-            })?;
+            if reader.is_buffer_empty()
+                && let Some(ref stop) = stop
+            {
+                let mut fds = [PollFd::new(stop, PollFlags::IN), PollFd::new(&self.inotify, PollFlags::IN)];
+                match poll(&mut fds, None) {
+                    Ok(_) if !fds[0].revents().is_empty() => return Ok(false),
+                    Ok(_) => {}
+                    Err(rustix::io::Errno::INTR) => continue,
+                    Err(error) => return Err(io_error(error)),
+                }
+            }
+            let event = reader.next().map_err(io_error)?;
             let flags = event.events();
             let watched = self.dirs.iter().find(|w| w.wd == event.wd());
             if flags.contains(ReadFlags::IGNORED) {
@@ -120,7 +138,7 @@ impl DirWatch {
                     .zip(event.file_name())
                     .is_some_and(|(w, name)| w.names.iter().any(|n| n.as_bytes() == name.to_bytes()));
             if changed && reader.is_buffer_empty() {
-                return Ok(());
+                return Ok(true);
             }
         }
     }

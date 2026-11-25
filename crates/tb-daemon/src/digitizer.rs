@@ -44,6 +44,11 @@ pub fn check_digitizer(devices: &str, node: &Path) -> Result<PathBuf, TargetErro
         .ok_or_else(|| TargetError::NotADigitizer { path: node.to_owned() })
 }
 
+/// Checks only the spelling of an event path, without reading device information.
+pub fn validate_digitizer_path(node: &Path) -> Result<(), TargetError> {
+    event_name(node).map(drop)
+}
+
 fn event_name(node: &Path) -> Result<&str, TargetError> {
     node.to_str()
         .and_then(|p| p.strip_prefix(DEV_INPUT))
@@ -216,6 +221,16 @@ pub fn open_digitizer(
     node: &Path,
     profiles: &[DigitizerProfile],
 ) -> Result<EvdevTouches<File>, DigitizerError> {
+    open_digitizer_with(sysfs, node, profiles, |file| file)
+}
+
+/// Like [`open_digitizer`], with a reader wrapper that owns the verified and grabbed file.
+pub fn open_digitizer_with<R: io::Read>(
+    sysfs: &Path,
+    node: &Path,
+    profiles: &[DigitizerProfile],
+    wrap: impl FnOnce(File) -> R,
+) -> Result<EvdevTouches<R>, DigitizerError> {
     event_name(node)?;
     let error = |operation, source| DigitizerError::Device { operation, path: node.to_owned(), source };
     let opened = DigitizerNode::open(node).map_err(|source| error("open", source))?;
@@ -226,7 +241,7 @@ pub fn open_digitizer(
         return Err(DigitizerError::unverified(&meta));
     }
     let calibration = calibrate(&meta, profiles, BarSize::MACBOOK_PRO.width)?;
-    let reader = opened.grab().map_err(|source| {
+    let reader = opened.grab().map(wrap).map_err(|source| {
         if source.raw_os_error() == Some(rustix::io::Errno::BUSY.raw_os_error()) {
             DigitizerError::Busy
         } else {
