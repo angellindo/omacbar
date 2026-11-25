@@ -23,6 +23,8 @@ thiserror = "2"
 png = "0.17"
 # Safe inotify for the config watch (ADR-0007); already locked via Rune's deps.
 rustix = { version = "1.1", features = ["fs"] }
+# Hash of kept config generations (ADR-0015); already locked via Rune's deps.
+blake3 = { version = "1.8", default-features = false }
 
 # Rune's own crates.io patches do not propagate to apps that depend on it.
 # Use the same public Git revision for Rune and these patches, and update them together.

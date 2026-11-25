@@ -69,6 +69,8 @@ impl Touchbard {
         let child = Command::new(env!("CARGO_BIN_EXE_touchbard"))
             .args(["--sim", sim.to_str().unwrap()])
             .env("HOME", home)
+            // The generation store follows HOME, inside the temp home, never the caller's state.
+            .env_remove("XDG_STATE_HOME")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())

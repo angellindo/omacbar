@@ -44,6 +44,8 @@ fn touchbard(args: &[&str]) -> Command {
         .env_remove("DISPLAY")
         .env("XDG_RUNTIME_DIR", scratch("runtime"))
         .env("HOME", scratch("home"))
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());

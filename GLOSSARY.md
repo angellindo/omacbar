@@ -160,6 +160,29 @@ the configurator read it. Nothing is written; the user reloads the file or overw
 keeps the replaced file as a backup (ADR-0013).
 _Avoid_: merge, collision, race (for the user-facing refusal)
 
+**Generation**:
+A private, verified copy of what one write of the config replaced: the exact bytes and permission
+bits of the file, or the fact that no file (and whether no directory) was there. Kept before every
+write by the configurator or the daemon, in `$XDG_STATE_HOME/touchbar-customizer/backups/`
+(else `~/.local/state/...`), never deleted automatically (ADR-0015).
+_Avoid_: backup (the `.bak` next to the config from an overwrite), snapshot (a rendered image), version
+
+**Factory reset**:
+Loading the default buttons (the preset layout for the active theme) into the configurator as a
+draft. It changes only the editor and its preview, keeps the config's theme source and version,
+and can be cancelled back to the exact draft before it. Saving it keeps a `factory-reset`
+generation of the file it replaces. Not a restore of the user's own file, and not the physical
+return to the firmware key row.
+_Avoid_: restore, restore defaults (ambiguous), reset (for the hardware return)
+
+**Restore**:
+Writing a chosen generation back over the config file, exactly (bytes and permission bits),
+through the guarded write: the file it replaces is kept first as a `recover` generation, so a
+restore can itself be undone. Done from the configurator (newest five, only with nothing pending)
+or with `touchbar-recover` (every generation, with no display or valid config). Not a factory
+reset, and not the physical return to the firmware key row.
+_Avoid_: recover (for the user action; `recover` names the generation's reason), rollback, undo
+
 **Save receipt**:
 The config path and SHA-256 of the bytes written by a confirmed explicit save. A rehearsal requests
 it at a fresh path and uses the digest as the expectation for restoring the captured config.

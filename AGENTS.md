@@ -35,8 +35,10 @@ buttons per Fn + modifier layer. This is a POC/MVP to prove viability; scope is 
 - All gates: `scripts/check.sh` (fmt, clippy `-D warnings`, tests, file size). Must exit 0 before review.
 - Fast loop: `cargo test -p tb-core`.
 - Look at it: `TB_WRITE_SNAPSHOTS=1 cargo test -p tb-render --test functional` → `out/default-layer.png`;
-  `HOME=$(mktemp -d) cargo run -p tb-app -- --snap out/app.png [--scene <name>]` (startup writes a
-  default config into `HOME`); `cargo run -p tb-app` for the window.
+  `h=$(mktemp -d); HOME=$h XDG_STATE_HOME=$h/state cargo run -p tb-app -- --snap out/app.png [--scene <name>]`
+  (startup writes a default config into `HOME` and a generation into that state dir; never run a
+  binary with only `HOME` set, it would keep generations in the real state dir);
+  `scripts/try-app.sh` for the windows in an isolated session.
 - Contract gate: `scripts/pipeline-gate.py TB-<n> --slice N [--stamp|--final]`.
 - Shared laptop (another heavy job running): prefix heavy runs with
   `nice -n 19 env CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2`, one at a time; pause above 85 °C (`sensors`).

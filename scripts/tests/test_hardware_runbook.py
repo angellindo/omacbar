@@ -128,12 +128,28 @@ class HardwareRunbook(unittest.TestCase):
         self.assertIn("no-go", body.lower())
 
     def test_reset_personal_restore_and_key_mode_are_three_things(self):
-        lower = self.text.lower()
-        for phrase in ("factory-default", "personal", "key mode"):
-            self.assertTrue(any(phrase in h.lower() for h in self.sections), f"heading for {phrase}")
-        self.assertRegex(lower, r"not (implemented|built)")
+        found = {}
+        for phrase in ("factory-default", "personal", "physical return to key mode"):
+            hits = [h for h in self.sections if phrase in h.lower()]
+            self.assertTrue(hits, f"heading for {phrase}")
+            found[phrase] = self.sections[hits[0]].lower()
+        reset, personal, physical = found["factory-default"], found["personal"], found["physical return to key mode"]
+        # The factory reset ships (TB-48): stated as the configurator's own draft-only action.
+        self.assertIn("load default buttons", reset, "the configurator action is named")
         for word in ("draft", "preview", "cancel", "recoverable copy", "compare-and-swap"):
-            self.assertIn(word, lower)
+            self.assertIn(word, reset)
+        self.assertNotRegex(reset, r"not (yet )?(implemented|built)|follow-up", "it is no longer future work")
+        # Restoring a personal copy ships too: a verified generation, the terminal tool, on a profile.
+        for word in ("generation", "touchbar-recover", "rehearsal.py restore"):
+            self.assertIn(word, personal)
+        self.assertRegex(personal, r"physical[^\n]*\bs2\b[^\n]*\bs3\b", "the physical check stays in S2/S3")
+        # The physical return stays apart from both and unverified: no config tool stands in for it.
+        for word in ("generation", "touchbar-recover", "load default", "restore"):
+            self.assertNotIn(word, physical, f"{word} is not a physical return")
+        self.assertRegex(physical, r"firmware key row on the panel")
+        self.assertRegex(self.text.lower(), r"physical return to config(uration)? 1[^\n]*unverified")
+        resumen = self.sections["## Resumen para el usuario"].lower()
+        self.assertRegex(resumen, r"retorno físico[^.]*no está comprobado")
 
     def test_physical_facts_are_cited_and_nothing_private_is_inlined(self):
         for research in ("0007", "0010"):

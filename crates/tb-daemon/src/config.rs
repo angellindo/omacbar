@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::thread;
 
-use tb_config::{ConfigFile, ConfigFileError, default_path};
+use tb_config::{Backups, ConfigFile, ConfigFileError, default_path};
 use tb_core::config::{Config, ThemeSource};
 use tb_core::{BarTheme, Layout};
 use tb_daemon::Event;
@@ -20,12 +20,17 @@ pub(super) struct ConfigState {
 impl ConfigState {
     /// A failed startup load keeps the default config and active theme. Without HOME the
     /// bundled theme/default layout remain available and no guessed config path is touched.
-    pub(super) fn start(home: Option<&Path>, active: BarTheme, events: &Sender<Message>) -> Self {
-        let mut state = Self {
-            file: home.map(|home| ConfigFile::new(default_path(home))),
-            theme: active.clone(),
-            active,
-        };
+    /// The file is protected by `backups` (ADR-0015): the default written for a missing file is
+    /// preceded by a generation recording the absence.
+    pub(super) fn start(
+        home: Option<&Path>,
+        backups: Option<Backups>,
+        active: BarTheme,
+        events: &Sender<Message>,
+    ) -> Self {
+        let file =
+            home.zip(backups).map(|(home, backups)| ConfigFile::protected(default_path(home), backups));
+        let mut state = Self { file, theme: active.clone(), active };
         let Some(file) = &mut state.file else {
             log::error(
                 "HOME is not set: config loading and changes are not followed; showing the default config",

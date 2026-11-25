@@ -43,6 +43,8 @@ fn run_touchbard(home: &Path, sim: &Path) -> Output {
     let out = Command::new(env!("CARGO_BIN_EXE_touchbard"))
         .args(["--sim", sim.to_str().unwrap()])
         .env("HOME", home)
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -57,6 +59,8 @@ fn probe(home: &Path) -> String {
         .args(["--check", "config", "--home"])
         .arg(home)
         .env("HOME", home)
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
         .output()
@@ -210,6 +214,7 @@ fn the_simulated_fn_ctrl_layer_draws_the_first_run_lock_in_the_idle_roles_under_
     let mut bar = Command::new(env!("CARGO_BIN_EXE_touchbard"))
         .args(["--sim", sim.to_str().unwrap(), "--keys", keys.to_str().unwrap()])
         .env("HOME", &home)
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

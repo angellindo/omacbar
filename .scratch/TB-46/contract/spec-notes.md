@@ -1,5 +1,46 @@
 # TB-46 slice 1 · contract notes (QA spec) · re-spec 2 (save receipt)
 
+## Re-spec 3: integration with TB-48 protected writes (narrow supersession)
+
+Integration candidate `b0de64b` (parents `b1ce152` TB-48, `3285da1` TB-46/main). The seal
+`sha256:c56950dc…` (re-spec 2), its manifest, evidence, final record (PASS on 3285da1) and these
+notes as they were are archived byte for byte in `.scratch/TB-46/qa-respec-3/archive-cycle-2/`
+(`SHA256SUMS`). That final stays valid for 3285da1; it does not hold for the integrated product.
+The live evidence keeps every earlier run, including the failing gate run at b0de64b.
+
+Superseded, and only this: TB-48 makes the configurator refuse to write through, or replace, a
+symlinked config. So the fifth `run` scenario can no longer be a save with a receipt; it is an
+explicit refusal. Same files, same checks; the manifest changed only in `reason`.
+
+- `test_rehearsal_run.py`: the fakes now behave like the integrated binaries: a private generation
+  in `<state>/touchbar-customizer/backups` before every config write (first default and save), and
+  a save over a symlinked config refused with the symbolic-link wording, the draft kept, nothing
+  written, no receipt. Nominal run: four saves with receipts, each settled with its own hash; the
+  fifth attempt refused with its receipt path left absent; the link text and target bytes unchanged
+  after the run; the daemon ran once on a regular config holding the mark command (the simulator's
+  own), and the original link is back afterwards. Cleanup: every generation and a third-party file
+  beside them kept byte for byte, an owned artifact changed after the run kept, the foreign file
+  kept, the run's own unchanged artifacts removed; nothing else left in the profile.
+- `target` injection moved from "reopen after a save through the link" (no longer reachable) to the
+  simulator step: the refusal arms it, and a third party edits the old link target while the
+  daemon runs on the simulator's regular config. The run must fail, the edit must survive the run
+  and cleanup, and the original target bytes must still be held in the run's store. Still a real
+  third-party edit, not a nominal case.
+- New in `SaveReceipt`: `link-saved` (an unprotected save replaces the link and writes a valid
+  receipt), `link-other-refusal` (the link save refused for a theme issue, not as a symbolic link),
+  `refuse-regular` (a regular save refused with the symbolic-link wording, no receipt). All must
+  fail the run. `no-receipt` and `bad-receipt` stay as they were: a missing or malformed receipt on
+  a regular save still fails.
+- `test_hardware_runbook.py`, `test_reset_personal_restore_and_key_mode_are_three_things` only: the
+  factory reset section names **Load default buttons**, draft, preview, cancel, recoverable copy and
+  compare-and-swap, and no longer says "not implemented" or "follow-up"; the personal restore names
+  a generation, `touchbar-recover` and `rehearsal.py restore`, and puts the physical check in S2/S3;
+  the physical-return section names no config tool, and the runbook and its summary keep the
+  physical return to config 1 unverified. Every other runbook test (physical stages, owners, B → A,
+  pinned driver inputs, limits) is unchanged.
+
+Red/green: `.scratch/TB-48/integration/qa-amend/RECEIPT.md`.
+
 Mode `tooling`. Checks: `tests` (`test_rehearsal*.py`) and `runbook` (`test_hardware_runbook.py`).
 `--final` runs `scripts/check.sh`, which already runs every `scripts/tests/test_*.py`.
 

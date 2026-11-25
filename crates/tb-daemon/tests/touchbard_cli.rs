@@ -28,6 +28,8 @@ fn run(args: &[&str], stdin: &str) -> Output {
     let mut child = touchbard()
         .args(args)
         .env("HOME", &home)
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

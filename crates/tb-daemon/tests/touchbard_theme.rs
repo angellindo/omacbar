@@ -43,6 +43,8 @@ fn run_touchbard(home: &Path, sim: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_touchbard"))
         .args(["--sim", sim.to_str().unwrap()])
         .env("HOME", home)
+        // The generation store follows HOME, inside the temp home, never the caller's state.
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
