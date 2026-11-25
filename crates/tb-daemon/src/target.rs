@@ -1,10 +1,13 @@
 //! Opened node identity and sysfs attributes shared by the device adapters.
 
+use std::ffi::OsStr;
 use std::fs::File;
-use std::io;
+use std::io::{self, Read};
+use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::FileType;
+use rustix::fs::{self, AtFlags, CWD, FileType, Mode, OFlags};
 use thiserror::Error;
 
 /// The upstream DRM driver of the Touch Bar panel. That the patched T1 driver keeps this name is
@@ -58,17 +61,69 @@ pub enum TargetError {
     Io { path: PathBuf, source: io::Error },
 }
 
-/// A short sysfs attribute, trimmed. Attributes are a few bytes; more than 64 is refused.
-pub(crate) fn read_trimmed(path: &Path) -> Result<String, TargetError> {
-    let io_err = |source| TargetError::Io { path: path.to_owned(), source };
-    let text = std::fs::read_to_string(path).map_err(io_err)?;
-    if text.len() > 64 {
-        return Err(io_err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "sysfs attribute longer than 64 bytes",
-        )));
+/// Pins a sysfs directory so later lookups cannot follow a replacement at its original path.
+pub(crate) struct SysfsDir {
+    fd: OwnedFd,
+    path: PathBuf,
+}
+
+impl SysfsDir {
+    pub(crate) fn open(path: &Path) -> Result<Self, TargetError> {
+        Self::open_at(CWD, path, path.to_owned())
     }
-    Ok(text.trim().to_owned())
+
+    pub(crate) fn child(&self, name: &str) -> Result<Self, TargetError> {
+        Self::open_at(&self.fd, Path::new(name), self.path.join(name))
+    }
+
+    fn open_at(base: impl AsFd, name: &Path, path: PathBuf) -> Result<Self, TargetError> {
+        match fs::openat(base, name, OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC, Mode::empty()) {
+            Ok(fd) => Ok(Self { fd, path }),
+            Err(source) => Err(TargetError::Io { path, source: source.into() }),
+        }
+    }
+
+    pub(crate) fn read(&self, name: &str) -> Result<String, TargetError> {
+        let at = |source| TargetError::Io { path: self.path.join(name), source };
+        let flags = OFlags::RDONLY | OFlags::CLOEXEC;
+        let fd = fs::openat(&self.fd, name, flags, Mode::empty()).map_err(|e| at(e.into()))?;
+        let mut text = String::new();
+        File::from(fd).take(65).read_to_string(&mut text).map_err(at)?;
+        if text.len() > 64 {
+            return Err(at(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "sysfs attribute longer than 64 bytes",
+            )));
+        }
+        Ok(text.trim().to_owned())
+    }
+
+    pub(crate) fn link(&self, name: &str) -> Result<PathBuf, TargetError> {
+        let link = fs::readlinkat(&self.fd, name, Vec::new())
+            .map_err(|source| TargetError::Io { path: self.path.join(name), source: source.into() })?;
+        Ok(PathBuf::from(OsStr::from_bytes(link.to_bytes())))
+    }
+
+    pub(crate) fn read_hex(&self, name: &str) -> Result<u16, TargetError> {
+        u16::from_str_radix(&self.read(name)?, 16).map_err(|source| TargetError::Io {
+            path: self.path.join(name),
+            source: io::Error::new(io::ErrorKind::InvalidData, source),
+        })
+    }
+
+    /// Reject a removed or renumbered entry even if the old directory is still readable.
+    pub(crate) fn confirm_current(&self) -> Result<(), TargetError> {
+        let at = |source| TargetError::Io { path: self.path.clone(), source };
+        let pinned = fs::fstat(&self.fd).map_err(|e| at(e.into()))?;
+        let named = fs::statat(CWD, &self.path, AtFlags::empty()).map_err(|e| at(e.into()))?;
+        if (pinned.st_dev, pinned.st_ino) != (named.st_dev, named.st_ino) {
+            return Err(at(io::Error::new(
+                io::ErrorKind::NotFound,
+                "sysfs entry changed during confirmation",
+            )));
+        }
+        Ok(())
+    }
 }
 
 /// `major:minor` as sysfs writes a `dev` attribute.

@@ -21,7 +21,7 @@ use thiserror::Error;
 
 use crate::display::{Display, DisplayError, check};
 use crate::target::DRM_DRIVER;
-use convert::{Layout, clips};
+use convert::{Layout, clips, has_area};
 use select::{Target, fb_size, select};
 
 pub use card::CardKms;
@@ -350,7 +350,7 @@ impl<K: Kms> Display for DrmDisplay<K> {
     /// the whole frame and modesets; later ones write the damage and send DIRTYFB.
     fn present(&mut self, frame: &Frame, damage: &[Rect]) -> Result<(), DisplayError> {
         check((u32::from(self.size.width), u32::from(self.size.height)), frame, damage)?;
-        if damage.is_empty() {
+        if !damage.iter().copied().any(has_area) {
             return Ok(());
         }
         match self.phase {

@@ -11,7 +11,7 @@ use tb_core::BarSize;
 use thiserror::Error;
 
 use crate::evdev::{has_bit, is_event_name};
-use crate::target::{NodeId, TargetError, parse_dev, read_trimmed};
+use crate::target::{NodeId, SysfsDir, TargetError, parse_dev};
 
 pub use device::DigitizerNode;
 pub use touches::EvdevTouches;
@@ -24,6 +24,8 @@ const MT_SLOT: u16 = 0x2f;
 const MT_X: u16 = 0x35;
 const MT_Y: u16 = 0x36;
 const MT_TRACKING_ID: u16 = 0x39;
+// Linux input-mt.c: input_mt_init_slots caps allocation at 1024, indexed from 0.
+const MAX_SLOT: i32 = 1023;
 
 /// Finds the sole candidate in `/proc/bus/input/devices` text by identity and MT-B capabilities.
 pub fn find_digitizer(devices: &str) -> Result<PathBuf, TargetError> {
@@ -90,23 +92,16 @@ fn candidate<'a>(block: &[&'a str]) -> Option<&'a str> {
 
 /// Binds the opened character device to the current sysfs event node and its T1 input identity.
 pub fn confirm_digitizer_node(sysfs: &Path, node: &Path, id: NodeId) -> Result<PathBuf, TargetError> {
-    let event = sysfs.join("class/input").join(event_name(node)?);
-    // Resolve the class link once so both queries address the same event directory.
-    let event = std::fs::canonicalize(&event).map_err(|source| TargetError::Io { path: event, source })?;
-    let expected = read_trimmed(&event.join("dev"))?;
+    let event = SysfsDir::open(&sysfs.join("class/input").join(event_name(node)?))?;
+    let expected = event.read("dev")?;
     if !id.char_device || parse_dev(&expected) != Some((id.major, id.minor)) {
         return Err(TargetError::DigitizerChanged { path: node.to_owned(), expected, found: id });
     }
-    let ids = event.join("device/id");
-    let read_id = |name| {
-        let path = ids.join(name);
-        let text = read_trimmed(&path)?;
-        u16::from_str_radix(&text, 16)
-            .map_err(|e| TargetError::Io { path, source: io::Error::new(io::ErrorKind::InvalidData, e) })
-    };
-    if (read_id("bustype")?, read_id("vendor")?, read_id("product")?) != T1_ID {
+    let ids = event.child("device/id")?;
+    if (ids.read_hex("bustype")?, ids.read_hex("vendor")?, ids.read_hex("product")?) != T1_ID {
         return Err(TargetError::NotADigitizer { path: node.to_owned() });
     }
+    event.confirm_current()?;
     Ok(node.to_owned())
 }
 
@@ -171,6 +166,7 @@ impl DigitizerError {
 pub struct Calibration {
     axis: AbsAxis,
     last_column: u16,
+    last_slot: i32,
     reversed: bool,
 }
 
@@ -193,8 +189,12 @@ pub fn calibrate(
     width: u16,
 ) -> Result<Calibration, DigitizerError> {
     let last_column = width.checked_sub(1).ok_or(DigitizerError::EmptyBar)?;
-    let supports = |code| meta.axes.iter().any(|axis| axis.code == code);
-    if !supports(MT_SLOT) || !supports(MT_TRACKING_ID) {
+    let slots = meta
+        .axes
+        .iter()
+        .find(|axis| axis.code == MT_SLOT && axis.min == 0 && (0..=MAX_SLOT).contains(&axis.max))
+        .ok_or_else(|| DigitizerError::unverified(meta))?;
+    if !meta.axes.iter().any(|axis| axis.code == MT_TRACKING_ID) {
         return Err(DigitizerError::unverified(meta));
     }
     let profile = profiles
@@ -207,7 +207,7 @@ pub fn calibrate(
                 && meta.axes.contains(&profile.axis)
         })
         .ok_or_else(|| DigitizerError::unverified(meta))?;
-    Ok(Calibration { axis: profile.axis, last_column, reversed: profile.reversed })
+    Ok(Calibration { axis: profile.axis, last_column, last_slot: slots.max, reversed: profile.reversed })
 }
 
 /// Opens only the requested event path and grabs it only after binding and exact calibration.
@@ -233,5 +233,8 @@ pub fn open_digitizer(
             error("grab", source)
         }
     })?;
+    // EVIOCGABS(ABS_MT_SLOT) on this fd describes current kernel state. The evdev queue can
+    // still hold a prefix written for a different slot. Only a selector in the stream aligns
+    // subsequent records with a slot, both here and after SYN_DROPPED.
     Ok(EvdevTouches::new(reader, calibration))
 }
