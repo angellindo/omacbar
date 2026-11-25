@@ -1,0 +1,28 @@
+diff --git a/crates/tb-daemon/src/sim_window.rs b/crates/tb-daemon/src/sim_window.rs
+index 63902d3..cb50cf8 100644
+--- a/crates/tb-daemon/src/sim_window.rs
++++ b/crates/tb-daemon/src/sim_window.rs
+@@ -86,6 +86,14 @@ impl SimWindow {
+         }
+     }
+ 
++    /// The pointer left the screen (or the window) while a press is held: cancel it now; the rest
++    /// of that press, the release included, sends nothing.
++    fn left_screen(&mut self) {
++        if self.pressed_x.take().is_some() {
++            self.send(Touch::Cancel);
++        }
++    }
++
+     fn send(&self, touch: Touch) {
+         // A closed source means the daemon stopped: nobody is left to see the touch.
+         let _ = self.touches.send(touch);
+@@ -114,6 +122,8 @@ pub fn sim_window_view(w: &SimWindow, _cx: &mut Cx<SimWindow>) -> El {
+             .w_full()
+             .aspect_ratio(aspect)
+             .pixels(&w.screen)
++            .hover_tracks_bounds()
++            .on_hover_change(|s: &mut SimWindow, inside: bool, _tx: &mut Tx| if !inside { s.left_screen() })
+             .on_drag(|s: &mut SimWindow, d: &mut Drag, tx: &mut Tx| s.on_drag(d, tx)),
+     )
+ }
