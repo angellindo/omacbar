@@ -1,7 +1,7 @@
 //! The modifier source: which Fn and modifier keys are held on the Fn keyboard (ADR-0009).
 
 use std::fs::File;
-use std::io::{ErrorKind, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
@@ -9,6 +9,7 @@ use tb_core::Modifiers;
 use thiserror::Error;
 
 use crate::daemon::Event;
+use crate::evdev::{EV_SYN, Record, SYN_REPORT, read_record};
 
 /// Where the daemon learns the held modifiers: the Fn keyboard, or a script in tests.
 pub trait ModifierSource {
@@ -27,11 +28,7 @@ pub enum KeyError {
     },
 }
 
-/// One `x86_64` `struct input_event`: 16 bytes of time, `u16` type, `u16` code, `i32` value.
-const RECORD: usize = 24;
-const EV_SYN: u16 = 0;
 const EV_KEY: u16 = 1;
-const SYN_REPORT: u16 = 0;
 
 /// The modifier keys (`linux/input-event-codes.h`): `KEY_FN`, then the left and right key of
 /// Ctrl, Alt, Shift and Meta (super).
@@ -66,22 +63,6 @@ impl<R: Read> EvdevModifiers<R> {
             super_key: d[7] || d[8],
         }
     }
-
-    /// The next whole record; Ok(None) at the end of the stream on a record boundary.
-    fn next_record(&mut self) -> Result<Option<[u8; RECORD]>, KeyError> {
-        let mut record = [0; RECORD];
-        let mut filled = 0;
-        while filled < RECORD {
-            match self.reader.read(&mut record[filled..]) {
-                Ok(0) if filled == 0 => return Ok(None),
-                Ok(0) => return Err(std::io::Error::from(ErrorKind::UnexpectedEof).into()),
-                Ok(n) => filled += n,
-                Err(e) if e.kind() == ErrorKind::Interrupted => {}
-                Err(e) => return Err(e.into()),
-            }
-        }
-        Ok(Some(record))
-    }
 }
 
 impl EvdevModifiers<File> {
@@ -96,10 +77,7 @@ impl<R: Read> ModifierSource for EvdevModifiers<R> {
         if self.ended {
             return Ok(None);
         }
-        while let Some(r) = self.next_record()? {
-            let kind = u16::from_ne_bytes([r[16], r[17]]);
-            let code = u16::from_ne_bytes([r[18], r[19]]);
-            let value = i32::from_ne_bytes([r[20], r[21], r[22], r[23]]);
+        while let Some(Record { kind, code, value }) = read_record(&mut self.reader)? {
             match (kind, code) {
                 (EV_KEY, _) => {
                     let Some(i) = MODIFIER_KEYS.iter().position(|c| *c == code) else { continue };

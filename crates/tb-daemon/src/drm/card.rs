@@ -12,11 +12,10 @@ use std::io;
 use std::path::Path;
 use std::ptr::{NonNull, null_mut};
 
-use rustix::fs::{FileType, Mode, OFlags};
+use rustix::fs::{Mode, OFlags};
 use rustix::ioctl::{NoArg, Opcode, Setter, Updater, ioctl};
 use rustix::mm::{MapFlags, ProtFlags};
 
-use super::target::NodeId;
 use super::uapi::{
     ADD_FB2, CAP_UNIVERSAL_PLANES, CONNECTED, CREATE_DUMB, CardRes, ClientCap, Connector, CreateDumb, Crtc,
     DESTROY_DUMB, DIRTY_FB, DROP_MASTER, Encoder, FbCmd2, FbDirty, GET_CONNECTOR, GET_CRTC, GET_ENCODER,
@@ -25,6 +24,7 @@ use super::uapi::{
     PlaneRes, Property, PropertyEnum, RM_FB, SET_CLIENT_CAP, SET_CRTC, SET_MASTER, VERSION, Version,
 };
 use super::{ConnectorInfo, CrtcInfo, DirtyClip, DumbBuffer, FbSpec, Kms, KmsMetadata, ModeInfo, PlaneInfo};
+use crate::target::NodeId;
 
 /// The address of a buffer the kernel reads or fills, as uapi `__u64`.
 fn addr<T>(ptr: *const T) -> u64 {
@@ -106,10 +106,7 @@ impl CardKms {
 
     /// What the opened file is, by `fstat`: its device number and whether it is a character device.
     pub fn node_id(&self) -> io::Result<NodeId> {
-        let stat = rustix::fs::fstat(&self.file)?;
-        let char_device = FileType::from_raw_mode(stat.st_mode) == FileType::CharacterDevice;
-        let rdev = stat.st_rdev;
-        Ok(NodeId { major: rustix::fs::major(rdev), minor: rustix::fs::minor(rdev), char_device })
+        NodeId::of(&self.file)
     }
 
     fn resources(&self) -> io::Result<(Vec<u32>, Vec<u32>, Vec<u32>)> {

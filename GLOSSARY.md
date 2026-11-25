@@ -132,6 +132,10 @@ simulator window cancels a press when the pointer leaves the bar (even if it com
 release), on Escape and when the window loses focus.
 _Avoid_: aborted touch, interrupted tap
 
+**Digitizer**:
+The Touch Bar input device in pixel mode. Its multitouch reports become touches after the daemon
+matches its identity and coordinate range to a verified calibration profile.
+
 **Fn keyboard**:
 The keyboard that reports the Fn key; its held Fn and modifier keys pick the layer. It is found by
 its Fn capability, never by its event number (on the MacBookPro14,3, the Apple SPI keyboard).

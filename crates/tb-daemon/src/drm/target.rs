@@ -3,52 +3,17 @@
 //!
 //! Identity (research 0001, 0010; appletbdrm.c L817–820): the card's `device` is a USB interface
 //! bound to the `appletbdrm` driver, and the USB device above that interface is the T1 `iBridge`
-//! display `05ac:8600`. The driver name alone would also match a T2 (`05ac:8302`). Only these
+//! display `05ac:8600`. The driver name alone would also match a T2. Only these
 //! attributes and the card's `dev` (major:minor) are read; serials never are.
 
 use std::io;
 use std::path::{Path, PathBuf};
 
-use thiserror::Error;
+use crate::target::{DRM_DRIVER, NodeId, T1_PRODUCT, T1_VENDOR, TargetError, parse_dev, read_trimmed};
 
-/// The upstream DRM driver of the Touch Bar panel. That the patched T1 driver keeps this name is
-/// unverified on hardware (TB-10); a mismatch is refused.
-pub(crate) const DRIVER: &str = "appletbdrm";
-/// USB vendor and product of the T1 `iBridge` display interface (research 0001).
-const T1_VENDOR: &str = "05ac";
-const T1_PRODUCT: &str = "8600";
 /// Where userspace opens DRM cards; a target path must be exactly this plus a number.
 const CARD_PREFIX: &str = "/dev/dri/card";
 const DRI_DIR: &str = "/dev/dri";
-
-/// The identity of an opened node, as `fstat` reports it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NodeId {
-    pub major: u32,
-    pub minor: u32,
-    /// `S_ISCHR`: a DRM card is a character device; an ordinary file or a directory is not.
-    pub char_device: bool,
-}
-
-#[derive(Debug, Error)]
-pub enum TargetError {
-    #[error("no Touch Bar card (appletbdrm on USB 05ac:8600) in sysfs")]
-    NotFound,
-    #[error("more than one Touch Bar card, choose one explicitly: {0:?}")]
-    Ambiguous(Vec<PathBuf>),
-    #[error("{} is not a /dev/dri/cardN path", path.display())]
-    NotACardPath { path: PathBuf },
-    #[error("{card} has no driver bound")]
-    Unbound { card: String },
-    #[error("the card's driver is {driver:?}, not {DRIVER}")]
-    WrongDriver { driver: String },
-    #[error("the card's USB device is {vendor}:{product}, not the T1 Touch Bar {T1_VENDOR}:{T1_PRODUCT}")]
-    WrongDevice { vendor: String, product: String },
-    #[error("the opened node {found:?} is not {card} ({expected}) in sysfs")]
-    Changed { card: String, expected: String, found: NodeId },
-    #[error("cannot read {}: {source}", path.display())]
-    Io { path: PathBuf, source: io::Error },
-}
 
 /// `auto`: the one Touch Bar card among `sysfs/class/drm/card*`. Connector (`cardN-*`) and render
 /// (`renderD*`) entries are never considered; a card that is not the T1 bar is skipped without
@@ -130,7 +95,7 @@ fn identify(sysfs: &Path, name: &str) -> Result<(), TargetError> {
         }
         Err(source) => return Err(TargetError::Io { path: driver_link, source }),
     };
-    if driver != DRIVER {
+    if driver != DRM_DRIVER {
         return Err(TargetError::WrongDriver { driver });
     }
     let interface =
@@ -145,23 +110,4 @@ fn identify(sysfs: &Path, name: &str) -> Result<(), TargetError> {
         return Err(TargetError::WrongDevice { vendor, product });
     }
     Ok(())
-}
-
-/// A short sysfs attribute, trimmed. Attributes are a few bytes; more than 64 is refused.
-fn read_trimmed(path: &Path) -> Result<String, TargetError> {
-    let io_err = |source| TargetError::Io { path: path.to_owned(), source };
-    let text = std::fs::read_to_string(path).map_err(io_err)?;
-    if text.len() > 64 {
-        return Err(io_err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "sysfs attribute longer than 64 bytes",
-        )));
-    }
-    Ok(text.trim().to_owned())
-}
-
-/// `major:minor` as sysfs writes a `dev` attribute.
-fn parse_dev(text: &str) -> Option<(u32, u32)> {
-    let (major, minor) = text.split_once(':')?;
-    Some((major.parse().ok()?, minor.parse().ok()?))
 }

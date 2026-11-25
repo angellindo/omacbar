@@ -20,11 +20,12 @@ use tb_render::Frame;
 use thiserror::Error;
 
 use crate::display::{Display, DisplayError, check};
+use crate::target::DRM_DRIVER;
 use convert::{Layout, clips};
 use select::{Target, fb_size, select};
 
 pub use card::CardKms;
-pub use target::{NodeId, TargetError, check_touch_bar_card, confirm_touch_bar_node, find_touch_bar_card};
+pub use target::{check_touch_bar_card, confirm_touch_bar_node, find_touch_bar_card};
 
 /// `EBUSY` and `ENODEV` in `asm-generic/errno-base.h`.
 const EBUSY: i32 = 16;
@@ -217,7 +218,7 @@ impl<K: Kms> DrmDisplay<K> {
     /// reported: closing the file releases master and every buffer it owns anyway.
     pub fn start(mut kms: K, size: BarSize) -> Result<Self, DrmError> {
         let driver = kms.driver_name().map_err(|source| DrmError::Device { step: "version", source })?;
-        if driver != target::DRIVER {
+        if driver != DRM_DRIVER {
             return Err(DrmError::WrongDriver { driver });
         }
         if let Err(source) = kms.set_master() {

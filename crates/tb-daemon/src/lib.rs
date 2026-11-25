@@ -5,27 +5,34 @@
 mod action;
 mod daemon;
 mod damage;
+mod digitizer;
 mod display;
 mod drm;
+mod evdev;
 pub mod fake;
 mod fn_keyboard;
 mod keys;
 mod render;
 mod sim_window;
+mod target;
 mod touch;
 mod uinput;
 
 pub use action::{ActionError, Actions, KeyEmitter, Report, ShSpawner, Spawner};
 pub use daemon::{Daemon, DaemonError, Event};
+pub use digitizer::{
+    AbsAxis, Calibration, DigitizerError, DigitizerMeta, DigitizerNode, DigitizerProfile, EvdevTouches,
+    VERIFIED_DIGITIZERS, calibrate, check_digitizer, confirm_digitizer_node, find_digitizer, open_digitizer,
+};
 pub use display::{Display, DisplayError, SimDisplay};
 pub use drm::{
     CardKms, ConnectorInfo, CrtcInfo, DirtyClip, DrmDisplay, DrmError, DumbBuffer, FbSpec, Kms, KmsMetadata,
-    ModeInfo, NodeId, PlaneInfo, StepFailure, TargetError, check_touch_bar_card, confirm_touch_bar_node,
-    find_touch_bar_card,
+    ModeInfo, PlaneInfo, StepFailure, check_touch_bar_card, confirm_touch_bar_node, find_touch_bar_card,
 };
 pub use fn_keyboard::{FnKeyboard, find_fn_keyboard};
 pub use keys::{EvdevModifiers, KeyError, ModifierSource, forward_modifiers};
 pub use render::{GpuRenderer, SceneRenderer};
 pub use sim_window::{SIM_WINDOW, SimWindow, WindowTouches, sim_window_app, sim_window_view};
+pub use target::{NodeId, TargetError};
 pub use touch::{LineTouches, Touch, TouchError, TouchSource, forward_touches};
 pub use uinput::{EmitError, VirtualKeyboard};
