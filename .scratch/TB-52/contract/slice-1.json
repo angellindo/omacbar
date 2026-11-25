@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Rune resolves from the public repository at 22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598 (with the crates Rune asks apps to patch taken from that same revision, never a local path), recorded in the versioned lock; a consumer can opt into El::hover_tracks_bounds and hear a held press lose and regain the pointer across a host pointer leave; without the opt-in Rune keeps the press's hover, and the simulator window keeps its touches.",
+  "files": [
+    "crates/tb-daemon/tests/pointer_leave_tracking.rs",
+    "crates/tb-daemon/tests/pointer_leave_retention.rs",
+    "crates/tb-daemon/tests/sim_window_touches.rs",
+    "scripts/tests/test_rune_pin.py"
+  ],
+  "cases": [
+    {
+      "id": "QA-01",
+      "package": "tb-daemon",
+      "target": "test:pointer_leave_tracking",
+      "test": "a_held_press_that_tracks_bounds_hears_the_pointer_leave_the_window",
+      "red": "required",
+      "symbol": "hover_tracks_bounds"
+    },
+    {
+      "id": "QA-02",
+      "package": "tb-daemon",
+      "target": "test:pointer_leave_tracking",
+      "test": "a_held_press_that_tracks_bounds_hears_the_pointer_come_back_before_the_release",
+      "red": "required",
+      "symbol": "hover_tracks_bounds"
+    },
+    {
+      "id": "QA-03",
+      "package": "tb-daemon",
+      "target": "test:pointer_leave_retention",
+      "test": "a_held_press_without_bounds_tracking_keeps_hearing_inside_after_the_pointer_leaves",
+      "red": "preserve",
+      "reason": "Control without the opt-in, in its own test target: Rune's default held-press retention across a host pointer leave, already true at the previous pin and still expected at the new one (the opt-in is off by default)"
+    },
+    {
+      "id": "QA-04",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_release_outside_the_window_still_lifts_the_touch",
+      "red": "preserve",
+      "reason": "The simulator window keeps its behaviour for a press that leaves the window (cancelling it belongs to another ticket)"
+    },
+    {
+      "id": "QA-05",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "moving_a_pressed_pointer_lands_no_touch_until_the_release",
+      "red": "preserve",
+      "reason": "The simulator window keeps landing no touch for moves of a held press"
+    },
+    {
+      "id": "QA-06",
+      "package": "tb-daemon",
+      "target": "test:sim_window_touches",
+      "test": "a_click_over_f5_in_the_window_presses_and_releases_f5_on_the_daemon",
+      "red": "preserve",
+      "reason": "A click in the simulator window still presses and releases the button under it on the daemon"
+    }
+  ],
+  "checks": [
+    {
+      "id": "pin",
+      "command": ["python3", "-B", "-m", "unittest", "scripts/tests/test_rune_pin.py"]
+    }
+  ]
+}

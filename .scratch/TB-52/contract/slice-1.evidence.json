@@ -1,0 +1,20 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-25T00:17:07Z",
+      "seal": "sha256:9f7a9e062c13e25a9684dfe1209cd5f0de6ad740ae15f399613621395b9bbce9",
+      "head": "b03eb730bee73b6fa5130019183d7e7e1ea17c5f",
+      "final": false,
+      "results": {
+        "QA-01": "RED_MISSING_SYMBOL",
+        "QA-02": "RED_MISSING_SYMBOL",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "pin": "FAILED"
+      },
+      "log": ".scratch/TB-52/gate/2026-11-25T001605Z-slice-1"
+    }
+  ]
+}
