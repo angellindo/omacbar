@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "mode": "behavior",
+  "reason": "Protects the opt-in digitizer path: discovery by identity and multitouch capability, the opened node bound to the discovered digitizer in sysfs, calibration only against an exactly matching verified profile (none shipped), MT protocol B reports to touches with one followed contact, slot and position trusted only while in sync, fail-closed cancel on lost sync, out-of-range, slot reuse without lift, end of stream and unplug, and at most one action per touch through the real Daemon.",
+  "files": [
+    "crates/tb-daemon/tests/digitizer_touches.rs"
+  ],
+  "cases": [
+    {
+      "id": "QA-201",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "no_digitizer_is_verified_yet_so_a_real_one_is_refused_naming_what_was_seen",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-202",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "an_identity_or_range_unlike_every_verified_profile_is_refused",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-203",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "a_digitizer_missing_a_needed_multitouch_axis_is_refused",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-204",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "contact_reports_become_press_movement_and_release",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-205",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "the_verified_profile_selects_the_axis_that_runs_along_the_bar",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-206",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "a_second_contact_is_ignored_and_never_promoted",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-207",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "a_touch_that_can_no_longer_be_trusted_is_cancelled_and_never_lifts",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-208",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "slot_and_position_are_trusted_only_while_the_stream_is_in_sync",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-209",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "the_end_of_the_stream_or_a_read_error_mid_touch_cancels_before_ending",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-210",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "through_the_daemon_each_touch_runs_its_action_at_most_once_and_leaves_nothing_pressed",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-211",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "the_digitizer_is_found_by_identity_and_multitouch_axes_among_same_looking_devices",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-212",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "auto_needs_exactly_one_candidate",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-213",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "an_explicit_node_must_be_the_event_handler_of_a_candidate",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-214",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "the_opened_node_must_be_the_discovered_digitizer_in_sysfs",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-215",
+      "package": "tb-daemon",
+      "target": "test:digitizer_touches",
+      "test": "opening_an_ordinary_file_fails_at_the_identity_read_and_changes_nothing",
+      "red": "required",
+      "symbol": "EvdevTouches"
+    },
+    {
+      "id": "QA-216",
+      "package": "tb-daemon",
+      "target": "test:held_modifiers",
+      "test": "the_end_of_the_stream_on_a_record_boundary_closes_the_source_and_it_stays_closed",
+      "red": "preserve",
+      "reason": "The shared 24-byte record reader moves out of keys.rs; the modifier source must read exactly as before"
+    },
+    {
+      "id": "QA-217",
+      "package": "tb-daemon",
+      "target": "test:held_modifiers",
+      "test": "the_end_of_the_stream_inside_a_record_is_an_io_error",
+      "red": "preserve",
+      "reason": "Shared record reader: a cut record stays an I/O error for the modifier source"
+    },
+    {
+      "id": "QA-218",
+      "package": "tb-daemon",
+      "target": "test:held_modifiers",
+      "test": "records_split_across_reads_are_read_whole",
+      "red": "preserve",
+      "reason": "Shared record reader: records split across reads are still whole"
+    },
+    {
+      "id": "QA-219",
+      "package": "tb-daemon",
+      "target": "test:fn_keyboard",
+      "test": "a_bitmap_is_read_from_its_least_significant_word_on_the_right",
+      "red": "preserve",
+      "reason": "The capability bitmap test is generalised to a bit index; Fn keyboard discovery must not change"
+    },
+    {
+      "id": "QA-220",
+      "package": "tb-daemon",
+      "target": "test:fn_keyboard",
+      "test": "the_keyboard_reporting_fn_is_picked_among_the_other_devices",
+      "red": "preserve",
+      "reason": "Fn keyboard discovery must not change when the bitmap helper is shared"
+    }
+  ],
+  "checks": []
+}
