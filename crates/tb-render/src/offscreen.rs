@@ -83,9 +83,14 @@ impl Renderer {
 
     /// The target starts at `size`, the size of the first scene expected.
     fn on(gpu: Gpu, size: BarSize) -> Renderer {
-        let pipeline = Pipeline::new(&gpu.device, OFFSCREEN_FORMAT);
-        let target = Offscreen::new(&gpu.device, u32::from(size.width), u32::from(size.height));
-        Renderer { gpu, pipeline, target, text: TextSystem::default() }
+        let mut pipeline = Pipeline::new(&gpu.device, OFFSCREEN_FORMAT);
+        let mut text = TextSystem::default();
+        let (width, height) = (u32::from(size.width), u32::from(size.height));
+        // Rune's prepare sets glyph fill support (render/upload.rs, set_support).
+        // Set it before the first glyphs are rasterized so fresh and kept renderers agree.
+        pipeline.prepare(&gpu.device, &gpu.queue, &mut text.atlas, &[], (width, height));
+        let target = Offscreen::new(&gpu.device, width, height);
+        Renderer { gpu, pipeline, target, text }
     }
 
     /// Draws `scene` at 1:1 and reads it back: the same bytes as `render_frame(scene.clone())`.

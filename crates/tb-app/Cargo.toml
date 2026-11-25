@@ -21,5 +21,9 @@ tb-render.workspace = true
 tb-config.workspace = true
 rune.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+sha2.workspace = true
+
 [lints]
 workspace = true

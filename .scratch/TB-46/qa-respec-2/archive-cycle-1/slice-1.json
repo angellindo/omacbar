@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "mode": "tooling",
+  "reason": "Reversible rehearsal on a throwaway profile (capture, settle only against the producing step's explicit expectation for the config and a captured link's target, restore under TB-43's config-directory flock as compare-and-swap with a last comparison after the temp is prepared, verify, cleanup confined to validated directories and the test's own unchanged artifacts), run isolation and expectations from the producing save with faithful fake binaries, read-only A/B baselines incl. the service manifest's content and metadata, and the staged human runbook's content: seven fields per stage, human-owned physical stages, three distinct returns, the service manifest removed in 2.4 and put back with its metadata in B → A, pinned driver compile evidence with its limits, and the research 0001 correction.",
+  "files": [
+    "scripts/tests/rehearsal_fixture.py",
+    "scripts/tests/test_rehearsal_profile.py",
+    "scripts/tests/test_rehearsal_conflicts.py",
+    "scripts/tests/test_rehearsal_expectation.py",
+    "scripts/tests/test_rehearsal_integrity.py",
+    "scripts/tests/test_rehearsal_run.py",
+    "scripts/tests/test_rehearsal_baseline.py",
+    "scripts/tests/test_hardware_runbook.py"
+  ],
+  "cases": [],
+  "checks": [
+    {
+      "id": "tests",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_rehearsal*.py"
+      ]
+    },
+    {
+      "id": "runbook",
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/tests",
+        "-p",
+        "test_hardware_runbook.py"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-22T11:22:46Z",
+      "seal": "sha256:f67689df76dc4ea411387b98f111d647ba1de0560257f906c74597eeff81a394",
+      "head": "cce2d715146007d89e1ed1d9eae08ab25f2ca259",
+      "final": false,
+      "results": {
+        "QA-01": "GREEN",
+        "QA-02": "GREEN",
+        "QA-03": "GREEN",
+        "QA-04": "GREEN",
+        "QA-05": "GREEN",
+        "QA-06": "GREEN",
+        "QA-07": "GREEN",
+        "QA-08": "RED_BEHAVIOR",
+        "QA-09": "GREEN",
+        "QA-10": "GREEN",
+        "QA-14": "GREEN",
+        "QA-11": "GREEN",
+        "QA-12": "RED_BEHAVIOR",
+        "QA-13": "GREEN",
+        "QA-15": "RED_BEHAVIOR"
+      },
+      "log": ".scratch/TB-49/gate/2026-11-22T111331Z-slice-1"
+    }
+  ]
+}

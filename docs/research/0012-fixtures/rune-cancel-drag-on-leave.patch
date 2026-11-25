@@ -1,0 +1,113 @@
+diff --git a/crates/rune/src/el/handler_set.rs b/crates/rune/src/el/handler_set.rs
+index 6becba99..87214e6f 100644
+--- a/crates/rune/src/el/handler_set.rs
++++ b/crates/rune/src/el/handler_set.rs
+@@ -25,6 +25,8 @@ pub(crate) struct Handlers {
+     pub on_drag: Option<DragFn>,
+     pub drag_out: Option<DragOutFn>,
+     pub drag_threshold: Option<f32>,
++    /// `El::cancel_drag_on_leave`: the pointer leaving the window cancels this element's held drag.
++    pub cancel_drag_on_leave: bool,
+     pub on_drag_start: Option<PressFn>,
+     pub on_drag_end: Option<DragEndFn>,
+     pub drop: Option<Box<DropSpec>>,
+@@ -105,6 +107,7 @@ impl Empty for Handlers {
+         on_drag: None,
+         drag_out: None,
+         drag_threshold: None,
++        cancel_drag_on_leave: false,
+         on_drag_start: None,
+         on_drag_end: None,
+         drop: None,
+diff --git a/crates/rune/src/el/handlers.rs b/crates/rune/src/el/handlers.rs
+index 5d83209d..f93fddd0 100644
+--- a/crates/rune/src/el/handlers.rs
++++ b/crates/rune/src/el/handlers.rs
+@@ -39,6 +39,14 @@ impl El {
+         self.handlers.on_drag = Some(Rc::new(move |_, d, tx| f(d, tx)));
+         self
+     }
++    /// The pointer leaving the window while this element's [`El::on_drag`] holds a press ends the
++    /// gesture there, as a cancel: the handler hears `Phase::Up` with [`Drag::cancelled`] at the
++    /// leave, and the release that follows does nothing, also when the pointer came back first.
++    /// Without it a leave mid-press keeps the press, as AppKit does, and the release ends it.
++    pub fn cancel_drag_on_leave(mut self) -> Self {
++        self.handlers.cancel_drag_on_leave = true;
++        self
++    }
+     /// Drag this element out of the window into another app, as a file, image or text. Once
+     /// the pointer travels [`crate::drag_out::DRAG_THRESHOLD`] from the press, `f` reads the
+     /// state and returns what to carry (`None`: no drag this time, the press stays a press),
+diff --git a/crates/rune/src/runtime/commit/memo_reuse.rs b/crates/rune/src/runtime/commit/memo_reuse.rs
+index 028eada7..47f07a43 100644
+--- a/crates/rune/src/runtime/commit/memo_reuse.rs
++++ b/crates/rune/src/runtime/commit/memo_reuse.rs
+@@ -296,6 +296,7 @@ fn same_handlers(
+         on_drag,
+         drag_out,
+         drag_threshold,
++        cancel_drag_on_leave,
+         on_drag_start,
+         on_drag_end,
+         drop,
+@@ -334,6 +335,7 @@ fn same_handlers(
+         && opt_rc_eq(&a.on_drag, on_drag)
+         && opt_rc_eq(&a.drag_out, drag_out)
+         && a.drag_threshold == *drag_threshold
++        && a.cancel_drag_on_leave == *cancel_drag_on_leave
+         && opt_rc_eq(&a.on_drag_start, on_drag_start)
+         && opt_rc_eq(&a.on_drag_end, on_drag_end)
+         && same_drop(&a.drop, drop)
+diff --git a/crates/rune/src/runtime/input/pointer.rs b/crates/rune/src/runtime/input/pointer.rs
+index 9d9a960f..aabd89dc 100644
+--- a/crates/rune/src/runtime/input/pointer.rs
++++ b/crates/rune/src/runtime/input/pointer.rs
+@@ -337,6 +337,15 @@ impl<S: 'static> Runtime<S> {
+ 
+     pub fn pointer_leave(&mut self) {
+         self.wheel_lost();
++        // An element that asked for it (`El::cancel_drag_on_leave`) loses its held press here; the
++        // leave itself still lands on the release, at the last position the host saw.
++        if self.capture_button == crate::PointerButton::Primary
++            && self.capture.as_ref().and_then(|(p, _)| self.live_index(p)).is_some_and(|i| self.nodes[i].handlers.cancel_drag_on_leave)
++            && self.cancel_drag()
++        {
++            self.left_in_capture = true;
++            return;
++        }
+         if self.capture.is_none() && self.secondary_capture.is_none() {
+             self.pointer = None;
+             self.hovered = None;
+diff --git a/crates/rune/src/runtime/tests/pointer_drag.rs b/crates/rune/src/runtime/tests/pointer_drag.rs
+index 7e6e6fed..81e6ea4d 100644
+--- a/crates/rune/src/runtime/tests/pointer_drag.rs
++++ b/crates/rune/src/runtime/tests/pointer_drag.rs
+@@ -38,6 +38,28 @@ fn taking_the_pointer_away_ends_a_held_drag_cancelled() {
+     assert_eq!(rt.state.iter().filter(|d| d.0 == Phase::Up).count(), 1, "the release after it does nothing");
+ }
+ 
++#[test]
++fn cancel_drag_on_leave_ends_a_held_drag_cancelled_at_the_leave() {
++    type State = Vec<(Phase, bool)>;
++    fn view(_: &State, _: &mut Cx<State>) -> El {
++        el().size(200.0, 200.0).child(el().key("pill").size(100.0, 40.0).cancel_drag_on_leave()
++            .on_drag(|s: &mut State, d, _| s.push((d.phase, d.cancelled()))))
++    }
++    let mut rt = Runtime::new(Vec::new(), view, (200.0, 200.0), Env::new(true, 1.0));
++    rt.frame(0.0);
++    rt.pointer_move(10.0, 10.0);
++    rt.pointer_down(10.0, 10.0);
++    rt.pointer_leave();
++    rt.frame(0.0);
++    assert_eq!(rt.state.last(), Some(&(Phase::Up, true)), "the leave cancels");
++    assert!(!rt.pressing());
++    assert_eq!(rt.pointer(), Some((10.0, 10.0)), "the host releases at its last position");
++    rt.pointer_move(10.0, 10.0);
++    rt.pointer_up(10.0, 10.0);
++    rt.frame(0.0);
++    assert_eq!(rt.state.iter().filter(|d| d.0 == Phase::Up).count(), 1, "coming back and releasing does nothing");
++}
++
+ #[test]
+ fn native_escape_with_a_logical_fallback_cancels_the_drag() {
+     fn view(_: &Vec<bool>, _: &mut Cx<Vec<bool>>) -> El {

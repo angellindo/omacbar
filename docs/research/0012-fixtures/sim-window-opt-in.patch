@@ -1,0 +1,10 @@
+--- a/crates/tb-daemon/src/sim_window.rs
++++ b/crates/tb-daemon/src/sim_window.rs
+@@ -114,6 +114,7 @@ pub fn sim_window_view(w: &SimWindow, _cx: &mut Cx<SimWindow>) -> El {
+             .w_full()
+             .aspect_ratio(aspect)
+             .pixels(&w.screen)
++            .cancel_drag_on_leave()
+             .on_drag(|s: &mut SimWindow, d: &mut Drag, tx: &mut Tx| s.on_drag(d, tx)),
+     )
+ }

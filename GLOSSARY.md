@@ -97,6 +97,11 @@ The display backend for work without the bar: it writes each screen it shows as 
 the simulator window, shows it live.
 _Avoid_: emulator, mock bar
 
+**Rehearsal profile**:
+A throwaway `HOME` that `scripts/rehearsal.py` creates privately, fills from repo fixtures, uses as
+the only home of the configurator and daemon during a rehearsal, restores and then removes.
+_Avoid_: test home, sandbox, the persistent session (that is `try-app.sh`'s)
+
 **Simulator window**:
 A desktop window that shows the simulator's screen live at the bar's proportions. Pressing the
 primary mouse button on it lands a touch at the matching bar x; moving the pointer over the bar
@@ -154,6 +159,10 @@ A save refused because the config file changed on disk (another save, an editor,
 the configurator read it. Nothing is written; the user reloads the file or overwrites it, which
 keeps the replaced file as a backup (ADR-0013).
 _Avoid_: merge, collision, race (for the user-facing refusal)
+
+**Save receipt**:
+The config path and SHA-256 of the bytes written by a confirmed explicit save. A rehearsal requests
+it at a fresh path and uses the digest as the expectation for restoring the captured config.
 
 **Issue**:
 One problem found when checking a config. A check reports every issue, not only the first.
