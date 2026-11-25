@@ -68,8 +68,7 @@ impl SimWindow {
                 self.send(Touch::Down { x });
             }
             (Phase::Move | Phase::Up, Some(_)) if !inside || drag.cancelled() => {
-                self.pressed_x = None;
-                self.send(Touch::Cancel);
+                self.cancel_press();
             }
             (Phase::Move | Phase::Up, Some(last)) => {
                 if x != last {
@@ -83,6 +82,13 @@ impl SimWindow {
                 }
             }
             (Phase::Move | Phase::Up, None) => {}
+        }
+    }
+
+    /// End the touch even when Rune still holds the drag and will deliver its release later.
+    fn cancel_press(&mut self) {
+        if self.pressed_x.take().is_some() {
+            self.send(Touch::Cancel);
         }
     }
 
@@ -114,6 +120,12 @@ pub fn sim_window_view(w: &SimWindow, _cx: &mut Cx<SimWindow>) -> El {
             .w_full()
             .aspect_ratio(aspect)
             .pixels(&w.screen)
+            .hover_tracks_bounds()
+            .on_hover_change(|s: &mut SimWindow, inside, _| {
+                if !inside {
+                    s.cancel_press();
+                }
+            })
             .on_drag(|s: &mut SimWindow, d: &mut Drag, tx: &mut Tx| s.on_drag(d, tx)),
     )
 }
