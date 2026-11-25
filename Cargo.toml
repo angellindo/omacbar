@@ -14,13 +14,22 @@ tb-core = { path = "crates/tb-core" }
 tb-render = { path = "crates/tb-render" }
 tb-config = { path = "crates/tb-config" }
 # Rune is pre-release: always pin a `dev` rev (never a branch). Bump in its own ticket.
-rune = { git = "https://github.com/anomalyco/rune", rev = "f73f72cdc563534e4f7de9f5a79bed007ac42384", default-features = false, features = ["embedded-fonts"] }
+rune = { git = "https://github.com/anomalyco/rune", rev = "22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598", default-features = false, features = ["embedded-fonts"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 thiserror = "2"
 png = "0.17"
 # Safe inotify for the config watch (ADR-0007); already locked via Rune's deps.
 rustix = { version = "1.1", features = ["fs"] }
+
+# Rune's own crates.io patches do not propagate to apps that depend on it.
+# Use the same public Git revision for Rune and these patches, and update them together.
+[patch.crates-io]
+naga = { git = "https://github.com/anomalyco/rune", rev = "22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598" }
+winit = { git = "https://github.com/anomalyco/rune", rev = "22ebd7e7f5ceb189e1829f066b5ba0fe31ed5598" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
