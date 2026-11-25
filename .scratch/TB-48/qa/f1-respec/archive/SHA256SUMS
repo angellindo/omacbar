@@ -1,0 +1,6 @@
+81192bc74fb1603c973d8358f26c412cac1f33d2170cc73c4a8eba75e6d783f5  .scratch/TB-48/contract/slice-4.json
+6bcaeabffa76643bfa16903e5b7843a19fbd63a01a7de696e710a14edf6985b3  .scratch/TB-48/contract/slice-4.seal
+b9171b5518ddce8920502ffa930d65f29509fe00cc84e73f3738413bfe6c7a22  .scratch/TB-48/contract/slice-4.evidence.json
+64f92bcac5910860192180b3d02593ced9f9470c57bc4141c448240486503bda  .scratch/TB-48/contract/slice-4.final.json
+5dfdd5acfd61d3825b81689aa72e64c55828b5642fa412638b3346d56815cad7  .scratch/TB-48/contract/spec-notes.md
+b25a6884b527627f38dcf765cb6527f349fca49d6293e456591cc4fcbe001749  crates/tb-app/tests/configurator_recovery.rs

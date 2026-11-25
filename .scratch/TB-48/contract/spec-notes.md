@@ -578,3 +578,79 @@ defines. Not proven here (left for review or a later ticket):
   Only the symlink cause is driven;
 - Ctrl+S (same `save()` path as the Save control) and the daemon's first write;
 - the windowed configurator on a real display and the physical bar (HIL, unchanged).
+
+# TB-48 slice 4: reading amendment (F1, 2026-11-25)
+
+Base: `t3/integrate-tb47-tb48` @ 3a8f63a (nine finals PASS, product approved). Only slice 4 changes:
+its manifest, `crates/tb-app/tests/configurator_recovery.rs` and a new frozen helper
+`crates/tb-app/tests/support/reading.rs` that no other contract lists. The shared driver
+`support/configurator.rs` (frozen also by TB-40/42/43, TB-48 s1/s3 and TB-49) is byte-identical.
+Product, ADRs, other slices and their seals are unchanged. Archive of the 6942a867 contract, its
+history, final record and (local only) gate logs: `qa/f1-respec/archive/` (by hash, `SHA256SUMS`).
+
+## Defect
+
+QA-13 used the shared `reveal`: ±60-point wheel steps until `fully_visible`. `backups-location`
+shows the whole store path and wraps, so its height follows cargo's temp dir. With the warm long
+target (`…/target/tb47-tb48-directed/target`, store path 179 bytes) it is 262.5 points high in a
+283-point sidebar at 640x400: fitting, but with 20.5 points to spare the ±60 steps alternate over
+it and the test fails "remains clipped" (seen under 6942a867 at 3a8f63a, gate run kept in the
+evidence). A path long enough to make it taller than the sidebar (Neon: 212 bytes, 297.5 points)
+can never pass `fully_visible`, although the whole text can be read by scrolling.
+
+## Semantics now (support/reading.rs)
+
+- **Control** (`reset-factory`, `recover-<id>`, a tapped `key-row-return`): wheeled into view whole
+  with real wheel input; each step is at most a notch (60, sideways 80) and never more than what is
+  still hidden, so a control that fits is never stepped over. It must fit its viewport (the window
+  cut by every scrolling ancestor); a control larger than it, or clipped by anything else once
+  inside it, fails. QA-13 still asserts `fully_visible` and the restore at all four sizes.
+- **Passage** (`backups-location`, `recovery-more`, `key-row-return`): its text must be laid out
+  whole inside its box (`text_size` within the box less insets, not `truncate`, not `text_cut`),
+  opaque (it, its text colour and every ancestor), and no wider than its viewport. If it fits it is
+  read in one view (then also `fully_visible`); if taller, its top is brought to the viewport's top
+  and it is wheeled down in steps of at most a notch, each view showing its full width, until its
+  bottom is shown. The union of the bands seen must cover the box from 0 to its height with no gap.
+  `read_at` asserts: one view exactly when it fits.
+- No accessible-tree check: geometry and layout come from `Runtime::elements()` (presented rects,
+  clipped `visible`, opacity, laid-out text size and cut flags), so invisible or cut text fails.
+- No length cap, no shorter target, no wider window, no control neutralised.
+
+## Long paths, independent of the build dir and the pid
+
+QA-13 runs each size with the case's own profile (store path = cargo temp dir + fixed suffix) and
+with `Profile::long(len)` for len 179, 212 and 256: when the temp dir leaves the path shorter, the
+case directory gains one fixed `x…` segment so the store path is exactly `len` bytes (at least
+`len` otherwise). 256 is the shortest padded length whose location (333 characters, at most 20 a
+line at 168 points) is taller than the 283-point sidebar at 640x400 for any prefix. Measured with
+the warm long target (private probe, `qa/f1-respec/geometry.json`, not committed):
+
+| 640x400, store bytes | text height | sidebar | margin | shared `reveal` | reading |
+|---|---|---|---|---|---|
+| 164 (probe dir) | 245 | 283 | 38 | pass | 1 view |
+| 179 | 262.5 | 283 | 20.5 | panics, "remains clipped" | 1 view |
+| 212 (x-padded) | 280 | 283 | 3 | panics, "remains clipped" | 1 view |
+| 256 | 315 | 283 | -32 | panics, "remains clipped" | 2 views |
+
+At 1200x760, 1200x500 and 900x600 every length fits in one view with ≥103 points to spare.
+Neon's 212-byte path (`seg0_…/seg1_…` segments) wraps to 17 lines (297.5): the wrap depends on
+the characters, not only the length, hence the 256 case.
+
+## New cases (all `preserve`, all GREEN on any product with the recovery region)
+
+QA-17..22 check the reading itself on a synthetic panel (`Runtime<Panel>`, 208x283 scroll viewport
+in a 640x400 window): a 438.75-point passage is read in ≥2 views and a 262.5-point control is
+reached whole; a passage clipped to 120 points (rows 120..438.75 never shown), clamped to three
+lines (truncated), at opacity 0, a control in a 10-point clip ("inside its viewport yet clipped")
+and a 300-point control ("larger than its viewport") each fail. Each negative runs the check under
+`catch_unwind` and asserts its message starts with "<key> cannot be read whole" / "cannot be
+reached whole" and names its own reason ("are never shown", "truncated or clamped", "is not
+opaque", "yet clipped", "larger than its viewport"); `should_panic` is not used because the gate
+does not recognise libtest's `- should panic ... ok` line (seal a91e95b4 showed QA-18..22 as
+NOT_RUN on 25230e9; superseded, nothing else changed).
+
+## Red and green
+
+- QA-13 under 6942a867 at 3a8f63a, warm long target: RED_BEHAVIOR (gate run, evidence history).
+- New seal: QA-15/16 re-seen red on 25230e9 with the sealed frozen files overlaid (method of the
+  late-conflict amendment), then the final at the amendment commit. See `qa/f1-respec/RECEIPT.md`.

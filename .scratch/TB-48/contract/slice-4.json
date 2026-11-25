@@ -1,11 +1,12 @@
 {
   "version": 1,
   "mode": "behavior",
-  "reason": "Slice 4 of TB-48: recovery in the configurator and the isolated end-to-end round trip. The editor shows the generation store's full path as text (`backups-location`), lists the newest five generations of this config newest first (`recover-<id>`; another config's are never listed; one kept before a factory reset says \"before factory reset\"; an absence and a damaged copy are listed with why and never restored) and points to `touchbar-recover list` for the rest (`recovery-more`). Tapping a listed generation restores its exact bytes and permission bits through the guarded write, keeps the replaced file as a verified `recover` generation, shows the restored file (an invalid one with its issues) and names the kept path; it survives a reopen and can be undone. A restore is refused with a reason while there are unsaved changes or a pending factory reset, and over a file changed or removed on disk before its generation is published it writes and keeps nothing (TB-43 conflict rules). The default buttons, the personal restore and `key-row-return` (a pointer to docs/hardware-runbook.md, Physical return to key mode, which the editor never performs; layout and copies stay) are separate labelled controls; every control is reachable and restore works at 1200x760, 1200x500, 900x600 and 640x400; scene `recovery`. Check `round-trip`: the real `touchbar-customizer` (four --script sessions) and `touchbard --sim` share one temp HOME and XDG_STATE_HOME, no display: reset+cancel writes nothing, reset+save keeps the seeded commented 0640 file as generation 1 and the daemon's next frame equals a fresh daemon's frame of the saved file, reopen lists it, restore brings bytes and 0640 back, keeps the factory file as generation 2 and the daemon's frame equals its first. Late-conflict amendment (ADR-0015): a restore refused after its `recover` generation was published says not restored, names the retained id and lists it, shows the newer file (or keeps the link when the path became unsafe), and tapping the restore again restores.",
+  "reason": "Slice 4 of TB-48: recovery in the configurator and the isolated end-to-end round trip. The editor shows the generation store's full path as text (`backups-location`), lists the newest five generations of this config newest first (`recover-<id>`; another config's are never listed; one kept before a factory reset says \"before factory reset\"; an absence and a damaged copy are listed with why and never restored) and points to `touchbar-recover list` for the rest (`recovery-more`). Tapping a listed generation restores its exact bytes and permission bits through the guarded write, keeps the replaced file as a verified `recover` generation, shows the restored file (an invalid one with its issues) and names the kept path; it survives a reopen and can be undone. A restore is refused with a reason while there are unsaved changes or a pending factory reset, and over a file changed or removed on disk before its generation is published it writes and keeps nothing (TB-43 conflict rules). The default buttons, the personal restore and `key-row-return` (a pointer to docs/hardware-runbook.md, Physical return to key mode, which the editor never performs; layout and copies stay) are separate labelled controls; every control is reachable and restore works at 1200x760, 1200x500, 900x600 and 640x400; scene `recovery`. Check `round-trip`: the real `touchbar-customizer` (four --script sessions) and `touchbard --sim` share one temp HOME and XDG_STATE_HOME, no display: reset+cancel writes nothing, reset+save keeps the seeded commented 0640 file as generation 1 and the daemon's next frame equals a fresh daemon's frame of the saved file, reopen lists it, restore brings bytes and 0640 back, keeps the factory file as generation 2 and the daemon's frame equals its first. Late-conflict amendment (ADR-0015): a restore refused after its `recover` generation was published says not restored, names the retained id and lists it, shows the newer file (or keeps the link when the path became unsafe), and tapping the restore again restores. Reading amendment (F1, review of 3a8f63a): QA-01, QA-13 and QA-14 read the region with `support/reading.rs` (frozen here, used by no other contract) instead of the shared driver's `reveal`: a control is wheeled into view whole with steps never larger than what is still hidden and must fit its viewport; a passage (`backups-location`, `recovery-more`, `key-row-return`) must be laid out whole (not truncated, clamped, faded or wider than its box) and every band of it seen edge to edge, in one view when it fits and in overlapping views top to bottom when it is taller. QA-13 also runs every size with store paths of at least 179, 212 and 256 bytes whatever cargo's temp dir is. QA-17..22 prove the reading itself on a sidebar-like panel: a tall passage and a snug control pass; a passage partly hidden by a clip, clamped or invisible, and a control hidden by a clip or taller than its viewport, fail.",
   "files": [
     "crates/tb-app/tests/configurator_recovery.rs",
     "crates/tb-app/tests/support/configurator.rs",
     "crates/tb-app/tests/support/ui.rs",
+    "crates/tb-app/tests/support/reading.rs",
     ".scratch/TB-48/contract/round_trip_check.py",
     "crates/tb-app/tests/configurator_late_conflict.rs",
     "crates/tb-config/tests/support/late_conflict.rs",
@@ -18,7 +19,7 @@
       "target": "test:configurator_recovery",
       "test": "the_backups_location_is_shown_as_readable_text",
       "red": "preserve",
-      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour. Reading amendment (F1): the location (and in QA-14 the key-row pointer) is read with `support/reading.rs` and must still be fully visible in one view at 1200x760; assertions otherwise unchanged."
     },
     {
       "id": "QA-02",
@@ -114,7 +115,7 @@
       "target": "test:configurator_recovery",
       "test": "every_recovery_control_is_reachable_and_restore_works_at_the_required_window_sizes",
       "red": "preserve",
-      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour. Reading amendment (F1): the shared `reveal` (+/-60 steps) could not show `backups-location` whole at 640x400 with a 179-byte store path (text 262.5 of 283 points: it stepped over) nor read one taller than the sidebar; seen RED_BEHAVIOR under seal 6942a867 at 3a8f63a with the long warm target (archived in qa/f1-respec/archive). The test now reads through `support/reading.rs`; the product is unchanged."
     },
     {
       "id": "QA-14",
@@ -122,7 +123,7 @@
       "target": "test:configurator_recovery",
       "test": "the_recovery_scene_shows_the_location_and_the_generations",
       "red": "preserve",
-      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour."
+      "reason": "Required until the late-conflict amendment: seen red under seal sha256:4402224f... on fd7bc50 (runs kept in slice-4.evidence.json; manifest, seal and evidence archived in qa/late-conflict-respec/archive with SHA256SUMS); the test is unchanged and now guards implemented behaviour. Reading amendment (F1): the location (and in QA-14 the key-row pointer) is read with `support/reading.rs` and must still be fully visible in one view at 1200x760; assertions otherwise unchanged."
     },
     {
       "id": "QA-15",
@@ -137,6 +138,54 @@
       "target": "test:configurator_late_conflict",
       "test": "a_config_made_a_symlink_after_a_restore_published_its_generation_is_refused_with_the_id",
       "red": "required"
+    },
+    {
+      "id": "QA-17",
+      "package": "tb-app",
+      "target": "test:configurator_recovery",
+      "test": "a_passage_taller_than_its_viewport_is_read_in_views_and_a_snug_control_is_reached_whole",
+      "red": "preserve",
+      "reason": "Guards the reading check (F1): a passage taller than a 283-point viewport is read in two or more views, and a control that fits with 20.5 points to spare is reached whole (the shared +/-60 driver steps over it)."
+    },
+    {
+      "id": "QA-18",
+      "package": "tb-app",
+      "target": "test:configurator_recovery",
+      "test": "a_passage_partly_hidden_by_a_clip_is_not_read_whole",
+      "red": "preserve",
+      "reason": "Guards the reading check (F1): a passage whose lower rows are clipped by a non-scrolling parent must fail (rows never shown), whatever its text says."
+    },
+    {
+      "id": "QA-19",
+      "package": "tb-app",
+      "target": "test:configurator_recovery",
+      "test": "a_clamped_passage_is_not_read_whole",
+      "red": "preserve",
+      "reason": "Guards the reading check (F1): a passage clamped to three lines must fail (truncated), although its accessible text is complete."
+    },
+    {
+      "id": "QA-20",
+      "package": "tb-app",
+      "target": "test:configurator_recovery",
+      "test": "an_invisible_passage_is_not_read_whole",
+      "red": "preserve",
+      "reason": "Guards the reading check (F1): a passage at opacity 0 must fail, although it is laid out and its accessible text is complete."
+    },
+    {
+      "id": "QA-21",
+      "package": "tb-app",
+      "target": "test:configurator_recovery",
+      "test": "a_control_hidden_by_a_clip_is_not_reached",
+      "red": "preserve",
+      "reason": "Guards the reading check (F1): a control inside a 10-point clip must fail, although its rect sits inside the scroll viewport."
+    },
+    {
+      "id": "QA-22",
+      "package": "tb-app",
+      "target": "test:configurator_recovery",
+      "test": "a_control_taller_than_its_viewport_is_not_reached",
+      "red": "preserve",
+      "reason": "Guards the reading check (F1): a control taller than its viewport can never be seen whole and must fail."
     }
   ],
   "checks": [

@@ -9,7 +9,10 @@
 //! file changed or removed on disk it writes and keeps nothing (the editor's conflict rules).
 //! The default buttons, restoring the personal file and the physical return to the key row are
 //! three separate, labelled things; the last one is only a pointer to the human procedure.
-//! Every control is reachable at the required window sizes.
+//! Every control is reachable at the required window sizes, and every passage of text in the
+//! region (the location, the pointer to the rest, the key-row pointer) can be read whole there,
+//! scrolling through it when it is taller than the sidebar: also with store paths of 179, 212 and
+//! 256 bytes, whatever cargo's temp dir is (`support/reading.rs`).
 //!
 //! Every case drives the real configurator headless through `rune::Runtime`, opened as startup
 //! opens it (`State::open_protected`) on hand-written configs (comments, mode 0640) in its own
@@ -19,6 +22,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod support {
     pub mod configurator;
+    pub mod reading;
     pub mod ui;
 }
 
@@ -27,8 +31,9 @@ use std::fs::{self, Permissions};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use rune::{Env, Runtime};
+use rune::{Cx, El, Env, Runtime, ScrollSpec, col, el, text};
 use support::configurator::*;
+use support::reading::{Reading, read_passage, reveal_control};
 use tb_app::State;
 use tb_config::{Backups, ConfigFile, Generation, GenerationKind, Health, Loaded, Reason};
 use tb_core::Chord;
@@ -39,6 +44,13 @@ const SUITE: &str = "configurator_history";
 const WINDOW: (f32, f32) = (1200.0, 760.0);
 /// The window sizes the configurator must stay operable at (`configurator_shell.rs`).
 const SIZES: [(f32, f32); 4] = [(1200.0, 760.0), (1200.0, 500.0), (900.0, 600.0), (640.0, 400.0)];
+/// Store path lengths, in bytes, every size is also checked with, whatever cargo's temp dir is.
+/// 179 and 212 are the lengths seen in review; at 640x400 the location then fits the sidebar with
+/// less than a wheel notch to spare. 256 is the shortest padded length whose location (at most 20
+/// characters a line) is always taller than the 283-point sidebar there, so it is read in views.
+const LONG_STORES: [usize; 3] = [179, 212, 256];
+/// The passages of the recovery region: text a person reads, never taps.
+const PASSAGES: [&str; 3] = ["backups-location", "recovery-more", "key-row-return"];
 
 /// One case's throwaway profile: the config at `<dir>/home/.config/touchbar-customizer/config.toml`
 /// and the store `<dir>/state/touchbar-customizer/backups` (what `XDG_STATE_HOME=<dir>/state` names).
@@ -50,10 +62,34 @@ struct Profile {
 
 impl Profile {
     fn new(test: &str) -> Self {
-        let dir = fresh_dir(SUITE, test);
+        Self::at(fresh_dir(SUITE, test))
+    }
+
+    fn at(dir: PathBuf) -> Self {
         let config = dir.join("home/.config/touchbar-customizer/config.toml");
         let store = dir.join("state/touchbar-customizer/backups");
         Self { dir, config, store }
+    }
+
+    /// A profile whose store path is at least `len` bytes, the same on every run: when cargo's
+    /// temp dir leaves it shorter, the case's directory gains one fixed segment of `x`.
+    fn long(test: &str, len: usize) -> Self {
+        let dir = fresh_dir(SUITE, test);
+        let natural = Self::at(dir.clone()).store.as_os_str().len();
+        let profile = if natural < len {
+            Self::at(dir.join("x".repeat((len - natural - 1).max(1))))
+        } else {
+            Self::at(dir)
+        };
+        assert!(profile.store.as_os_str().len() >= len, "{}", profile.store.display());
+        profile
+    }
+
+    /// The store path as given, or canonical.
+    fn store_paths(&self) -> Vec<String> {
+        let mut paths = vec![self.store.display().to_string()];
+        paths.extend(fs::canonicalize(&self.store).ok().map(|p| p.display().to_string()));
+        paths
     }
 
     fn backups(&self) -> Backups {
@@ -148,10 +184,20 @@ fn key(generation: &Generation) -> String {
     format!("recover-{}", generation.id)
 }
 
-/// Brings the control into view at `size` with real wheel input, then taps it.
+/// Brings the control into view whole at `size` with real wheel input, then taps it.
 fn press_at(rt: &mut Runtime<State>, key: &str, size: (f32, f32)) {
-    reveal(rt, key, size);
+    reveal_control(rt, key, size);
     tap(rt, key);
+}
+
+/// Reads the passage keyed `key` whole at `size`; when it fits its viewport it is also fully
+/// visible in that one view.
+fn read_at(rt: &mut Runtime<State>, key: &str, size: (f32, f32), at: &str) -> Reading {
+    let reading = read_passage(rt, key, size);
+    let fits = reading.height <= reading.viewport + 1.0;
+    assert_eq!(reading.views == 1, fits, "{key} takes one view exactly when it fits, at {at}: {reading:?}");
+    assert!(!fits || fully_visible(rt, key, size), "{key} is reachable at {at}");
+    reading
 }
 
 /// A third party replaces the file atomically (temp + rename, no lock).
@@ -219,15 +265,15 @@ fn the_backups_location_is_shown_as_readable_text() {
     profile.history(&versions(0..1), &version(1).1, 0o640);
     let mut rt = profile.open(WINDOW);
 
-    reveal(&mut rt, "backups-location", WINDOW);
+    let reading = read_at(&mut rt, "backups-location", WINDOW, "1200x760");
 
     let shown = words(&rt, "backups-location");
-    let mut paths = vec![profile.store.display().to_string()];
-    paths.extend(fs::canonicalize(&profile.store).ok().map(|p| p.display().to_string()));
+    let paths = profile.store_paths();
     assert!(
         paths.iter().any(|p| shown.contains(p.as_str())),
         "the full store path {paths:?} is shown: {shown}"
     );
+    assert_eq!(reading.views, 1, "{reading:?}");
     assert!(fully_visible(&rt, "backups-location", WINDOW));
 }
 
@@ -526,27 +572,42 @@ fn the_default_buttons_the_personal_restore_and_the_key_row_return_are_separate_
 #[test]
 fn every_recovery_control_is_reachable_and_restore_works_at_the_required_window_sizes() {
     for (n, size) in SIZES.into_iter().enumerate() {
-        let profile = Profile::new(&format!("reach_{n}"));
-        let history = versions(0..7);
-        profile.history(&history, &version(7).1, 0o640);
-        let all = profile.generations();
-        let mut rt = profile.open(size);
-        let mut keys =
-            vec!["backups-location".to_owned(), "recovery-more".to_owned(), "key-row-return".to_owned()];
-        keys.push("reset-factory".to_owned());
-        keys.extend(all[..5].iter().map(key));
-        for k in &keys {
-            reveal(&mut rt, k, size);
-            assert!(fully_visible(&rt, k, size), "{k} is reachable at {size:?}");
+        reach_and_restore(&Profile::new(&format!("reach_{n}")), size);
+        for len in LONG_STORES {
+            reach_and_restore(&Profile::long(&format!("reach_{n}_{len}"), len), size);
         }
-        let chosen = &all[3];
-        let bytes = profile.kept_bytes(chosen);
-
-        press_at(&mut rt, &key(chosen), size);
-
-        assert_eq!(fs::read(&profile.config).unwrap(), bytes, "restore works at {size:?}");
-        assert_eq!(profile.generations()[0].reason, Reason::Recover, "at {size:?}");
     }
+}
+
+/// At `size`: every passage reads whole, every control is reached whole, and tapping the fourth
+/// newest generation restores it.
+fn reach_and_restore(profile: &Profile, size: (f32, f32)) {
+    let history = versions(0..7);
+    profile.history(&history, &version(7).1, 0o640);
+    let all = profile.generations();
+    let mut rt = profile.open(size);
+    let at = format!("{size:?} with a {}-byte store path", profile.store.as_os_str().len());
+    for k in PASSAGES {
+        read_at(&mut rt, k, size, &at);
+    }
+    let shown = words(&rt, "backups-location");
+    assert!(
+        profile.store_paths().iter().any(|p| shown.contains(p.as_str())),
+        "the full path at {at}: {shown}"
+    );
+    let mut keys = vec!["reset-factory".to_owned()];
+    keys.extend(all[..5].iter().map(key));
+    for k in &keys {
+        reveal_control(&mut rt, k, size);
+        assert!(fully_visible(&rt, k, size), "{k} is reachable at {at}");
+    }
+    let chosen = &all[3];
+    let bytes = profile.kept_bytes(chosen);
+
+    press_at(&mut rt, &key(chosen), size);
+
+    assert_eq!(fs::read(&profile.config).unwrap(), bytes, "restore works at {at}");
+    assert_eq!(profile.generations()[0].reason, Reason::Recover, "at {at}");
 }
 
 #[test]
@@ -569,9 +630,128 @@ fn the_recovery_scene_shows_the_location_and_the_generations() {
     rt.on_key = Some(tb_app::on_key);
     rt.frame(0.0);
     settle(&mut rt);
-    for k in ["backups-location".to_owned(), key(&all[0]), key(&all[1]), "key-row-return".to_owned()] {
-        reveal(&mut rt, &k, WINDOW);
+    for k in ["backups-location", "key-row-return"] {
+        read_at(&mut rt, k, WINDOW, "the scene");
+    }
+    for k in [key(&all[0]), key(&all[1])] {
+        reveal_control(&mut rt, &k, WINDOW);
         assert!(fully_visible(&rt, &k, WINDOW), "the scene shows {k}");
     }
     assert_eq!(tree(&profile.dir), before, "the scene writes nothing");
+}
+
+// The reading checks themselves, on a sidebar-like panel (208x283 scroll viewport in a 640x400
+// window, as the configurator's at 640x400): a passage or control a person cannot see whole fails.
+
+/// What the panel holds below a spacer, and above a tail that leaves room to scroll.
+enum Panel {
+    Passage,
+    PassageInClip,
+    ClampedPassage,
+    InvisiblePassage,
+    SnugControl,
+    ControlInClip,
+    TallControl,
+}
+
+const PANEL: (f32, f32) = (640.0, 400.0);
+
+fn passage() -> El {
+    let words = "a passage that wraps onto many lines of the sidebar, read from its first line to its last; ";
+    text(words.repeat(8)).key("passage").w_full().wrap_anywhere()
+}
+
+fn panel_view(panel: &Panel, _cx: &mut Cx<Panel>) -> El {
+    let held = match panel {
+        Panel::Passage => passage(),
+        Panel::PassageInClip => col().w_full().h(120.0).clip_soft(0.0).child(passage()),
+        Panel::ClampedPassage => passage().max_lines(3),
+        Panel::InvisiblePassage => passage().opacity(0.0),
+        Panel::SnugControl => el().key("control").size(168.0, 262.5),
+        Panel::ControlInClip => {
+            col().w_full().h(10.0).clip_soft(0.0).child(el().key("control").size(168.0, 40.0))
+        }
+        Panel::TallControl => el().key("control").size(168.0, 300.0),
+    };
+    let content = col()
+        .w(208.0)
+        .px(20.0)
+        .pt(18.0)
+        .pb(20.0)
+        .child(el().size(168.0, 600.0))
+        .child(held)
+        .child(el().size(168.0, 400.0));
+    col().size(PANEL.0, PANEL.1).child(
+        col()
+            .key("panel-scroll")
+            .size(208.0, 283.0)
+            .scroll(ScrollSpec { stick_bottom: false })
+            .child(content),
+    )
+}
+
+fn panel(kind: Panel) -> Runtime<Panel> {
+    let mut rt = Runtime::new(kind, panel_view, PANEL, Env::new(true, 1.0));
+    rt.frame(0.0);
+    support::reading::rest(&mut rt);
+    rt
+}
+
+#[test]
+fn a_passage_taller_than_its_viewport_is_read_in_views_and_a_snug_control_is_reached_whole() {
+    let mut rt = panel(Panel::Passage);
+    let reading = read_passage(&mut rt, "passage", PANEL);
+    assert!(reading.height > reading.viewport && reading.views >= 2, "{reading:?}");
+
+    let mut rt = panel(Panel::SnugControl);
+    reveal_control(&mut rt, "control", PANEL);
+    assert!(support::reading::whole(&support::reading::live(&rt, "control"), PANEL));
+}
+
+/// The message `check` panics with; it must panic.
+fn refusal(check: impl FnOnce()) -> String {
+    let payload =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(check)).expect_err("the check must fail");
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+        .unwrap_or_default()
+}
+
+fn refused_passage(kind: Panel, why: &str) {
+    let said = refusal(|| {
+        read_passage(&mut panel(kind), "passage", PANEL);
+    });
+    assert!(said.starts_with("passage cannot be read whole") && said.contains(why), "{said}");
+}
+
+fn refused_control(kind: Panel, why: &str) {
+    let said = refusal(|| reveal_control(&mut panel(kind), "control", PANEL));
+    assert!(said.starts_with("control cannot be reached whole") && said.contains(why), "{said}");
+}
+
+#[test]
+fn a_passage_partly_hidden_by_a_clip_is_not_read_whole() {
+    refused_passage(Panel::PassageInClip, "are never shown");
+}
+
+#[test]
+fn a_clamped_passage_is_not_read_whole() {
+    refused_passage(Panel::ClampedPassage, "truncated or clamped");
+}
+
+#[test]
+fn an_invisible_passage_is_not_read_whole() {
+    refused_passage(Panel::InvisiblePassage, "is not opaque");
+}
+
+#[test]
+fn a_control_hidden_by_a_clip_is_not_reached() {
+    refused_control(Panel::ControlInClip, "yet clipped");
+}
+
+#[test]
+fn a_control_taller_than_its_viewport_is_not_reached() {
+    refused_control(Panel::TallControl, "larger than its viewport");
 }
