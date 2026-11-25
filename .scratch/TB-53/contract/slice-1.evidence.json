@@ -1,0 +1,16 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-25T01:33:03Z",
+      "seal": "sha256:a760403f9f387477d19aa47a4a5b7f5a5fc2c589c2e4e4b4dce7046441dd86e6",
+      "head": "bc3e69741040b6585ca2502bfd5f61be94ceae2a",
+      "final": false,
+      "results": {
+        "QA-01": "RED_BEHAVIOR",
+        "QA-02": "RED_BEHAVIOR",
+        "QA-03": "GREEN"
+      },
+      "log": ".scratch/TB-53/gate/2026-11-25T013300Z-slice-1"
+    }
+  ]
+}
