@@ -23,12 +23,11 @@ impl ConfigState {
     /// Before a missing config is written, its absence is recorded in the generation store.
     pub(super) fn start(
         home: Option<&Path>,
+        backups: Option<Backups>,
         active: BarTheme,
         events: &Sender<Message>,
         workers: &mut Workers,
     ) -> Self {
-        let state_home = std::env::var_os("XDG_STATE_HOME");
-        let backups = Backups::locate(home, state_home.as_deref()).map(Backups::at);
         let file =
             home.zip(backups).map(|(home, backups)| ConfigFile::protected(default_path(home), backups));
         let mut state = Self { file, theme: active.clone(), active };

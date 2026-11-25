@@ -6,6 +6,7 @@ use std::os::unix::fs::{DirBuilderExt, symlink};
 use std::time::Duration;
 
 use super::*;
+use tb_config::{GenerationKind, Health, Reason, default_path};
 use tb_daemon::NodeId;
 use tb_daemon::fake::{FlatRenderer, KmsCall, KmsStep, RecordingKms};
 
@@ -21,9 +22,17 @@ fn drm_without_a_digitizer_presents_and_restores_at_stdin_eof() {
     writer.write_all(b"down 906\nup\n").unwrap();
     drop(writer);
     let result = run_drm_with_stdin(&root, kms, input);
+    let home = root.join("home");
+    let backups = Backups::at(Backups::locate(Some(&home), None).unwrap());
+    let path = default_path(&home);
+    let generations = backups.list(&path).unwrap();
     fs::remove_dir_all(&root).unwrap();
 
     assert_eq!(result, Ok(()));
+    let [first] = generations.as_slice() else { panic!("expected one private first-write generation") };
+    assert_eq!(first.reason, Reason::FirstWrite);
+    assert_eq!(first.kind, GenerationKind::Absent { dir_existed: false });
+    assert_eq!(first.health, Health::Verified);
     let mut display_changes = log
         .calls()
         .into_iter()
@@ -105,9 +114,12 @@ fn run_with_devices(
         }),
         open_touch: Box::new(|_| panic!("--drm without --touch must read stdin")),
     };
+    let home = root.join("home");
+    let backups = Backups::locate(Some(&home), None).map(Backups::at);
     run_hardware_with(
         args,
-        Some(&root.join("home")),
+        Some(&home),
+        backups,
         || Ok(FlatRenderer),
         devices,
         stop,
